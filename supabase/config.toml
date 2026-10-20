@@ -1,0 +1,7 @@
+project_id = "busmora"
+
+[functions.ai-generate]
+verify_jwt = true
+
+[functions.oauth-connect]
+verify_jwt = false
