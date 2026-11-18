@@ -1,0 +1,83 @@
+.marketing-hero-dashboard,
+.marketing-hero-wordmark,
+.marketing-closing-wordmark {
+  transform: translateX(-50%);
+}
+
+.marketing-brand-outline-text {
+  font-family: var(--font-inter), sans-serif;
+  font-size: 220px;
+  font-weight: 600;
+}
+
+.marketing-closing-scene {
+  padding-block-start: clamp(12rem, 20vw, 18rem);
+}
+
+/* Use document flow when the pinned scene cannot comfortably fit the viewport. */
+@media (width < 80rem), (height < 56.25rem), (prefers-reduced-motion: reduce) {
+  .marketing-hero {
+    height: auto;
+  }
+
+  .marketing-hero-stage {
+    position: relative;
+    height: auto;
+  }
+
+  .marketing-hero-surface {
+    height: auto;
+    padding-block-end: 5rem;
+  }
+
+  .marketing-hero-copy {
+    padding-block-start: clamp(10rem, 18svh, 12rem);
+  }
+
+  .marketing-hero-dashboard {
+    position: relative;
+    inset: auto;
+    width: min(100% - 2rem, 64rem);
+    margin: 0 auto;
+    transform: none;
+  }
+
+  .marketing-hero-wordmark {
+    position: relative;
+    inset: auto;
+    width: min(92%, 72rem);
+    margin: 2rem auto -1rem;
+    transform: none;
+  }
+
+  .marketing-hero-marquees {
+    position: relative;
+    inset: auto;
+    margin-block-start: 2rem;
+  }
+}
+
+.marketing-workflow {
+  padding-block: 4rem;
+}
+
+.marketing-workflow-presentation {
+  display: none;
+}
+
+
+/* The full-size cards need enough width and height to remain readable. */
+@media (width >= 80rem) and (height >= 53.125rem) and (prefers-reduced-motion: no-preference) {
+  .marketing-workflow[data-process-enhanced] {
+    height: 250svh;
+    padding-block: 0;
+  }
+
+  .marketing-workflow[data-process-enhanced] .marketing-workflow-steps {
+    display: none;
+  }
+
+  .marketing-workflow[data-process-enhanced] .marketing-workflow-presentation {
+    display: flex;
+  }
+}

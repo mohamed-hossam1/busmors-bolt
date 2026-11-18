@@ -1,3 +1,6 @@
+import LoadingState from '../components/LoadingState'
+import EmptyState from '../components/EmptyState'
+import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, CheckCheck, Copy, XCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -12,6 +15,8 @@ export default function CalendarPage() {
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  useDialog(!!editing, () => setEditing(null))
 
   const load = async () => {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -165,12 +170,12 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-3.5 sm:p-6">
+    <div className="workspace-page">
       <div className="mx-auto max-w-5xl">
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <CalendarDays className="text-primary-700 shrink-0" size={24} />
-            <h1 className="text-xl font-bold text-ink-900">{t('calendarTitle')}</h1>
+            <span className="brain-page-heading"><CalendarDays size={22} /></span>
+            <div><h1 className="workspace-heading">{t('calendarTitle')}</h1><p className="workspace-description">A clear view of what’s next. You make the final call.</p></div>
           </div>
           <div className="flex flex-wrap gap-2">
             {pending.length > 0 && (
@@ -194,10 +199,13 @@ export default function CalendarPage() {
           </div>
         </header>
 
+        {!loading && <div className="mb-7 grid grid-cols-3 gap-3 sm:gap-4">{[
+          { label: 'All posts', value: posts.length }, { label: 'To review', value: pending.length }, { label: 'Approved', value: approvedCount },
+        ].map((stat) => <div key={stat.label} className="stat-card"><p className="text-xs text-ink-600">{stat.label}</p><p className="mt-2 text-2xl font-semibold tracking-tight">{stat.value}</p></div>)}</div>}
         {loading ? (
-          <p className="text-sm text-ink-400">{t('loading')}</p>
+          <LoadingState />
         ) : posts.length === 0 ? (
-          <div className="card p-8 text-center text-sm text-ink-500">{t('noPosts')}</div>
+          <EmptyState icon={CalendarDays} title="Your next story starts here." description="Ask your Marketing Director to prepare posts. Drafts will appear here for you to review." action={{ to: "/app/employee", label: "Talk to your Director" }} />
         ) : (
           <div className="space-y-6">
             {approvedCount > 0 && (
@@ -210,7 +218,7 @@ export default function CalendarPage() {
                 <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-500">
                   {t('batchReview')} — {pending.length}
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-5 md:grid-cols-2">
                   {pending.map((p) => (
                     <PostCard
                       key={p.id}
@@ -231,7 +239,7 @@ export default function CalendarPage() {
                 <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-500">
                   {t('navCalendar')}
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-5 md:grid-cols-2">
                   {others.map((p) => (
                     <PostCard
                       key={p.id}
@@ -250,9 +258,9 @@ export default function CalendarPage() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-3 sm:p-4" onClick={() => setEditing(null)}>
-          <div className="card w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="Edit post" className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-bold text-base sm:text-lg">{t('edit')}</h3>
-            <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={5} className="input-field resize-none" />
+            <textarea value={editText} onChange={(e) => setEditText(e.target.value)} aria-label="Post caption" rows={5} className="input-field resize-none" />
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setEditing(null)} className="btn-secondary flex-1 sm:flex-initial">
                 {t('cancel')}

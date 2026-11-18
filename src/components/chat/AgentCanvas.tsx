@@ -10,6 +10,7 @@ import ReactFlow, {
   type Node,
   type NodeChange,
   type NodeProps,
+  type Viewport,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import {
@@ -24,11 +25,14 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  Network,
 } from 'lucide-react'
 import type { AgentEvent } from '../../lib/types'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
+import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
 
 export type CanvasPreviewPost = PostPreviewData
+const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
 
 function PreviewNode({ data }: { data: { posts: CanvasPreviewPost[] } }) {
   return (
@@ -155,16 +159,23 @@ const AGENT_LAYOUT: Record<string, { x: number; y: number; label: string }> = {
 }
 
 export default function AgentCanvas({
+  conversationId,
   events,
   running,
-  previewPosts = [],
+  previewPosts = EMPTY_PREVIEWS,
 }: {
+  conversationId: string | null
   events: AgentEvent[]
   running: boolean
   previewPosts?: CanvasPreviewPost[]
 }) {
   const [flowNodes, setFlowNodes] = useState<Node[]>([])
-  const userPositionsRef = useRef<Record<string, { x: number; y: number }>>({})
+  const [savedLayout] = useState(() => readCanvasLayout(conversationId))
+  const userPositionsRef = useRef({ ...savedLayout.positions })
+  const viewportRef = useRef<Viewport | undefined>(savedLayout.viewport)
+  const persistLayout = useCallback(() => {
+    saveCanvasLayout(conversationId, { positions: userPositionsRef.current, viewport: viewportRef.current })
+  }, [conversationId])
 
   const { activeAgents, doneAgents, errorAgents, toolLabels, connections } = useMemo(() => {
     const active = new Set<string>()
@@ -244,7 +255,10 @@ export default function AgentCanvas({
       })
     }
 
-    setFlowNodes(newNodes)
+    setFlowNodes((previous) => {
+      const measured = new Map(previous.map((node) => [node.id, node]))
+      return newNodes.map((node) => ({ ...measured.get(node.id), ...node }))
+    })
   }, [events, running, activeAgents, doneAgents, errorAgents, toolLabels, previewPosts])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -275,7 +289,7 @@ export default function AgentCanvas({
       const stroke = isError
         ? '#ef4444'
         : isConnectedToActive
-          ? '#0d9488'
+          ? '#6535ef'
           : isDone
             ? '#10b981'
             : '#cbd5e1'
@@ -303,19 +317,35 @@ export default function AgentCanvas({
   }, [connections, activeAgents, doneAgents, errorAgents])
 
   return (
-    <div className="h-full w-full" dir="ltr">
+    <div className="relative h-full w-full" dir="ltr">
       <ReactFlow
         nodes={flowNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         nodesDraggable={true}
-        fitView
+        fitView={!savedLayout.viewport}
+        fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+        defaultViewport={savedLayout.viewport}
+        onNodeDragStop={persistLayout}
+        onMove={(_, viewport) => { viewportRef.current = viewport }}
+        onMoveEnd={(_, viewport) => { viewportRef.current = viewport; persistLayout() }}
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#e2e8f0" size={1.5} />
-        <Controls />
+        <Background gap={20} color="rgb(var(--ink-200, 226 232 240) / 0.55)" size={1.5} />
+        <Controls
+          onZoomIn={() => requestAnimationFrame(persistLayout)}
+          onZoomOut={() => requestAnimationFrame(persistLayout)}
+          onFitView={() => requestAnimationFrame(persistLayout)}
+        />
       </ReactFlow>
+      {!running && events.length === 0 && previewPosts.length === 0 && (
+        <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-white text-primary-500"><Network size={24} strokeWidth={1.5} /></span>
+          <h2 className="text-base font-semibold text-ink-900">The work will take shape here.</h2>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-600">Ask your Director for help. This canvas will show the recorded specialists, tools, and handoffs for this conversation.</p>
+        </div>
+      )}
     </div>
   )
 }

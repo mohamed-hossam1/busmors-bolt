@@ -1,3 +1,5 @@
+import LoadingState from '../components/LoadingState'
+import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Brain as BrainIcon,
@@ -69,10 +71,9 @@ export default function BrainPage() {
   const [reorganizeError, setReorganizeError] = useState<string | null>(null)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
-  const load = async () => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const userId = sessionData.session?.user?.id
+  useDialog(showReorganizeModal, () => { if (!reorganizing) setShowReorganizeModal(false) })
 
+  const load = async () => {
     const [{ data: nodesData }, { data: edgesData }, { data: auditData }] = await Promise.all([
       supabase.from('brain_nodes').select('*').order('created_at', { ascending: false }),
       supabase.from('brain_edges').select('*'),
@@ -80,53 +81,7 @@ export default function BrainPage() {
     ])
 
     const loadedNodes = (nodesData ?? []) as BrainNode[]
-    let loadedEdges = (edgesData ?? []) as BrainEdge[]
-
-    // Auto-link knowledge graph edges in database if missing or sparse
-    if (loadedEdges.length < 2 && userId) {
-      const approvedNodes = loadedNodes.filter((n) => n.status === 'approved')
-      if (approvedNodes.length >= 2) {
-        const byCategory = (cat: BrainCategory) => approvedNodes.filter((n) => n.category === cat)
-        const profile = byCategory('company_profile')[0] || approvedNodes[0]
-        const newEdges: { workspace_id: string; source_node_id: string; target_node_id: string; relation_type: string; status: 'approved'; weight: number }[] = []
-
-        const link = (src?: BrainNode, tgt?: BrainNode, rel = 'RELATED_TO') => {
-          if (src && tgt && src.id !== tgt.id) {
-            newEdges.push({
-              workspace_id: userId,
-              source_node_id: src.id,
-              target_node_id: tgt.id,
-              relation_type: rel,
-              status: 'approved',
-              weight: 0.8,
-            })
-          }
-        }
-
-        for (const offering of byCategory('offering')) {
-          for (const audience of byCategory('audience')) link(offering, audience, 'TARGETS')
-          if (profile && profile.id !== offering.id) link(profile, offering, 'OFFERS')
-        }
-        for (const rule of byCategory('brand_rule')) link(rule, profile, 'HAS_TONE')
-        for (const pos of byCategory('positioning')) link(pos, profile, 'DIFFERENTIATES')
-        for (const fact of byCategory('company_fact')) link(fact, profile, 'FACT_OF')
-        for (const comp of byCategory('competitor')) link(comp, profile, 'COMPETES_WITH')
-
-        if (newEdges.length > 0) {
-          try {
-            const { data: insertedEdges } = await supabase
-              .from('brain_edges')
-              .insert(newEdges)
-              .select()
-            if (insertedEdges && insertedEdges.length > 0) {
-              loadedEdges = [...loadedEdges, ...(insertedEdges as BrainEdge[])]
-            }
-          } catch {
-            // ignore if already inserted
-          }
-        }
-      }
-    }
+    const loadedEdges = (edgesData ?? []) as BrainEdge[]
 
     setNodes(loadedNodes)
     setEdges(loadedEdges)
@@ -230,7 +185,7 @@ export default function BrainPage() {
   const saveEdit = async (node: BrainNode, title: string, summary: string) => {
     await supabase
       .from('brain_nodes')
-      .update({ title, summary, status: 'approved', updated_at: new Date().toISOString() })
+      .update({ title, summary, status: 'approved', properties: { ...node.properties, user_edited: true }, updated_at: new Date().toISOString() })
       .eq('id', node.id)
     await supabase.from('audit_log').insert({
       action: 'knowledge_edited_approved',
@@ -315,7 +270,7 @@ export default function BrainPage() {
     } else {
       setReorganizing(false)
       setShowReorganizeModal(false)
-      setSuccessBanner(t('reorganizeSuccess'))
+      setSuccessBanner(res.warning || t('reorganizeSuccess'))
       setTimeout(() => setSuccessBanner(null), 5000)
       void load()
     }
@@ -324,8 +279,8 @@ export default function BrainPage() {
   const pendingCount = candidates.length
 
   return (
-    <div className="h-full overflow-y-auto p-3.5 sm:p-6">
-      <div className="mx-auto max-w-5xl">
+    <div className="workspace-page">
+      <div className={`mx-auto ${view === 'graph' ? 'brain-graph-page max-w-none' : 'max-w-5xl'}`}>
         {successBanner && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 animate-fade-in">
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
@@ -333,10 +288,13 @@ export default function BrainPage() {
           </div>
         )}
 
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <header className="brain-page-header">
           <div className="flex items-center gap-3">
-            <BrainIcon className="text-primary-700 shrink-0" size={26} />
-            <h1 className="text-xl font-bold text-ink-900">{t('navBrain')}</h1>
+            <span className="brain-page-heading"><BrainIcon size={23} /></span>
+            <div>
+              <h1 className="workspace-heading">{t('navBrain')}</h1>
+              <p className="workspace-description">Your business knowledge, connected.</p>
+            </div>
             {pendingCount > 0 && (
               <button
                 type="button"
@@ -353,6 +311,7 @@ export default function BrainPage() {
             <div className="flex rounded-lg border border-ink-200 p-0.5 bg-white">
               <button
                 onClick={() => setView('list')}
+                aria-pressed={view === 'list'}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
                   view === 'list' ? 'bg-primary-50 text-primary-800' : 'text-ink-500 hover:text-ink-900'
                 }`}
@@ -361,6 +320,7 @@ export default function BrainPage() {
               </button>
               <button
                 onClick={() => setView('graph')}
+                aria-pressed={view === 'graph'}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
                   view === 'graph' ? 'bg-primary-50 text-primary-800' : 'text-ink-500 hover:text-ink-900'
                 }`}
@@ -408,9 +368,9 @@ export default function BrainPage() {
         )}
 
         {view === 'graph' ? (
-          <BrainGraph nodes={approved} edges={edges} onEditNode={(node) => setEditing(node)} />
+          <BrainGraph nodes={nodes.filter((node) => node.status !== 'rejected')} edges={edges} onEditNode={(node) => setEditing(node)} />
         ) : loading ? (
-          <p className="text-sm text-ink-400">{t('loading')}</p>
+          <LoadingState label="Loading your Business Brain…" />
         ) : (
           <div className="space-y-6">
             {/* Filter and Search Toolbar */}
@@ -685,7 +645,7 @@ export default function BrainPage() {
       {/* Reorganize with AI Modal */}
       {showReorganizeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl border border-ink-200">
+          <div role="dialog" aria-modal="true" aria-label="Organize Business Brain" className="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-ink-200 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center gap-2.5 mb-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
                 <Sparkles size={18} />

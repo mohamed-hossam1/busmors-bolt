@@ -120,8 +120,9 @@ function SettingsContent() {
   const selectedProvider = PROVIDERS.find((p) => p.id === provider) || PROVIDERS[0]
 
   return (
-    <div className="h-full overflow-y-auto p-3.5 sm:p-6 bg-ink-50">
+    <div className="workspace-page">
       <div className="mx-auto max-w-3xl space-y-6">
+        <header><p className="mb-2 text-xs font-semibold uppercase tracking-[.14em] text-primary-600">Your workspace</p><h1 className="workspace-heading">Settings</h1><p className="workspace-description">Connect the intelligence behind your Marketing Director.</p></header>
         <section className="card p-4 sm:p-6 border border-ink-200/80 shadow-card">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <h2 className="flex items-center gap-2 font-bold text-lg text-ink-900">

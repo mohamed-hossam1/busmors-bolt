@@ -1,0 +1,32 @@
+{
+  "checkedAt": "2026-11-17T19:30:19.769Z",
+  "fixtures": "Fictional Luma Studio; no live backend access",
+  "results": [
+    "Desktop employee navigation and layout",
+    "Brain drag retains all measured nodes and viewport; keyboard opens details",
+    "Knowledge editor is opaque, keyboard dismissible, and restores focus",
+    "Desktop brain navigation and layout",
+    "Desktop calendar navigation and layout",
+    "Desktop deliverables navigation and layout",
+    "Desktop settings navigation and layout",
+    "Report focus trap, opaque surface, Escape, and Markdown download",
+    "Conversation isolation, node positions, viewport, and refresh restoration",
+    "768px: all workspace routes without page overflow",
+    "390px: all workspace routes without page overflow",
+    "320px: all workspace routes without page overflow",
+    "Mobile menu and Chat/Agent Canvas switch",
+    "Calendar post editing and approval keep the existing data operations",
+    "Knowledge creation submits through the existing Supabase path",
+    "Optimized real product captures with fictional fixtures",
+    "1440px: landing, auth, and onboarding layouts",
+    "768px: landing, auth, and onboarding layouts",
+    "390px: landing, auth, and onboarding layouts",
+    "320px: landing, auth, and onboarding layouts",
+    "Product tabs with arrow keys, FAQ, and local marketing assets",
+    "Existing interactive guest demo still runs and records approvals",
+    "Landing mobile navigation traps focus and restores scrolling",
+    "Empty workspaces retain useful, functional navigation",
+    "Desktop hero and pinned workflow animations enhance with normal motion",
+    "Protected routes redirect; authentication failures remain readable"
+  ]
+}

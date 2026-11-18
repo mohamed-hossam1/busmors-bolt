@@ -1,26 +1,26 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LangProvider } from './context/LangContext'
-import AppShell from './components/AppShell'
-import SignIn from './pages/auth/SignIn'
-import SignUp from './pages/auth/SignUp'
-import ResetPassword from './pages/auth/ResetPassword'
-import Onboarding from './pages/Onboarding'
-import EmployeePage from './pages/EmployeePage'
-import BrainPage from './pages/BrainPage'
-import CalendarPage from './pages/CalendarPage'
-import DeliverablesPage from './pages/DeliverablesPage'
-import SettingsPage from './pages/SettingsPage'
 import ErrorBoundary from './components/ErrorBoundary'
-import LandingPage from './pages/LandingPage'
+import LoadingState from './components/LoadingState'
+
+const AppShell = lazy(() => import('./components/AppShell'))
+const SignIn = lazy(() => import('./pages/auth/SignIn'))
+const SignUp = lazy(() => import('./pages/auth/SignUp'))
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
+const EmployeePage = lazy(() => import('./pages/EmployeePage'))
+const BrainPage = lazy(() => import('./pages/BrainPage'))
+const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const DeliverablesPage = lazy(() => import('./pages/DeliverablesPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const LandingPage = lazy(() => import('./pages/LandingPage'))
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
-      </div>
+      <LoadingState label="Opening your workspace…" />
     )
   }
   if (!session) return <Navigate to="/signin" replace />
@@ -33,6 +33,7 @@ export default function App() {
       <AuthProvider>
         <ErrorBoundary>
           <BrowserRouter>
+            <Suspense fallback={<LoadingState />}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/signin" element={<SignIn />} />
@@ -63,9 +64,11 @@ export default function App() {
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ErrorBoundary>
       </AuthProvider>
     </LangProvider>
   )
 }
+import { lazy, Suspense } from 'react'

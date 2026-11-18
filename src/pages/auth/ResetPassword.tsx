@@ -7,12 +7,13 @@ import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthL
 export default function ResetPassword() {
   const { t } = useLang()
   const [email, setEmail] = useState('')
-  const { notice, setNotice, busy, run } = useAuthError()
+  const { error, notice, setNotice, busy, run } = useAuthError()
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     void run(async () => {
-      await supabase.auth.resetPasswordForEmail(email)
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      if (error) return error.message
       setNotice(t('resetSent'))
       return null
     })
@@ -22,9 +23,10 @@ export default function ResetPassword() {
     <AuthLayout title="Reset password" subtitle="We'll send a reset link to your email">
       <form onSubmit={submit} className="space-y-4">
         <AuthField label={t('email')} type="email" value={email} onChange={setEmail} />
-        {notice && <p className="rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-800">{notice}</p>}
+        {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {notice && <p role="status" className="rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-800">{notice}</p>}
         <button type="submit" disabled={busy} className="btn-primary w-full">
-          {t('resetPassword')}
+          {busy ? 'Sending link…' : t('resetPassword')}
         </button>
       </form>
       <p className="mt-6 text-center text-sm">

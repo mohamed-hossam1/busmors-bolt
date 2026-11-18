@@ -3,7 +3,7 @@ export type Lang = 'en'
 export const translations = {
   // nav & shell
   appName: 'BusMora',
-  navEmployee: 'Marketing Employee',
+  navEmployee: 'Marketing Director',
   navBrain: 'Brain',
   navCalendar: 'Calendar & Publishing',
   navDeliverables: 'Deliverables',
@@ -87,7 +87,7 @@ export const translations = {
   cat_company_fact: 'Company Facts',
 
   // chat
-  chatPlaceholder: 'Ask your Marketing Employee…',
+  chatPlaceholder: 'Ask your Marketing Director…',
   send: 'Send',
   newConversation: 'New chat',
   chatHistory: 'Chat History',

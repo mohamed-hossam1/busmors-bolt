@@ -1,0 +1,18 @@
+{
+  "cards": 11,
+  "originalImages": 22,
+  "wideComposition": "3 left / 3+2 center / 3 right",
+  "scrollMotion": true,
+  "reducedMotion": true,
+  "widths": [
+    1920,
+    1800,
+    1600,
+    1440,
+    1280,
+    1024,
+    768,
+    390,
+    320
+  ]
+}

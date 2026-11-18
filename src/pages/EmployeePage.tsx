@@ -1,3 +1,4 @@
+import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -24,6 +25,7 @@ import { classifyIntent, persistAgentResults, runAgentTask } from '../lib/agents
 import AgentCanvas, { type CanvasPreviewPost } from '../components/chat/AgentCanvas'
 import { PostPreviewCard } from '../components/chat/PostPreview'
 import MarkdownContent from '../components/chat/MarkdownContent'
+import { forgetCanvasLayout, readActiveConversation, saveActiveConversation } from '../lib/chatCanvasStorage'
 
 export default function EmployeePage() {
   const { t } = useLang()
@@ -35,19 +37,33 @@ export default function EmployeePage() {
   const [running, setRunning] = useState(false)
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [activeTask, setActiveTask] = useState<string | null>(null)
+  const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null)
+  const [canvasLoadError, setCanvasLoadError] = useState<string | null>(null)
   const [mobileTab, setMobileTab] = useState<'chat' | 'canvas'>('chat')
   const [viewingDeliverable, setViewingDeliverable] = useState<{ title: string; content: string } | null>(null)
 
+  useDialog(showHistory || !!viewingDeliverable, () => { setShowHistory(false); setViewingDeliverable(null) })
+
   const bottomRef = useRef<HTMLDivElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const viewedConversationRef = useRef<string | null>(null)
+  const workspaceIdRef = useRef<string | null>(null)
+  const inFlightConversations = useRef(new Set<string>())
+  const conversationLoading = !conversationId || loadedConversationId !== conversationId
+
+  const selectConversation = (id: string) => {
+    viewedConversationRef.current = id
+    setConversationId(id)
+    if (workspaceIdRef.current) saveActiveConversation(workspaceIdRef.current, id)
+  }
 
   const displayedMessages = useMemo(() => {
     const greetingText = t('greetingProactive')
     const isGreeting = (m: ChatMessage) =>
       m.role === 'agent' && (m.content === greetingText || m.content.includes('I reviewed your company info'))
 
-    const greetingMsg = messages.find(isGreeting)
-    const otherMsgs = messages.filter((m) => !isGreeting(m))
+    const currentMessages = messages.filter((message) => message.conversation_id === conversationId)
+    const greetingMsg = currentMessages.find(isGreeting)
+    const otherMsgs = currentMessages.filter((m) => !isGreeting(m))
 
     if (greetingMsg) {
       return [greetingMsg, ...otherMsgs]
@@ -68,7 +84,7 @@ export default function EmployeePage() {
   const canvasPreviews: CanvasPreviewPost[] = useMemo(() => {
     const lastCard = [...displayedMessages]
       .reverse()
-      .find((m) => m.type === 'deliverable_card' && Array.isArray(m.payload?.posts) && (m.payload?.posts as unknown[]).length > 0)
+      .find((m) => m.type === 'deliverable_card' && Array.isArray(m.payload?.posts) && (m.payload.posts as unknown[]).length > 0)
     if (!lastCard) return []
     return (lastCard.payload?.posts as CanvasPreviewPost[]) ?? []
   }, [displayedMessages])
@@ -82,112 +98,113 @@ export default function EmployeePage() {
     if (data) {
       setConversations(data as Conversation[])
     }
+    return (data ?? []) as Conversation[]
   }
 
-  // Initial load: find or create conversation
+  // Restore the last conversation for this workspace instead of always opening the newest one.
   useEffect(() => {
+    let cancelled = false
     void (async () => {
       const { data: sessionData } = await supabase.auth.getSession()
       const userId = sessionData.session?.user.id
-      if (!userId) return
-
-      await loadConversationsList(userId)
-
-      let convId: string | null = null
-
-      const { data: existing } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('workspace_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (existing) {
-        convId = existing.id
-      } else {
-        const { data: created } = await supabase
-          .from('conversations')
-          .insert({ workspace_id: userId, title: 'First conversation' })
-          .select()
-          .single()
+      if (!userId || cancelled) return
+      workspaceIdRef.current = userId
+      const available = await loadConversationsList(userId)
+      if (cancelled) return
+      const savedId = readActiveConversation(userId)
+      let id = available.find((item) => item.id === savedId)?.id ?? available[0]?.id
+      if (!id) {
+        const { data: created } = await supabase.from('conversations')
+          .insert({ workspace_id: userId, title: 'First conversation' }).select().single()
+        if (cancelled) return
         if (created) {
-          convId = created.id
+          id = created.id
           await loadConversationsList(userId)
         }
       }
-
-      if (convId) {
-        const { data: msgs } = await supabase
-          .from('messages')
-          .select('id, content, created_at, role')
-          .eq('conversation_id', convId)
-          .order('created_at', { ascending: true })
-
-        const greetingText = t('greetingProactive')
-        const greetingIndex = (msgs ?? []).findIndex(
-          (m) => m.role === 'agent' && (m.content === greetingText || m.content.includes('I reviewed your company info'))
-        )
-
-        if (greetingIndex === -1) {
-          const earliestTime =
-            msgs && msgs.length > 0
-              ? new Date(new Date(msgs[0].created_at).getTime() - 60000).toISOString()
-              : new Date(Date.now() - 3600000).toISOString()
-
-          await supabase.from('messages').insert({
-            conversation_id: convId,
-            workspace_id: userId,
-            role: 'agent',
-            type: 'text',
-            content: greetingText,
-            created_at: earliestTime,
-          })
-        }
-
-        setConversationId(convId)
-      }
+      if (id && !cancelled) selectConversation(id)
     })()
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Load messages when conversationId changes
+  // Messages and the latest saved workflow belong to the same conversation.
   useEffect(() => {
     if (!conversationId) return
+    let cancelled = false
+    setLoadedConversationId(null)
+    setCanvasLoadError(null)
+    setMessages([])
+    setEvents([])
+    setActiveTask(null)
+    setRunning(false)
+    setInput('')
     void (async () => {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
-      setMessages((data ?? []) as ChatMessage[])
+      try {
+        const [messageResult, taskResult] = await Promise.all([
+          supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true }),
+          supabase.from('tasks').select('id, status').eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        ])
+        if (cancelled) return
+        if (messageResult.error) throw messageResult.error
+        setMessages((messageResult.data ?? []) as ChatMessage[])
+        if (taskResult.error) throw taskResult.error
+        if (taskResult.data) {
+          const { data, error } = await supabase.from('agent_events').select('*')
+            .eq('task_id', taskResult.data.id).order('seq', { ascending: true })
+          if (cancelled) return
+          if (error) throw error
+          setEvents((data ?? []) as AgentEvent[])
+          const inProgress = ['pending', 'running'].includes(taskResult.data.status) || inFlightConversations.current.has(conversationId)
+          setRunning(inProgress)
+          setActiveTask(inProgress ? taskResult.data.id : null)
+        }
+      } catch (error) {
+        console.error('Could not restore conversation canvas:', error)
+        if (!cancelled) setCanvasLoadError('Could not load this conversation’s graph. Please reopen the chat to retry.')
+      } finally {
+        if (!cancelled) setLoadedConversationId(conversationId)
+      }
     })()
+    return () => { cancelled = true }
   }, [conversationId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [displayedMessages, running])
 
-  // Poll agent events for active task
+  // Start polling as soon as the task is created, and stop without clearing its graph.
   useEffect(() => {
-    if (!activeTask) {
-      if (pollRef.current) clearInterval(pollRef.current)
-      return
-    }
+    if (!activeTask || !conversationId) return
+    let cancelled = false
+    let polling = false
     const poll = async () => {
-      const { data } = await supabase
-        .from('agent_events')
-        .select('*')
-        .eq('task_id', activeTask)
-        .order('seq', { ascending: true })
-      setEvents((data ?? []) as AgentEvent[])
+      if (polling) return
+      polling = true
+      try {
+        const [eventResult, taskResult] = await Promise.all([
+          supabase.from('agent_events').select('*').eq('task_id', activeTask).order('seq', { ascending: true }),
+          supabase.from('tasks').select('status').eq('id', activeTask).maybeSingle(),
+        ])
+        if (cancelled) return
+        if (!eventResult.error) setEvents((eventResult.data ?? []) as AgentEvent[])
+        if (taskResult.data && !['pending', 'running'].includes(taskResult.data.status)) {
+          const { data } = await supabase.from('messages').select('*')
+            .eq('conversation_id', conversationId).order('created_at', { ascending: true })
+          if (cancelled) return
+          if (data) setMessages(data as ChatMessage[])
+          if (!inFlightConversations.current.has(conversationId)) {
+            setRunning(false)
+            setActiveTask(null)
+          }
+        }
+      } finally { polling = false }
     }
     void poll()
-    pollRef.current = setInterval(poll, 700)
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [activeTask])
+    const interval = setInterval(() => { void poll() }, 900)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [activeTask, conversationId])
 
   // Create new conversation
   const handleNewChat = async () => {
@@ -216,7 +233,7 @@ export default function EmployeePage() {
       created_at: new Date().toISOString(),
     })
 
-    setConversationId(created.id)
+    selectConversation(created.id)
     setMessages([])
     setEvents([])
     setActiveTask(null)
@@ -232,13 +249,15 @@ export default function EmployeePage() {
     const userId = sessionData.session?.user.id
     if (!userId) return
 
-    await supabase.from('conversations').delete().eq('id', id)
+    const { error } = await supabase.from('conversations').delete().eq('id', id)
+    if (error) return
+    forgetCanvasLayout(id)
     const updated = conversations.filter((c) => c.id !== id)
     setConversations(updated)
 
     if (conversationId === id) {
       if (updated.length > 0) {
-        setConversationId(updated[0].id)
+        selectConversation(updated[0].id)
       } else {
         await handleNewChat()
       }
@@ -256,10 +275,15 @@ export default function EmployeePage() {
   }
 
   const send = async (text: string) => {
-    if (!text.trim() || !conversationId) return
+    if (!text.trim() || !conversationId || conversationLoading || running) return
     const { data: sessionData } = await supabase.auth.getSession()
     const userId = sessionData.session?.user.id
     if (!userId) return
+
+    const isCurrentConversation = () => viewedConversationRef.current === conversationId
+    if (inFlightConversations.current.has(conversationId)) return
+    inFlightConversations.current.add(conversationId)
+    if (isCurrentConversation()) { setRunning(true); setEvents([]); setCanvasLoadError(null) }
 
     // Update conversation title if this is the first user query
     const userMsgCount = messages.filter((m) => m.role === 'user').length
@@ -290,8 +314,7 @@ export default function EmployeePage() {
       content: text,
     })
 
-    setRunning(true)
-    setEvents([])
+    let taskIdForGraph: string | null = null
     try {
       const type = classifyIntent(text)
       const { taskId, result } = await runAgentTask({
@@ -299,19 +322,18 @@ export default function EmployeePage() {
         conversationId,
         type,
         userRequest: text,
+        onTaskCreated: (id) => {
+          taskIdForGraph = id
+          if (isCurrentConversation()) setActiveTask(id)
+        },
       })
-      setActiveTask(taskId)
-      if (type !== 'simple_answer') {
-        // let canvas events breathe so user sees the progress
-        await new Promise((r) => setTimeout(r, 1200))
-      }
       await persistAgentResults({ workspaceId: userId, conversationId, taskId, result })
       const { data: fresh } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
-      setMessages((fresh ?? []) as ChatMessage[])
+      if (isCurrentConversation()) setMessages((fresh ?? []) as ChatMessage[])
     } catch (err: unknown) {
       console.error('Agent task failed:', err)
       await supabase.from('messages').insert({
@@ -321,7 +343,7 @@ export default function EmployeePage() {
         type: 'error',
         content: t('errorGeneric'),
       })
-      setMessages((m) => [
+      if (isCurrentConversation()) setMessages((m) => [
         ...m,
         {
           id: crypto.randomUUID(),
@@ -334,8 +356,13 @@ export default function EmployeePage() {
         },
       ])
     } finally {
-      setRunning(false)
-      setActiveTask(null)
+      if (taskIdForGraph) {
+        const { data } = await supabase.from('agent_events').select('*')
+          .eq('task_id', taskIdForGraph).order('seq', { ascending: true })
+        if (isCurrentConversation() && data) setEvents(data as AgentEvent[])
+      }
+      inFlightConversations.current.delete(conversationId)
+      if (isCurrentConversation()) { setRunning(false); setActiveTask(null) }
     }
   }
 
@@ -404,7 +431,7 @@ export default function EmployeePage() {
   ]
 
   return (
-    <div className="flex h-full flex-col lg:flex-row overflow-hidden">
+    <div className="employee-workspace flex h-full min-h-0 flex-col overflow-hidden lg:flex-row">
       {/* Mobile/Tablet Tab Switcher */}
       <div className="flex shrink-0 border-b border-ink-200 bg-white px-3 py-2 lg:hidden">
         <div className="flex w-full rounded-xl bg-ink-100 p-1">
@@ -438,12 +465,12 @@ export default function EmployeePage() {
 
       {/* Chat Column */}
       <div
-        className={`${
+        className={`employee-chat ${
           mobileTab === 'chat' ? 'flex' : 'hidden'
         } w-full min-w-0 flex-1 flex-col border-ink-200 lg:flex lg:w-1/2 lg:border-e`}
       >
         {/* Chat Header Bar: History & New Chat */}
-        <div className="flex shrink-0 items-center justify-between border-b border-ink-200 bg-white/90 px-3.5 sm:px-5 py-2.5 backdrop-blur-xs">
+        <div className="employee-panel-header flex shrink-0 items-center justify-between gap-2 px-3.5 py-3 sm:px-5">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -489,7 +516,7 @@ export default function EmployeePage() {
 
           {/* Real-time Detailed Agent Progress */}
           {running && (
-            <div className="animate-fade-up rounded-2xl border border-primary-200/90 bg-gradient-to-r from-primary-50/95 to-teal-50/80 p-3.5 shadow-xs">
+            <div className="animate-fade-up rounded-2xl border border-primary-200/90 bg-gradient-to-r from-primary-50/95 to-accent-50/80 p-3.5 shadow-xs">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
                   <Loader2 size={16} className="animate-spin" />
@@ -532,6 +559,7 @@ export default function EmployeePage() {
             {quickPrompts.map((q) => (
               <button
                 key={q.label}
+                disabled={conversationLoading || running}
                 onClick={() => void send(q.text)}
                 className="btn-secondary px-3 py-1.5 text-xs shrink-0 sm:shrink"
               >
@@ -546,17 +574,19 @@ export default function EmployeePage() {
             e.preventDefault()
             void send(input)
           }}
-          className="flex gap-2 border-t border-ink-200 p-3 sm:p-4 bg-white/70"
+          className="employee-composer flex gap-2 p-3 sm:p-4"
         >
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            aria-label="Message your Marketing Director"
             placeholder={t('chatPlaceholder')}
             className="input-field flex-1"
           />
           <button
             type="submit"
-            disabled={running || !input.trim()}
+            aria-label="Send message"
+            disabled={running || conversationLoading || !input.trim()}
             className="btn-primary px-4 shrink-0 h-10 sm:h-11 flex items-center justify-center"
           >
             <Send size={16} />
@@ -566,15 +596,22 @@ export default function EmployeePage() {
 
       {/* Live Agent Canvas Column */}
       <div
-        className={`${
+        className={`employee-canvas ${
           mobileTab === 'canvas' ? 'flex' : 'hidden'
         } w-full flex-1 flex-col lg:flex lg:w-1/2`}
       >
-        <div className="hidden lg:flex border-b border-ink-200 px-6 py-3 text-sm font-semibold text-ink-600">
+        <div className="employee-panel-header hidden items-center gap-2 px-6 py-3 text-sm font-medium text-ink-900 lg:flex">
+          <Network size={16} className="text-primary-500" />
           {t('canvasTitle')}
         </div>
-        <div className="flex-1 min-h-[300px]">
-          <AgentCanvas events={events} running={running} previewPosts={canvasPreviews} />
+        <div className="min-h-0 flex-1">
+          {conversationLoading ? (
+            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Loader2 size={16} className="animate-spin" />Loading conversation graph…</div>
+          ) : canvasLoadError ? (
+            <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
+          ) : (
+            <AgentCanvas key={conversationId} conversationId={conversationId} events={events} running={running} previewPosts={canvasPreviews} />
+          )}
         </div>
       </div>
 
@@ -585,7 +622,7 @@ export default function EmployeePage() {
           onClick={() => setShowHistory(false)}
         >
           <div
-            className="h-full w-full max-w-xs bg-white shadow-2xl border-e border-ink-200 p-4 flex flex-col"
+            role="dialog" aria-modal="true" aria-label="Conversation history" className="h-full w-full max-w-xs bg-white shadow-2xl border-e border-ink-200 p-4 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-ink-100">
@@ -596,6 +633,7 @@ export default function EmployeePage() {
               <button
                 type="button"
                 onClick={() => setShowHistory(false)}
+                aria-label="Close conversation history"
                 className="rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
               >
                 <X size={18} />
@@ -623,7 +661,7 @@ export default function EmployeePage() {
                   <div
                     key={c.id}
                     onClick={() => {
-                      setConversationId(c.id)
+                      selectConversation(c.id)
                       setShowHistory(false)
                     }}
                     className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-xs transition-colors cursor-pointer border ${
@@ -667,7 +705,8 @@ export default function EmployeePage() {
           onClick={() => setViewingDeliverable(null)}
         >
           <div
-            className="card flex max-h-[85vh] w-full max-w-3xl flex-col p-4 sm:p-6 shadow-2xl border border-ink-200"
+            role="dialog" aria-modal="true" aria-label={viewingDeliverable.title}
+            className="card modal-panel flex max-h-[85vh] w-full max-w-3xl flex-col p-4 sm:p-6 shadow-2xl border border-ink-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between border-b border-ink-100 pb-3">
@@ -691,6 +730,7 @@ export default function EmployeePage() {
                 <button
                   type="button"
                   onClick={() => setViewingDeliverable(null)}
+                  aria-label="Close report"
                   className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
                 >
                   <X size={18} />
@@ -799,7 +839,7 @@ function MessageBubble({
                 </div>
 
                 {/* Formatted Markdown Content - NO RAW PRE! */}
-                <div className="max-h-60 overflow-y-auto pr-1">
+                <div className="max-h-36 overflow-y-auto pr-1">
                   <MarkdownContent content={content} className="text-xs leading-relaxed text-ink-700" />
                 </div>
               </div>

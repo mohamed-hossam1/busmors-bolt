@@ -42,11 +42,11 @@ export default function SignUp() {
       <form onSubmit={submit} className="space-y-4">
         <AuthField label={t('companyName')} type="text" value={companyName} onChange={setCompanyName} placeholder="Acme Corp" />
         <AuthField label={t('email')} type="email" value={email} onChange={setEmail} placeholder="you@company.com" />
-        <AuthField label={t('password')} type="password" value={password} onChange={setPassword} />
-        <AuthField label={t('confirmPassword')} type="password" value={confirm} onChange={setConfirm} />
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+        <AuthField label={t('password')} type="password" autoComplete="new-password" value={password} onChange={setPassword} />
+        <AuthField label={t('confirmPassword')} type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} />
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={busy} className="btn-primary w-full">
-          {t('signUp')}
+          {busy ? 'Creating workspace…' : t('signUp')}
         </button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-600">

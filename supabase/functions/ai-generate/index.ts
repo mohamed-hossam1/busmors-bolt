@@ -2,6 +2,7 @@
 // verify_jwt = true
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { CRAWL_PROMPTS, type CrawlOperation } from '../_shared/crawl-prompts.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,8 @@ interface GenerateRequest {
    * Only allowed for onboarding website crawling (extraction of the caller's
    * own submitted site) — the shared key is the business's, not the user's. */
   useSharedCrawlKey?: boolean
+  crawlOperation?: CrawlOperation
+  providerTimeoutMs?: number
 }
 
 interface KeyRow {
@@ -72,7 +75,7 @@ Deno.serve(async (req: Request) => {
     const workspaceId = userData.user.id
 
     const body = (await req.json()) as GenerateRequest
-    if (!body.systemPrompt || !body.userPrompt) {
+    if (typeof body.userPrompt !== 'string' || !body.userPrompt.trim() || body.userPrompt.length > 50000 || (!body.useSharedCrawlKey && typeof body.systemPrompt !== 'string')) {
       return new Response(JSON.stringify({ error: 'missing prompt' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -80,7 +83,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.useSharedCrawlKey === true) {
-      return await handleSharedCrawlRequest(admin, body)
+      return await handleSharedCrawlRequest(admin, body, workspaceId)
     }
 
     const { data: keyMeta } = await admin
@@ -122,33 +125,49 @@ Deno.serve(async (req: Request) => {
 
 async function handleSharedCrawlRequest(
   admin: ReturnType<typeof createClient>,
-  body: GenerateRequest
+  body: GenerateRequest,
+  workspaceId: string
 ): Promise<Response> {
-  // only crawl extraction & relationship mapping prompts may use the shared key
-  const isAllowedPrompt =
-    body.systemPrompt.includes('extract structured business knowledge') ||
-    body.systemPrompt.includes('business knowledge analyst') ||
-    body.systemPrompt.includes('relationships between pieces of company knowledge') ||
-    body.systemPrompt.includes('map relationships')
-
-  if (!isAllowedPrompt) {
+  // Fixed operations own their prompts; caller-controlled prompt fragments are not authorization.
+  const operation = body.crawlOperation
+  if (operation !== 'extract' && operation !== 'relate') {
     return new Response(JSON.stringify({ error: 'shared_key_not_allowed' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
+  const request: GenerateRequest = {
+    systemPrompt: CRAWL_PROMPTS[operation], userPrompt: body.userPrompt,
+    jsonMode: true, temperature: 0.1, maxTokens: operation === 'extract' ? 3500 : 1800,
+    providerTimeoutMs: 12000,
+  }
   const { data: secretRow, error: secretError } = await admin.rpc('read_shared_crawl_key')
   if (secretError || !secretRow) {
+    // A personal key is optional; it is read and used entirely on the server.
+    const { data: meta } = await admin.from('ai_keys')
+      .select('workspace_id, provider, model, custom_base_url, status')
+      .eq('workspace_id', workspaceId).maybeSingle()
+    if (meta?.status === 'active') {
+      const personalKey = await decryptKey(workspaceId, admin)
+      if (personalKey) {
+        const text = await callProvider(meta as KeyRow, personalKey, request)
+        return new Response(JSON.stringify({ text }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
     return new Response(JSON.stringify({ error: 'shared_key_unavailable' }), {
       status: 503,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  const candidateModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b']
+  const candidateModels = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b']
+  const deadline = Date.now() + 14000
   let lastError: Error | null = null
 
   for (const model of candidateModels) {
+    const remaining = deadline - Date.now()
+    if (remaining < 1500) break
+    request.providerTimeoutMs = Math.min(10000, remaining)
     const sharedKeyRow: KeyRow = {
       workspace_id: '',
       provider: 'groq',
@@ -157,7 +176,7 @@ async function handleSharedCrawlRequest(
       status: 'active',
     }
     try {
-      const text = await callProvider(sharedKeyRow, String(secretRow), body)
+      const text = await callProvider(sharedKeyRow, String(secretRow), request)
       return new Response(JSON.stringify({ text }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -181,9 +200,11 @@ async function callProvider(
 ): Promise<string> {
   const maxTokens = Math.min(Math.max(body.maxTokens ?? 3500, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
+  const providerTimeout = Math.min(25000, Math.max(1000, body.providerTimeoutMs ?? 25000))
 
   if (key.provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
+      signal: AbortSignal.timeout(providerTimeout),
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
@@ -203,10 +224,12 @@ async function callProvider(
     const data = await res.json()
     let text = data?.content?.[0]?.text
     if (typeof text !== 'string') throw new Error('unexpected_provider_response')
+    if (body.jsonMode && data?.stop_reason === 'max_tokens') throw new Error('truncated_json_response')
 
     if (data?.stop_reason === 'max_tokens' && !body.jsonMode) {
       try {
         const contRes = await fetch('https://api.anthropic.com/v1/messages', {
+          signal: AbortSignal.timeout(providerTimeout),
           method: 'POST',
           headers: {
             'x-api-key': apiKey,
@@ -252,6 +275,7 @@ async function callProvider(
   if (!base) throw new Error('missing_base_url')
 
   const res = await fetch(`${base}/chat/completions`, {
+    signal: AbortSignal.timeout(providerTimeout),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -274,10 +298,12 @@ async function callProvider(
   const choice = data?.choices?.[0]
   let text = choice?.message?.content
   if (typeof text !== 'string') throw new Error('unexpected_provider_response')
+  if (body.jsonMode && choice?.finish_reason === 'length') throw new Error('truncated_json_response')
 
   if (choice?.finish_reason === 'length' && !body.jsonMode) {
     try {
       const contRes = await fetch(`${base}/chat/completions`, {
+        signal: AbortSignal.timeout(providerTimeout),
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

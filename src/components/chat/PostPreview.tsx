@@ -11,7 +11,7 @@ export interface PostPreviewData {
 export function PostPreviewCard({ post, compact }: { post: PostPreviewData; compact?: boolean }) {
   const { t } = useLang()
   return (
-    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white p-3.5 shadow-2xs hover:shadow-xs transition-shadow" dir="auto">
+    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white p-3.5 shadow-sm hover:shadow-card transition-shadow" dir="auto">
       <div className="mb-2 flex items-center justify-between gap-2 border-b border-ink-100 pb-2">
         <span className="badge bg-primary-50 text-primary-800 font-semibold text-[11px]">
           {t(`platform_${post.platform}` as never)}
@@ -22,7 +22,7 @@ export function PostPreviewCard({ post, compact }: { post: PostPreviewData; comp
           </span>
         )}
       </div>
-      <p className={`text-xs leading-relaxed text-ink-850 font-normal ${compact ? 'line-clamp-3' : ''}`}>
+      <p className={`text-xs leading-relaxed text-ink-800 font-normal ${compact ? 'line-clamp-3' : ''}`}>
         {post.caption}
       </p>
       {post.hashtags && (

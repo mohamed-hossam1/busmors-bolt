@@ -1,0 +1,546 @@
+{
+  "kind": "public-content replay; heuristic review suggestions; no live AI or production writes",
+  "default_crawl_target": 10,
+  "sites": [
+    {
+      "url": "https://buffer.com/",
+      "pages_read": 10,
+      "captured_reader_diagnostics": {
+        "attempted": 10,
+        "failed": 0,
+        "duplicates": 0,
+        "cached": 0,
+        "elapsed_ms": 3191,
+        "warnings": []
+      },
+      "candidates": [
+        {
+          "category": "company_profile",
+          "title": "Buffer",
+          "summary": "Your social media workspace\n\nWorks with every platform you post to, and plugs into your favorite tools",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Your social media workspace\n\nWorks with every platform you post to, and plugs into your favorite tools",
+            "details": "Your social media workspace\nWorks with every platform you post to, and plugs into your favorite tools\n\nEnter your email \n\nGet started for free\n\nBy entering your email, you agree to receive emails from Buffer."
+          }
+        },
+        {
+          "category": "audience",
+          "title": "Creators, Brands, Agencies",
+          "summary": "creators, brands, and agencies using Buffer",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "creators, brands, and agencies using Buffer",
+            "details": "creators, brands, and agencies using Buffer"
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Buffer Publish",
+          "summary": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+            "details": "Publish\nThe most complete set of publishing integrations, ever \n\nSchedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.\n\nLearn more"
+          }
+        },
+        {
+          "category": "channel",
+          "title": "Supported platforms",
+          "summary": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+            "details": "Instagram, Facebook, TikTok, LinkedIn, Threads, Bluesky, YouTube, Pinterest, Google Business, Mastodon, Substack\nSchedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack."
+          }
+        },
+        {
+          "category": "company_fact",
+          "title": "Essentials pricing",
+          "summary": "$5 /month 1 channel $60 billed yearly (save 2 months) Start 14-day free trial Unlimited scheduled posts per channel Unlimited ideas Advanced analytics 3 API keys 3,000 requests per channel/month, up to 30,000 Hashtag manager First comment scheduling",
+          "source_url": "https://buffer.com/pricing",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "$5 /month 1 channel $60 billed yearly (save 2 months) Start 14-day free trial Unlimited scheduled posts per channel Unlimited ideas Advanced analytics 3 API keys 3,000 requests per channel/month, up to 30,000 Hashtag manager First comment scheduling",
+            "details": "Essentials Recommended\n$5 /month\n\n1 channel $60 billed yearly (save 2 months)\n\nStart 14-day free trial \n\n*   Unlimited scheduled posts per channel \n*   Unlimited ideas \n*   Advanced analytics \n    *   3 API keys\n    *   3,000 requests per channel/month, up to 30,000\n\n*   Hashtag manager \n*   First comment scheduling"
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Default to transparency",
+          "summary": "Our true North Star. Transparency is the value we’re best known for, and yet, still very aspirational. We aspire to always default to transparency as a company and as individuals in our decisions and actions.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Our true North Star. Transparency is the value we’re best known for, and yet, still very aspirational. We aspire to always default to transparency as a company and as individuals in our decisions and actions.",
+            "details": "Our true North Star. Transparency is the value we’re best known for, and yet, still very aspirational. We aspire to always default to transparency as a company and as individuals in our decisions and actions."
+          }
+        },
+        {
+          "category": "audience",
+          "title": "Brands",
+          "summary": "People and brands using Buffer 17,172,370 Posts published last month 11 Social platforms supported",
+          "source_url": "https://buffer.com/partners/agencies",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "People and brands using Buffer 17,172,370 Posts published last month 11 Social platforms supported",
+            "details": "People and brands using Buffer 17,172,370 Posts published last month 11 Social platforms supported"
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Buffer Create",
+          "summary": "Whether you’re flying solo or working with a team, Buffer has all the features to help you create, organize, and repurpose your content for any channel. There’s also an AI Assistant if you need it.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Whether you’re flying solo or working with a team, Buffer has all the features to help you create, organize, and repurpose your content for any channel. There’s also an AI Assistant if you need it.",
+            "details": "Create\nTurn any idea into the perfect post \n\nWhether you’re flying solo or working with a team, Buffer has all the features to help you create, organize, and repurpose your content for any channel. There’s also an AI Assistant if you need it."
+          }
+        },
+        {
+          "category": "company_fact",
+          "title": "Team pricing",
+          "summary": "$10 /month 1 channel $120 billed yearly (save 2 months) Unlimited team members 5 API keys 10,000 requests per channel/month, up to 100,000 Access levels Content approval workflows See machine-readable pricing (for AI agents) Buffer's per-channel pricing allows me to be flexible",
+          "source_url": "https://buffer.com/pricing",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "$10 /month 1 channel $120 billed yearly (save 2 months) Unlimited team members 5 API keys 10,000 requests per channel/month, up to 100,000 Access levels Content approval workflows See machine-readable pricing (for AI agents) Buffer's per-channel pricing allows me to be flexible and save money if a client leaves. They're never locked in indefinitely, and I don't want to continue paying for their channel when they're no longer in contract. Alexandrea Bowman Sapphire Social",
+            "details": "Team\n$10 /month\n\n1 channel $120 billed yearly (save 2 months)\n\n*   Unlimited team members \n    *   5 API keys\n    *   10,000 requests per channel/month, up to 100,000\n\n*   Access levels \n*   Content approval workflows \n\nSee machine-readable pricing (for AI agents) \n\n> Buffer's per-channel pricing allows me to be flexible and save money if a client leaves. They're never locked in indefinitely, and I don't want to continue paying for their channel when they're no longer in contract.\n\nAlexandrea Bowman Sapphire Social"
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Improve consistently",
+          "summary": "Improving consistently is about striving to be better, not in competition with anyone but our yesterday selves. We are committed to working every day toward personal and professional growth.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Improving consistently is about striving to be better, not in competition with anyone but our yesterday selves. We are committed to working every day toward personal and professional growth.",
+            "details": "Improving consistently is about striving to be better, not in competition with anyone but our yesterday selves. We are committed to working every day toward personal and professional growth."
+          }
+        },
+        {
+          "category": "audience",
+          "title": "Creators, Teams",
+          "summary": "Help creators and small teams show up on social.",
+          "source_url": "https://buffer.com/partners",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Help creators and small teams show up on social.",
+            "details": "Help creators and small teams show up on social."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Buffer Community",
+          "summary": "Engage with your audience across all your channels at 10x speed. Buffer will help you triage and respond to comments from one simple dashboard.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Engage with your audience across all your channels at 10x speed. Buffer will help you triage and respond to comments from one simple dashboard.",
+            "details": "Community\nReply to comments in a flash \n\nEngage with your audience across all your channels at 10x speed. Buffer will help you triage and respond to comments from one simple dashboard."
+          }
+        },
+        {
+          "category": "company_fact",
+          "title": "Partnership contact email",
+          "summary": "tracking, or payouts. Email us at partners@buffer.com",
+          "source_url": "https://buffer.com/partners",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "tracking, or payouts. Email us at partners@buffer.com",
+            "details": "tracking, or payouts. Email us at partners@buffer.com"
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Be a no-ego doer",
+          "summary": "We don’t attach our personal selves to ideas. We remove ourselves—our fears, our pride—from our work to lead to a better, more productive experience for us and everyone around us. We’re all rowing this boat together.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "We don’t attach our personal selves to ideas. We remove ourselves—our fears, our pride—from our work to lead to a better, more productive experience for us and everyone around us. We’re all rowing this boat together.",
+            "details": "We don’t attach our personal selves to ideas. We remove ourselves—our fears, our pride—from our work to lead to a better, more productive experience for us and everyone around us. We’re all rowing this boat together."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Buffer Insights",
+          "summary": "Whether it’s basic analytics or in-depth reporting, Buffer will help you learn what works and how to improve.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Whether it’s basic analytics or in-depth reporting, Buffer will help you learn what works and how to improve.",
+            "details": "Insights\nAnswers, not just analytics \n\nWhether it’s basic analytics or in-depth reporting, Buffer will help you learn what works and how to improve."
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Show gratitude",
+          "summary": "This value is deeply ingrained in our culture. We regularly show gratitude for each other, for the technology to make this company and life possible, and for the many blessings that Buffer brings to our lives.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "This value is deeply ingrained in our culture. We regularly show gratitude for each other, for the technology to make this company and life possible, and for the many blessings that Buffer brings to our lives.",
+            "details": "This value is deeply ingrained in our culture. We regularly show gratitude for each other, for the technology to make this company and life possible, and for the many blessings that Buffer brings to our lives."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Buffer Collaborate",
+          "summary": "Manage, edit, and approve social media posts from your team.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Manage, edit, and approve social media posts from your team.",
+            "details": "Collaborate\nManage, edit, and approve social media posts from your team."
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Choose optimism",
+          "summary": "Choosing optimism is foundational to Buffer’s kind and joyful culture. Optimism helps us look to the future with positivity, while embracing hard conversations and decisions in service of Buffer’s health and future.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Choosing optimism is foundational to Buffer’s kind and joyful culture. Optimism helps us look to the future with positivity, while embracing hard conversations and decisions in service of Buffer’s health and future.",
+            "details": "Choosing optimism is foundational to Buffer’s kind and joyful culture. Optimism helps us look to the future with positivity, while embracing hard conversations and decisions in service of Buffer’s health and future."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Mobile app",
+          "summary": "Manage your social media accounts from anywhere.",
+          "source_url": "https://buffer.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Manage your social media accounts from anywhere.",
+            "details": "Mobile app\nManage your social media accounts from anywhere."
+          }
+        },
+        {
+          "category": "brand_rule",
+          "title": "Reflect to unblock",
+          "summary": "We carve out time for reflection in order to unblock ourselves. We believe personal growth stems from vulnerability and introspection as we focus on ongoing self-improvement.",
+          "source_url": "https://buffer.com/about",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "We carve out time for reflection in order to unblock ourselves. We believe personal growth stems from vulnerability and introspection as we focus on ongoing self-improvement.",
+            "details": "We carve out time for reflection in order to unblock ourselves. We believe personal growth stems from vulnerability and introspection as we focus on ongoing self-improvement."
+          }
+        }
+      ],
+      "relations": [
+        {
+          "source_index": 0,
+          "target_index": 1,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "creators, brands, and agencies using Buffer",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 2,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 3,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "Schedule your content to the most popular platforms including Facebook, Instagram, TikTok, LinkedIn, Threads, Bluesky, YouTube Shorts, Pinterest, Google Business, Mastodon, X and Substack.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 5,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/about",
+          "evidence_quote": "Our true North Star. Transparency is the value we’re best known for, and yet, still very aspirational. We aspire to always default to transparency as a company and as individuals in our decisions and actions.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 6,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/partners/agencies",
+          "evidence_quote": "People and brands using Buffer 17,172,370 Posts published last month 11 Social platforms supported",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 7,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "Whether you’re flying solo or working with a team, Buffer has all the features to help you create, organize, and repurpose your content for any channel. There’s also an AI Assistant if you need it.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 9,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/about",
+          "evidence_quote": "Improving consistently is about striving to be better, not in competition with anyone but our yesterday selves. We are committed to working every day toward personal and professional growth.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 10,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/partners",
+          "evidence_quote": "Help creators and small teams show up on social.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 11,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "Engage with your audience across all your channels at 10x speed. Buffer will help you triage and respond to comments from one simple dashboard.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 12,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/partners",
+          "evidence_quote": "tracking, or payouts. Email us at partners@buffer.com",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 13,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/about",
+          "evidence_quote": "We don’t attach our personal selves to ideas. We remove ourselves—our fears, our pride—from our work to lead to a better, more productive experience for us and everyone around us. We’re all rowing this boat together.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 14,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://buffer.com/",
+          "evidence_quote": "Whether it’s basic analytics or in-depth reporting, Buffer will help you learn what works and how to improve.",
+          "confidence": 0.65
+        }
+      ]
+    },
+    {
+      "url": "https://www.adyouneed.com/",
+      "pages_read": 1,
+      "captured_reader_diagnostics": {
+        "attempted": 1,
+        "failed": 0,
+        "duplicates": 0,
+        "cached": 0,
+        "elapsed_ms": 807,
+        "warnings": []
+      },
+      "candidates": [
+        {
+          "category": "company_profile",
+          "title": "ADYOUNEED",
+          "summary": "Create winning ads in minutes across top platforms, even if it’s your first time.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Create winning ads in minutes across top platforms, even if it’s your first time.",
+            "details": "Powerful Ads\nMade Effortlessly\n\nCreate winning ads in minutes across top platforms, even if it’s your first time.\n\n''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''\n\nMeta Ads\n\nGoogle Ads\n\nBing Ads\n\nLinkedin Ads\n\nTiktok Ads\n\nPinterest Ads\n\nTwitter Ads"
+          }
+        },
+        {
+          "category": "company_fact",
+          "title": "Credentials & partnerships",
+          "summary": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''",
+            "details": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''"
+          }
+        },
+        {
+          "category": "offering",
+          "title": "ADYOUNEED Create",
+          "summary": "Effortlessly create ads in just 5 simple steps, with the help of AI.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Effortlessly create ads in just 5 simple steps, with the help of AI.",
+            "details": "Create\nEffortlessly create ads in just  \n5 simple steps, with the help of AI.\n\nCampaign Edit\n\n**Budget**\n\nDaily\n\n**€**\n\n0.86"
+          }
+        },
+        {
+          "category": "audience",
+          "title": "Agencies, Startups, Enterprises",
+          "summary": "Whether you are a startup, an enterprise, or an agency, we have a plan to suit your needs.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Whether you are a startup, an enterprise, or an agency, we have a plan to suit your needs.",
+            "details": "Whether you are a startup, an enterprise, or an agency, we have a plan to suit your needs."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "ADYOUNEED Protect",
+          "summary": "Protect your ads from competitors and bots.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Protect your ads from competitors and bots.",
+            "details": "Protect\nProtect your ads from competitors and bots."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "Instant AI-Driven Campaigns",
+          "summary": "Provide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds. Select the ones you like and click publish. The world’s fastest high-conversion rate ad publishing workflow.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Provide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds. Select the ones you like and click publish. The world’s fastest high-conversion rate ad publishing workflow.",
+            "details": "Instant AI-Driven Campaigns\nProvide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds. Select the ones you like and click publish.  \nThe world’s fastest high-conversion rate ad publishing workflow.\n\nURL \n\nScanned!\n\nBusiness Owners\n\nProfessional\n\nSpecial discounts for th..."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "AI Website Scanner",
+          "summary": "Provide your product/service URL, and let us fine-tune your AI model that knows everything about your product.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Provide your product/service URL, and let us fine-tune your AI model that knows everything about your product.",
+            "details": "AI Website Scanner\nProvide your product/service URL, and let us fine-tune your AI model that knows everything about your product."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "ADYOUNEED Dashboard",
+          "summary": "Discover the power at your fingertips with ADYOUNEED’s vibrant, user-friendly dashboard! Dive into real-time insights, easily manage your ads and optimize with confidence.",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Discover the power at your fingertips with ADYOUNEED’s vibrant, user-friendly dashboard! Dive into real-time insights, easily manage your ads and optimize with confidence.",
+            "details": "Dashboard\nDiscover the power at your fingertips with ADYOUNEED’s vibrant, user-friendly dashboard! Dive into real-time insights, easily manage your ads and optimize with confidence.\n\nUnlock your creativity effortlessly with ADYOUNEED’s “Create an ad” feature! Seamlessly craft ads with our intuitive, AI-powered tool that generates engaging text and builds the ideal target audience for you with just a single click."
+          }
+        },
+        {
+          "category": "offering",
+          "title": "ADYOUNEED Clickfraud",
+          "summary": "Say goodbye to click fraud with ADYOUNEED’s “Clickfraud” feature! Our smart AI is always on guard, protecting your ads from pesky bots and sure is totally free and comes with every account. No more worries, just results!",
+          "source_url": "https://www.adyouneed.com/",
+          "confidence": 0.65,
+          "properties": {
+            "extracted_by": "heuristic",
+            "evidence_quote": "Say goodbye to click fraud with ADYOUNEED’s “Clickfraud” feature! Our smart AI is always on guard, protecting your ads from pesky bots and sure is totally free and comes with every account. No more worries, just results!",
+            "details": "Clickfraud\nSay goodbye to click fraud with ADYOUNEED’s “Clickfraud” feature! Our smart AI is always on guard, protecting your ads from pesky bots and sure is totally free and comes with every account. No more worries, just results!"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "source_index": 0,
+          "target_index": 1,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 2,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Effortlessly create ads in just 5 simple steps, with the help of AI.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 3,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Whether you are a startup, an enterprise, or an agency, we have a plan to suit your needs.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 4,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Protect your ads from competitors and bots.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 5,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Provide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds. Select the ones you like and click publish. The world’s fastest high-conversion rate ad publishing workflow.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 6,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Provide your product/service URL, and let us fine-tune your AI model that knows everything about your product.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 7,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Discover the power at your fingertips with ADYOUNEED’s vibrant, user-friendly dashboard! Dive into real-time insights, easily manage your ads and optimize with confidence.",
+          "confidence": 0.65
+        },
+        {
+          "source_index": 0,
+          "target_index": 8,
+          "relation_type": "RELATED_TO",
+          "source_url": "https://www.adyouneed.com/",
+          "evidence_quote": "Say goodbye to click fraud with ADYOUNEED’s “Clickfraud” feature! Our smart AI is always on guard, protecting your ads from pesky bots and sure is totally free and comes with every account. No more worries, just results!",
+          "confidence": 0.65
+        }
+      ]
+    }
+  ]
+}

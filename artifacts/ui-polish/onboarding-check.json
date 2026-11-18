@@ -1,0 +1,26 @@
+{
+  "sameBrandPositionAsSignup": true,
+  "widths": [
+    1920,
+    1440,
+    1024,
+    768,
+    390,
+    320
+  ],
+  "states": [
+    "idle",
+    "empty URL",
+    "invalid URL",
+    "loading",
+    "success",
+    "empty website"
+  ],
+  "navigation": [
+    "skip to Brain",
+    "explore Brain",
+    "talk to Director"
+  ],
+  "crawlerWritesVerified": true,
+  "browserErrors": []
+}

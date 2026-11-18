@@ -1,0 +1,64 @@
+{
+  "site": "https://www.adyouneed.com/",
+  "scope": "Reader and heuristic fallback only; no live AI or production database calls.",
+  "before": {
+    "reader_ms": 13466,
+    "requests": 8,
+    "reported_pages": 8,
+    "target_error_pages": 7,
+    "empty_company_profile": true
+  },
+  "after": {
+    "reader_ms": 1831,
+    "requests": 1,
+    "useful_pages": 1,
+    "candidates": [
+      {
+        "category": "company_profile",
+        "title": "ADYOUNEED",
+        "summary": "Made Effortlessly Create winning ads in minutes across top platforms, even if it’s your first time.",
+        "source_url": "https://www.adyouneed.com/",
+        "confidence": 0.6,
+        "properties": {
+          "extracted_by": "heuristic",
+          "evidence_quote": "Made Effortlessly Create winning ads in minutes across top platforms, even if it’s your first time."
+        }
+      },
+      {
+        "category": "offering",
+        "title": "Instant AI-Driven Campaigns",
+        "summary": "Provide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds.",
+        "source_url": "https://www.adyouneed.com/",
+        "confidence": 0.6,
+        "properties": {
+          "extracted_by": "heuristic",
+          "evidence_quote": "Provide your website URL, and let our advanced AI powered by AdCreative.ai generate all the visuals, texts, and audiences in a matter of seconds."
+        }
+      },
+      {
+        "category": "offering",
+        "title": "AI Website Scanner",
+        "summary": "Provide your product/service URL, and let us fine-tune your AI model that knows everything about your product.",
+        "source_url": "https://www.adyouneed.com/",
+        "confidence": 0.6,
+        "properties": {
+          "extracted_by": "heuristic",
+          "evidence_quote": "Provide your product/service URL, and let us fine-tune your AI model that knows everything about your product."
+        }
+      },
+      {
+        "category": "company_fact",
+        "title": "Credentials & partnerships",
+        "summary": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''",
+        "source_url": "https://www.adyouneed.com/",
+        "confidence": 0.6,
+        "properties": {
+          "extracted_by": "heuristic",
+          "evidence_quote": "''ADYOUNEED, as a distinguished Google Premier Partner, proudly stands among the elite top 3% of global companies.''"
+        }
+      }
+    ],
+    "ai_context_chars": 8142
+  },
+  "timing_note": "Separate single runs using public Jina responses; network and cache conditions vary. Not an end-to-end latency guarantee."
+}

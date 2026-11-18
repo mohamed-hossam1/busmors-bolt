@@ -94,7 +94,8 @@ async function loadBrainContext(workspaceId: string): Promise<BrainNode[]> {
 export interface AiCallResult {
   ok: boolean
   text: string
-  error?: 'no_active_key' | 'invalid_key' | 'provider_error' | 'network_error'
+  error?: 'no_active_key' | 'invalid_key' | 'provider_error' | 'network_error' | 'timeout' | 'unauthorized'
+  reason?: string
 }
 
 async function callDirectProvider(
@@ -305,101 +306,7 @@ async function callDirectProvider(
   }
 }
 
-/** Directly calls Groq using the shared crawl key with model fallbacks */
-async function callDirectSharedKey(input: {
-  systemPrompt: string
-  userPrompt: string
-  maxTokens?: number
-  temperature?: number
-  jsonMode?: boolean
-}): Promise<AiCallResult | null> {
-  try {
-    const { data: sharedKey, error: rpcError } = await supabase.rpc('read_shared_crawl_key')
-    if (rpcError || !sharedKey) {
-      console.warn('read_shared_crawl_key RPC failed or returned empty:', rpcError)
-      return null
-    }
-
-    const maxTokens = Math.min(Math.max(input.maxTokens ?? 3500, 100), 8000)
-    const temperature = Math.min(Math.max(input.temperature ?? 0.2, 0), 1)
-
-    // Working Groq models: qwen is fast & doesn't waste tokens on reasoning; gpt-oss-120b provides deep reasoning
-    const candidateModels = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b']
-    for (const model of candidateModels) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${sharedKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: input.systemPrompt },
-              { role: 'user', content: input.userPrompt },
-            ],
-            ...(input.jsonMode ? { response_format: { type: 'json_object' } } : {}),
-            max_tokens: maxTokens,
-            temperature,
-          }),
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          const choice = data?.choices?.[0]
-          let text = choice?.message?.content
-          if (typeof text === 'string') {
-            // Auto-continuation if cut off by token length limit
-            if (choice?.finish_reason === 'length' && !input.jsonMode) {
-              try {
-                const contRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${sharedKey}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    model,
-                    messages: [
-                      { role: 'system', content: input.systemPrompt },
-                      { role: 'user', content: input.userPrompt },
-                      { role: 'assistant', content: text },
-                      { role: 'user', content: 'Continue generating immediately from the exact character where you stopped. Do not repeat anything already written.' },
-                    ],
-                    max_tokens: maxTokens,
-                    temperature,
-                  }),
-                })
-                if (contRes.ok) {
-                  const contData = await contRes.json()
-                  const contText = contData?.choices?.[0]?.message?.content
-                  if (typeof contText === 'string') {
-                    text = text + contText
-                  }
-                }
-              } catch (contErr) {
-                console.warn('Continuation call error in shared key:', contErr)
-              }
-            }
-
-            return { ok: true, text }
-          }
-        } else {
-          console.warn(`Shared Groq model ${model} returned HTTP ${res.status}:`, await res.text().catch(() => ''))
-        }
-      } catch (err) {
-        console.warn(`Shared Groq fetch error for model ${model}:`, err)
-      }
-    }
-    return null
-  } catch (err) {
-    console.error('Error in callDirectSharedKey:', err)
-    return null
-  }
-}
-
-/** Calls the ai-generate edge function with automatic direct-provider and shared-key fallback */
+/** Calls the server; shared website extraction never exposes its key to the browser. */
 export async function callAi(input: {
   systemPrompt: string
   userPrompt: string
@@ -407,6 +314,7 @@ export async function callAi(input: {
   temperature?: number
   jsonMode?: boolean
   useSharedCrawlKey?: boolean
+  crawlOperation?: 'extract' | 'relate'
 }): Promise<AiCallResult> {
   const { data: sessionData } = await supabase.auth.getSession()
   const userId = sessionData.session?.user?.id
@@ -422,35 +330,32 @@ export async function callAi(input: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(input),
+        signal: AbortSignal.timeout(input.useSharedCrawlKey ? 16000 : 45000),
       })
       if (res.ok) {
         const data = await res.json()
         if (typeof data?.text === 'string') return { ok: true, text: data.text }
-      } else if (res.status === 401 || res.status === 403) {
+      } else {
         const data = await res.json().catch(() => ({}))
         if (data?.error === 'invalid_key') return { ok: false, text: '', error: 'invalid_key' }
+        if (input.useSharedCrawlKey) {
+          const reason = typeof data?.error === 'string' && /^(?:shared_key_unavailable|shared_key_not_allowed|unauthorized|no_active_key|truncated_json_response|unexpected_provider_response|provider_error_\d{3})$/.test(data.error)
+            ? data.error : `http_${res.status}`
+          return { ok: false, text: '', error: res.status === 401 ? 'unauthorized' : 'provider_error', reason }
+        }
       }
-    } catch {
-      // Edge function failed or unreachable, fall back to direct calls below
+    } catch (error) {
+      if (input.useSharedCrawlKey) return { ok: false, text: '',
+        error: error instanceof Error && /Timeout|Abort/.test(error.name) ? 'timeout' : 'network_error' }
+      // Non-crawl requests retain the user's configured direct provider fallback.
     }
   }
 
-  // 2. If shared crawl key is requested or edge function failed, try the shared Groq key directly
-  if (input.useSharedCrawlKey) {
-    const sharedResult = await callDirectSharedKey(input)
-    if (sharedResult?.ok) return sharedResult
-  }
+  if (input.useSharedCrawlKey) return { ok: false, text: '', error: token ? 'provider_error' : 'unauthorized' }
 
-  // 3. Fallback to direct client-side provider call using authenticated user's configured key
   if (userId) {
     const directResult = await callDirectProvider(userId, input)
-    if (directResult && directResult.ok) return directResult
-  }
-
-  // 4. As a resilient fallback for knowledge/system tasks if user has no personal key configured
-  if (!input.useSharedCrawlKey) {
-    const sharedResult = await callDirectSharedKey(input)
-    if (sharedResult?.ok) return sharedResult
+    if (directResult?.ok) return directResult
   }
 
   return { ok: false, text: '', error: 'no_active_key' }
@@ -484,6 +389,7 @@ export async function runAgentTask(input: {
   conversationId: string
   type: Task['type']
   userRequest: string
+  onTaskCreated?: (taskId: string) => void
 }): Promise<{ taskId: string; result: AgentRunResult }> {
   const { workspaceId, conversationId, type, userRequest } = input
   const { data: taskData, error: taskError } = await supabase
@@ -500,33 +406,39 @@ export async function runAgentTask(input: {
     .single()
   if (taskError || !taskData) throw taskError ?? new Error('task insert failed')
   const task = taskData as Task
+  input.onTaskCreated?.(task.id)
 
   const ctx: EmitContext = { taskId: task.id, workspaceId, seq: { value: 0 } }
-  const brain = await loadBrainContext(workspaceId)
-  const brandVoice = brain.find((n) => n.category === 'brand_rule')
-  const offerings = brain.filter((n) => n.category === 'offering')
-  const audience = brain.find((n) => n.category === 'audience')
+  try {
+    const brain = await loadBrainContext(workspaceId)
+    const brandVoice = brain.find((n) => n.category === 'brand_rule')
+    const offerings = brain.filter((n) => n.category === 'offering')
+    const audience = brain.find((n) => n.category === 'audience')
 
-  const result = await executePipeline(ctx, type, userRequest, { brandVoice, offerings, audience, brain })
+    const result = await executePipeline(ctx, type, userRequest, { brandVoice, offerings, audience, brain })
 
-  const isFailure =
-    !result.deliverable &&
-    result.posts.length === 0 &&
-    (result.reply.includes('API key') ||
-      result.reply.includes('Settings page') ||
-      result.reply.includes('rejected by the provider') ||
-      result.reply.includes('could not reach'))
+    const isFailure =
+      !result.deliverable &&
+      result.posts.length === 0 &&
+      (result.reply.includes('API key') ||
+        result.reply.includes('Settings page') ||
+        result.reply.includes('rejected by the provider') ||
+        result.reply.includes('could not reach'))
 
-  await supabase
-    .from('tasks')
-    .update({
-      status: isFailure ? 'failed' : 'completed',
-      result_summary: result.reply.slice(0, 200),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', task.id)
+    await supabase
+      .from('tasks')
+      .update({
+        status: isFailure ? 'failed' : 'completed',
+        result_summary: result.reply.slice(0, 200),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', task.id)
 
-  return { taskId: task.id, result }
+    return { taskId: task.id, result }
+  } catch (error) {
+    await supabase.from('tasks').update({ status: 'failed', updated_at: new Date().toISOString() }).eq('id', task.id)
+    throw error
+  }
 }
 
 async function executePipeline(

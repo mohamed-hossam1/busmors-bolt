@@ -22,18 +22,18 @@ export default function SignIn() {
   }
 
   return (
-    <AuthLayout title="Welcome back!" subtitle="Welcome back! Please enter your details">
+    <AuthLayout title="Welcome back." subtitle="Sign in to your workspace and pick up where you left off.">
       <form onSubmit={submit} className="space-y-4">
         <AuthField label={t('email')} type="email" value={email} onChange={setEmail} placeholder="you@company.com" />
         <AuthField label={t('password')} type="password" value={password} onChange={setPassword} />
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <div>
           <Link to="/reset" className="text-sm font-medium text-primary-600 hover:underline">
             {t('forgotPassword')}
           </Link>
         </div>
         <button type="submit" disabled={busy} className="btn-primary w-full">
-          {t('signIn')}
+          {busy ? 'Signing in…' : t('signIn')}
         </button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-600">
