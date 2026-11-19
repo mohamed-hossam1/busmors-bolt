@@ -484,3 +484,25 @@
 .employee-chat .markdown-body { overflow-wrap: anywhere; }
 .marketing-page .text-white\/35 { color: #a6afd5; }
 
+/* Skeleton Shimmer Animations */
+@keyframes skeleton-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #e2e8f0;
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.65) 50%, transparent 100%);
+  animation: skeleton-shimmer 1.6s infinite;
+}
+
+

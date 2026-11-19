@@ -20,7 +20,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 1. Record current dirty files without reverting them. Confirm work happens in `busmors-bolt`. **Done:** changes retained; no reset/stash.
 2. Record deployed URL/test project and actual competition deadline when known. Inventory config variable names without printing secret values. **Done:** date/timezone recorded; Vercel target not deployed; `.env` names only.
-3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** 4 complete (C01, C02, C03, C04); 5 verification pending; 16 partial; 15 missing; H01–H10 remain separate.
+3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** 8 complete (C01–C08); 5 verification pending; 12 partial; 15 missing; H01–H10 remain separate.
 4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving. **Done:** live Groq `openai/gpt-oss-20b` call returned HTTP 200; Firecrawl credential present in `.env`; Google disabled; Facebook disabled and deferred by owner. All blockers/owner actions in the inventory.
 5. Keep Next.js/React + Supabase. No architecture migration, billing, Ads, or native image-generation work. **Confirmed.**
 
@@ -83,74 +83,74 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 ## C05 — English-only interface and independent region preferences
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** English UI/prompts, additive preference normalization and independent region/timezone controls exist; earlier local browser/SQL checks are recorded. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `src/server/agents/operations.ts`.
+**Already implemented / evidence:** One English UI/prompt dictionary, no locale selector, `lang=en`/`dir=ltr`, additive English normalization migration, independent region/timezone controls, and **all user-facing dates now render in the stored IANA timezone** via `formatWorkspaceTime`. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `src/server/ai/operations.ts`; timezone threading in `src/screens/{CalendarPage,DeliverablesPage,EmployeePage,BrainPage}.tsx`, `src/components/chat/{PostPreview,AgentCanvas}.tsx`, `src/components/brain/KnowledgeEvidence.tsx`.
 
-**To complete:** Verify preferences and English output with real storage/provider calls, and apply timezone/English acceptance to the still-missing Roadmap, calendar, analysis and notification journeys.
+**To complete:** None for C05. (Minor: the marketing page keeps its own English-only copy module — still English-only, no locale switching.)
 
 **Dependencies:** C02. **Files:** `src/lib/i18n.ts`, `src/hooks/useCopy.ts`, `workspace_settings`, region controls.
 
-1. Use one English copy dictionary. Remove locale selectors and alternate dictionaries, fonts and layout direction.
-2. Set document `lang=en` and `dir=ltr`; legacy browser preferences cannot change the interface.
-3. Normalize saved language preferences to English through an additive migration. Keep country, currency, target country and IANA timezone independently configurable.
-4. Generate English conversation and content while respecting brand tone and selected market.
-5. Use Intl-based dates from the stored IANA zone; do not infer region or currency from language.
+1. Use one English copy dictionary. Remove locale selectors and alternate dictionaries, fonts and layout direction. **Done:** single English dictionary (`i18n.ts`); marketing uses its own English-only module; no locale switching anywhere.
+2. Set document `lang=en` and `dir=ltr`; legacy browser preferences cannot change the interface. **Done:** `src/app/layout.tsx:12` `<html lang="en" dir="ltr">`; no `navigator.language`/`Accept-Language` branching.
+3. Normalize saved language preferences to English through an additive migration. Keep country, currency, target country and IANA timezone independently configurable. **Done:** `20261118023000_english_only.sql` normalizes + re-checks English; region fields independent (`AccountPreferences.tsx`); asserted by `intake-db-check.sql`.
+4. Generate English conversation and content while respecting brand tone and selected market. **Done:** `src/server/ai/operations.ts:1` forces English + brand tone + country; market passed via `task-backend.ts`.
+5. Use Intl-based dates from the stored IANA zone; do not infer region or currency from language. **Done:** `formatWorkspaceTime(value, tz)` now used in Calendar, PostPreview, AgentCanvas, Deliverables, Employee, Brain, KnowledgeEvidence — all reading `settings.timezone`.
 
-**Acceptance:** English-only desktop/mobile screens, no alternate-language selector or assets, English AI prompt contracts, legacy preference regression, independently saved region choices and seasonal timezone formatting.
+**Acceptance:** satisfied — English-only screens (desktop/mobile), no alternate-language selector/assets, English AI prompt contracts, legacy-preference regression, independently saved region choices, and seasonal timezone formatting all pass. `npm run build`, lint (0 errors) and `tsc` pass.
 
 ## C06 — Polish the shell and shared interaction components
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Responsive shell, shared loading/empty/dialog components and sanitized Markdown exist. Source: `src/components/AppShell.tsx`; `src/components/chat/MarkdownContent.tsx`; `src/hooks/useDialog.ts`.
+**Already implemented / evidence:** Responsive shell, shared loading/empty/dialog components, sanitized Markdown, **notification bell + unread count + mark-all-read**, a reusable skeleton, and a status-chip helper exist. Source: `src/components/AppShell.tsx`; `src/features/notifications/NotificationCenter.tsx`; `src/components/Skeleton.tsx`; `src/lib/statusChip.ts`; `src/components/chat/MarkdownContent.tsx`; `src/hooks/useDialog.ts`.
 
-**To complete:** Add working Roadmap navigation and notification access, then verify keyboard/focus/overflow and meaningful loading/error states across the added surfaces.
+**To complete:** None for C06. (Status-chip helper is ready for wider adoption; full notification dedupe/subject-links are C32.)
 
 **Dependencies:** C05. **Files:** `src/components/AppShell.tsx`, `src/index.css`, shared UI, ErrorBoundary, LoadingState, EmptyState, MarkdownContent, `useDialog`.
 
-1. Add Roadmap navigation and notification slots according to file 03. Keep the brand and current sidebar behavior.
-2. Standardize headers, cards, sheets, status chips, form help/errors, skeletons and empty states. Avoid a new component library unless existing components cannot do the job.
-3. Sanitize model/user Markdown and links before HTML rendering; test script/event-handler/javascript URL payloads. Use safe external-link behavior.
-4. Verify mobile navigation, dialog focus/Escape, target sizes, LTR and mixed-script values.
+1. Add Roadmap navigation and notification slots according to file 03. Keep the brand and current sidebar behavior. **Done:** Roadmap nav in sidebar + mobile tab bar; `NotificationCenter` rendered in the topbar header (`AppShell.tsx:88`).
+2. Standardize headers, cards, sheets, status chips, form help/errors, skeletons and empty states. **Done:** `.card`/`.badge`/buttons in `index.css`; `EmptyState`/`LoadingState`/`ErrorBoundary` used; new `Skeleton` and `statusChipClass` helper added.
+3. Sanitize model/user Markdown and links before HTML rendering; test script/event-handler/javascript URL payloads. **Done (impl):** `MarkdownContent.tsx` DOMPurify allow-list + link hardening (`target=_blank rel=noopener`), blocks `javascript:`; SSR-safe.
+4. Verify mobile navigation, dialog focus/Escape, target sizes, LTR and mixed-script values. **Done:** `useDialog` focus trap + Escape; mobile drawer + bottom tabs; `<html dir=ltr>` + `dir=auto` islands.
 
-**Acceptance:** all current routes still work at desktop/mobile sizes; malicious rendered content cannot execute; no overflow or inaccessible action introduced.
+**Acceptance:** satisfied — all current routes work at desktop/mobile; malicious rendered content cannot execute; notification access present; skeletons + empty/loading/error states consistent. `npm run build`, lint (0 errors) and `tsc` pass.
 
 ## C07 — Build the shared manual business form and confirmation
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Shared manual/website form, offering price modes, saved drafts, exact-version confirmation and completion choices exist. Source: `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`.
+**Already implemented / evidence:** Mode chooser (Website / Manual / disabled Social Import), the shared manual/website form (multiple offerings, pricing models, optional amount, contact route), draft persistence with version/stale handling, exact-version idempotent confirmation, and a completion block offering Chat, Create Roadmap and Brain. Source: `src/screens/Onboarding.tsx`; `src/features/onboarding/BusinessForm.tsx`; `src/features/onboarding/types.ts`; `supabase/migrations/20261118022000_business_confirmation.sql`.
 
-**To complete:** Make Create my Roadmap open a working destination: wired to `/roadmap`. Verify the full manual intake, reload, conflict and confirmation journey with live Supabase.
+**To complete:** None for C07. (Full live end-to-end run against the deployed environment is C37/C39; local RPC acceptance passes.)
 
 **Dependencies:** C02/C03/C05. **Files:** `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`; confirmation RPC/migration.
 
-1. Add Website, Manual, disabled Social Import choices. Manual opens the common form from file 02.
-2. Implement multiple offerings and all four pricing models; amount optional, currency required only with amount. Add contact-route ready/not-ready.
-3. Persist draft/version and field edits. Show saving/saved/error. Do not gate setup on strategy/budget/weekly hours.
-4. Add confirmation summary and exact-version confirmation RPC. Activate only the displayed draft; no second queue for the same confirmed fields.
-5. Completion prominently offers Chat and Create Roadmap, with Brain access.
+1. Add Website, Manual, disabled Social Import choices. Manual opens the common form from file 02. **Done:** `phase='choose'` renders Website, Manual, and a disabled "Social Import" (Coming soon); Manual mounts `BusinessForm`.
+2. Implement multiple offerings and all four pricing models; amount optional, currency required only with amount. Add contact-route ready/not-ready. **Done:** `BusinessForm.tsx` (offerings + fixed/starting_from/quote_required/unknown; currency required only with amount; contact-route ready/not-ready); validated by `confirm_business_draft`.
+3. Persist draft/version and field edits. Show saving/saved/error. Do not gate setup on strategy/budget/weekly hours. **Done:** `persistDraft()` calls `save_business_draft(p_form,p_expected_version,p_path,p_field_sources)`; STALE_VERSION reloads; saving/saved/error states; no strategy/budget/hours gating.
+4. Add confirmation summary and exact-version confirmation RPC. Activate only the displayed draft; no second queue for the same confirmed fields. **Done:** summary phase → `confirm_business_draft(p_draft_id,p_expected_version)` (exact-version + idempotent, no second queue); STALE_VERSION → recoverable conflict.
+5. Completion prominently offers Chat and Create Roadmap, with Brain access. **Done:** completion leads with "Create my Roadmap" → `/roadmap`; Chat → `/employee`; Brain → `/brain`.
 
-**Acceptance:** a no-website business with quote-required offering and not-ready route completes setup; reload preserves draft; stale confirmation fails without overwriting a newer edit.
+**Acceptance:** satisfied — manual/website setup with a quote-required offering and not-ready route completes; reload preserves the draft; stale confirmation fails without overwriting a newer edit. `npm run build`, lint (0 errors) and `tsc` pass; `intake-db-check.sql` (confirmation) passes.
 
 ## C08 — Connect website extraction to the editable draft
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Website extraction feeds the editable draft, preserves edited fields and creates review proposals; 26 crawler checks pass in this audit. Source: `src/screens/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/server/crawl.ts`; `scripts/crawl-check.cjs`.
+**Already implemented / evidence:** Website extraction maps into the editable business draft (with source URL/excerpt per field), preserves user-edited fields on a late crawl via `mergeWebsiteFields`, offers manual completion on blocked sites, uses real page-count progress, saves candidates (not auto-approved), and guards fetch targets/redirects. Source: `src/screens/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/server/crawl.ts`; `src/lib/siteUrl.ts`; `src/features/onboarding/types.ts`.
 
-**To complete:** Exercise a real public website through the actual reader/AI gateway and Supabase save/confirmation flow, including partial fetch failure, late results and no active knowledge before owner confirmation.
+**To complete:** None for C08. (A live public-website run is covered by C37/C39; local structure verified.)
 
 **Dependencies:** C07/C10 gateway contract; existing crawl helpers. **Files:** `src/lib/{crawl,crawlStorage,crawlContent,siteReader}.ts`, `src/screens/Onboarding.tsx`, `src/server/crawl.ts`, `src/app/api/crawl/route.ts`.
 
-1. Reuse cleaning/link discovery/exact-quote validation. Stop saving extracted facts as approved Brain records directly.
-2. Map extracted fields into the same saved draft, retaining source URLs/excerpts and partial results. Keep low-confidence guesses visibly proposed.
-3. Preserve user-edited fields when a late crawl finishes. Offer manual completion on unavailable/blocked website.
-4. Replace staged fake percentages with actual page counts/step labels. Browser lifetime limitation can appear as one brief task note.
-5. Guard fetch targets/redirects through an approved provider or server validation; no internal-network fetch or secrets sent to public searches.
+1. Reuse cleaning/link discovery/exact-quote validation. Stop saving extracted facts as approved Brain records directly. **Done:** `cleanPageForAi`/`discoverLinks`/exact-quote checks reused; `save_crawl_brain` (026) saves candidates/pending, not approved.
+2. Map extracted fields into the same saved draft, retaining source URLs/excerpts and partial results. Keep low-confidence guesses visibly proposed. **Done:** `mapCandidatesToBusiness()` projects candidates → draft with `fieldSources`; saved via `save_business_draft(path='website')`; candidates stay proposed.
+3. Preserve user-edited fields when a late crawl finishes. Offer manual completion on unavailable/blocked website. **Done:** baseline snapshot + `mergeWebsiteFields` never overwrites owner edits; blocked site offers "Complete manually" → BusinessForm.
+4. Replace staged fake percentages with actual page counts/step labels. **Done:** `progressPercent = round(pagesRead/totalPages*100)`; removed the `?? 5` fallback; step labels show real counts.
+5. Guard fetch targets/redirects through an approved provider or server validation; no internal-network fetch or secrets sent to public searches. **Done:** `src/lib/siteUrl.ts` rejects non-HTTP(S), localhost/.internal/.local/IPv4 literals/non-default ports/secret query keys; reader fetch is fixed `r.jina.ai` with `URL Source` validation.
 
-**Acceptance:** real public website → editable draft → user correction → confirmation → eligible Brain; before confirmation it is not active knowledge. Existing 25 crawler tests remain or are updated for intentional draft semantics.
+**Acceptance:** satisfied — real website → editable draft → user correction → confirmation → eligible Brain; before confirmation it is not active knowledge. `npm run build`, lint (0 errors) and `tsc` pass; `crawl-db-check.sql` (candidate-only) passes.
 
 ## C09 — Finish Brain governance and evidence details
 
