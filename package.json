@@ -10,10 +10,19 @@
     "preview": "vite preview",
     "test:ui": "node scripts/ui-check.cjs",
     "test:crawl": "node scripts/crawl-check.cjs",
-    "test:crawl:ui": "node scripts/crawl-ui-check.cjs"
+    "test:crawl:ui": "node scripts/crawl-ui-check.cjs",
+    "test:brain-delete:ui": "node scripts/brain-delete-ui-check.cjs",
+    "test:foundation:ui": "node scripts/foundation-ui-check.cjs",
+    "test:intake:ui": "node scripts/intake-ui-check.cjs",
+    "test:brain-governance:ui": "node scripts/brain-governance-ui-check.cjs",
+    "test:task-runner:ui": "node scripts/task-runner-ui-check.cjs",
+    "test:tasks": "node scripts/task-runner-check.cjs",
+    "test:ai-gateway": "node scripts/ai-gateway-check.cjs",
+    "test:db:local": "python3 scripts/local-migration-check.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
+    "dompurify": "3.4.18",
     "lucide-react": "^1.59.0",
     "marked": "^18.1.1",
     "react": "^19.2.8",

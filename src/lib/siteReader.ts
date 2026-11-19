@@ -25,6 +25,14 @@ export function normalizeSiteUrl(raw: string, relativeTo?: string): string {
   const input = raw.trim()
   const url = relativeTo ? new URL(input, relativeTo) : new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Enter a public HTTP or HTTPS website URL.')
+  // Reading uses the fixed external reader endpoint, never a browser-side target fetch.
+  // Reject IP literals, local names, unusual ports and credential-bearing URLs first.
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (!host.includes('.') || host.startsWith('[') || /^\d+(\.\d+){3}$/.test(host)
+    || /(?:^|\.)(?:localhost|local|internal|lan|home|onion)$/.test(host) || url.port
+    || [...url.searchParams.keys()].some(key=>/^(?:access_token|api[_-]?key|token|password|secret|authorization)$/i.test(key))) {
+    throw new Error('Use a public website address without credentials or internal-network targets.')
+  }
   url.hash = ''
   for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key)
   url.searchParams.sort()
@@ -38,7 +46,7 @@ function sameSite(url: string, base: string): boolean {
 
 function linkPriority(url: string): number {
   const path = new URL(url).pathname
-  return /about|product|service|solution|pricing|feature|company|audience|customer|من-نحن|خدمات|منتج/i.test(decodeURI(path)) ? 10 : /contact|faq|partner/i.test(path) ? 5 : 0
+  return /about|product|service|solution|pricing|feature|company|audience|customer/i.test(decodeURI(path)) ? 10 : /contact|faq|partner/i.test(path) ? 5 : 0
 }
 
 function discoverLinks(page: CrawledPage, base: string): string[] {
@@ -64,10 +72,16 @@ function parsePage(raw: string, url: string): CrawledPage | null {
   const markdown = (marker >= 0 ? raw.slice(marker + 'Markdown Content:'.length) : raw).trim()
   const title = metadata.match(/^Title:\s*(.+)$/m)?.[1]?.trim()
   const cleaned = cleanPageForAi(markdown)
-  if (cleaned.length < 80 || /^(?:404\s*)?(?:#{1,6}\s*)?(?:404\b|page not found\b|not found\b|access denied\b|just a moment\b|checking your browser\b|الصفحة غير موجودة)/i.test(cleaned.slice(0, 500)) || /^(?:404\b|page not found\b|access denied\b|just a moment\b)/i.test(title || '')) return null
+  if (cleaned.length < 80 || /^(?:404\s*)?(?:#{1,6}\s*)?(?:404\b|page not found\b|not found\b|access denied\b|just a moment\b|checking your browser\b)/i.test(cleaned.slice(0, 500)) || /^(?:404\b|page not found\b|access denied\b|just a moment\b)/i.test(title || '')) return null
   const source = metadata.match(/^URL Source:\s*(https?:\/\/\S+)/m)?.[1]
   let canonical = url
-  try { if (source && sameSite(source, url)) canonical = normalizeSiteUrl(source) } catch { /* Keep requested URL. */ }
+  try {
+    if (source) {
+      const safeSource = normalizeSiteUrl(source)
+      if (!sameSite(safeSource, url)) return null
+      canonical = safeSource
+    }
+  } catch { return null }
   return { url: canonical, markdown, title }
 }
 

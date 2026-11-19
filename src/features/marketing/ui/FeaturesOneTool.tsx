@@ -235,11 +235,7 @@ export default function FeaturesOneTool() {
           {/* Card 5: Understand */}
           <MarketingCard className="p-[22px_0px_32px] xl:col-span-1 xl:min-h-[363px]">
             <div className="relative h-[191px] w-full overflow-hidden">
-              <img
-                src={MARKETING_ASSETS.graphFeature}
-                alt=""
-                className="pointer-events-none absolute left-0 top-0 h-auto w-[486px] max-w-none"
-              />
+
               <div className="absolute bottom-0 left-0 right-0 flex h-[127px] items-end justify-between px-4">
                 {bars.map((h, idx) => (
                   <div

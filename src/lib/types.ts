@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import type { Lang } from './i18n'
 
 export type BrainCategory =
   | 'company_profile'
@@ -28,6 +27,18 @@ export interface BrainNode {
   confidence: number
   created_at: string
   updated_at: string
+  version: number
+  epistemic_kind?: 'fact' | 'claim' | 'inference' | 'unknown'
+  approval_state?: 'pending' | 'approved' | 'rejected' | 'legacy'
+  verification_state?: 'unverified' | 'source_supported' | 'contradicted' | 'owner_reported'
+  provenance?: Record<string, unknown>
+  is_current?: boolean
+}
+
+export interface BrainProposal {
+  id: string; node_id: string; base_version: number; status: 'pending'|'approved'|'rejected'
+  diff: Pick<BrainNode,'title'|'summary'|'category'|'properties'> & { source_detail?: string }
+  source_refs: string[]; created_at: string
 }
 
 export interface BrainEdge {
@@ -39,11 +50,16 @@ export interface BrainEdge {
   status: BrainStatus
   weight: number
   created_at: string
+  provenance?: Record<string, unknown>
 }
 
 export type MessageRole = 'user' | 'agent' | 'system'
 export type MessageType =
   | 'text'
+  | 'text_response'
+  | 'structured_form'
+  | 'budget_extension_request'
+  | 'post_reference'
   | 'form'
   | 'task_status'
   | 'deliverable_card'
@@ -70,7 +86,7 @@ export interface Conversation {
 export interface FormField {
   name: string
   label: string
-  type: 'text' | 'single' | 'multi' | 'select'
+  type: 'text' | 'single' | 'multi' | 'select' | 'number' | 'url'
   options?: string[]
   value?: string | string[]
 }
@@ -91,6 +107,8 @@ export interface Task {
 export interface AgentEvent {
   id: string
   task_id: string
+  instance_id?: string
+  run_id?: string
   seq: number
   event_type: 'agent_started' | 'agent_tool_used' | 'agent_completed' | 'agent_error' | 'flow_connection'
   agent_id: string
@@ -105,6 +123,27 @@ export interface Deliverable {
   title: string
   type: 'research_report' | 'competitor_analysis' | 'content_posts' | 'content_calendar' | 'performance_diagnosis' | 'general'
   content: string
+  version: number
+  origin: Record<string, unknown>
+  context_refs: unknown[]
+  source_refs: unknown[]
+  limitations: unknown[]
+  stale_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DeliverableVersion {
+  id: string
+  workspace_id: string
+  deliverable_id: string
+  version: number
+  title: string
+  content: string
+  provenance: Record<string, unknown>
+  source_refs: unknown[]
+  context_refs: unknown[]
+  limitations: unknown[]
   created_at: string
 }
 
@@ -137,8 +176,16 @@ export interface PlannedPost {
 
 export interface WorkspaceSettings {
   workspace_id: string
+  country: string
+  currency: string
+  timezone: string
+  ui_language: 'en'
+  conversation_language: 'en'
+  content_register: import('./contracts').ContentRegister
+  target_market: string
+  confirmed_intake_version: number | null
   company_url: string | null
-  language: Lang
+  language: 'en'
   onboarding_state: 'awaiting_url' | 'crawling' | 'review_pending' | 'complete'
   crawl_status: { pages_read?: number; pages_total?: number; finished?: boolean }
   brand_colors: { primary: string; accent: string }

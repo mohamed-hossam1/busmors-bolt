@@ -167,7 +167,7 @@
       "features": "Features",
       "plans": "Plans",
       "busmoraYourAIMarketingDirector": "Busmora — Your AI Marketing Director",
-      "arabicFirstYourBusinessAtTheCenter": "Arabic first. Your business at the center.",
+      "yourBusinessAtTheCenter": "Your business at the center.",
       "2026BusmoraProductInDevelopment": "© 2026 Busmora. Product in development."
     },
     "Hero": {
@@ -229,11 +229,11 @@
     },
     "PricingFAQ": {
       "doINeedMarketingExperience": "Do I need marketing experience?",
-      "noBusmoraIsDesignedForArabicfirstBusinessOwnersStart": "No. Busmora is designed for Arabic-first business owners. Start with your goal in your own words; the Director helps clarify what matters.",
+      "noBusmoraIsDesignedForBusinessOwners": "No. Busmora is designed for business owners. Start with your goal in your own words; the Director helps clarify what matters.",
       "doINeedAWebsiteToGetStarted": "Do I need a website to get started?",
       "aWebsiteIsOptionalThePlannedSetupSupportsA": "A website is optional. The planned setup supports a website import or manual entry into the same draft, which you review and confirm.",
       "whatLanguageCanIWorkIn": "What language can I work in?",
-      "theInterfaceSupportsArabicAndEnglishContentIsPlanned": "The current workspace interface is in English. Describe the language and tone you need when requesting content.",
+      "theWorkspaceAndContentAreInEnglish": "The workspace, conversations, and generated content are in English. Describe the tone you want when requesting content.",
       "willBusmoraPublishOrSpendWithoutMe": "Will Busmora publish or spend without me?",
       "publishingRequiresYourApprovalOfTheExactPostDestination": "Drafts are prepared for your review. Copy approved captions to your social platforms, then mark the posts as published. This workspace does not initiate ad spend.",
       "canISubscribeToday": "Can I subscribe today?",

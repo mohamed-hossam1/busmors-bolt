@@ -52,7 +52,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'IBM Plex Sans Arabic', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         card: '0 1px 3px rgb(var(--shadow-color, 11 43 34) / 0.08), 0 4px 16px rgb(var(--shadow-color, 11 43 34) / 0.06)',

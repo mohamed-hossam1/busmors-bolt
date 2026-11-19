@@ -11,7 +11,8 @@ import {
   ArrowUpRight, MousePointer2, type LucideIcon,
 } from 'lucide-react'
 import type { BrainCategory, BrainEdge, BrainNode } from '../../lib/types'
-import { useLang } from '../../context/LangContext'
+import { useCopy } from '../../hooks/useCopy'
+import { KnowledgeLabels } from './KnowledgeEvidence'
 import {
   BRAIN_CARD_HEIGHT, BRAIN_CARD_WIDTH, BRAIN_CATEGORY_ORDER, calculateBrainPositions,
 } from '../../lib/brainGraphLayout'
@@ -67,14 +68,15 @@ type BrainGraphProps = {
   nodes: BrainNode[]
   edges: BrainEdge[]
   onEditNode?: (node: BrainNode) => void
+  onEvidence?: (node: BrainNode) => void
 }
 
 export default function BrainGraph(props: BrainGraphProps) {
   return <ReactFlowProvider><BrainGraphView {...props} /></ReactFlowProvider>
 }
 
-function BrainGraphView({ nodes, edges, onEditNode }: BrainGraphProps) {
-  const { t } = useLang()
+function BrainGraphView({ nodes, edges, onEditNode, onEvidence }: BrainGraphProps) {
+  const { t } = useCopy()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [category, setCategory] = useState<BrainCategory | 'all'>('all')
   const [query, setQuery] = useState('')
@@ -286,6 +288,8 @@ function BrainGraphView({ nodes, edges, onEditNode }: BrainGraphProps) {
             <span className="brain-map-node-category" style={{ color: CATEGORY_CONFIG[selected.category].color, background: CATEGORY_CONFIG[selected.category].bg }}>{t(`cat_${selected.category}` as never)}</span>
             <h3 className="mt-4 text-lg font-semibold leading-snug text-ink-900" dir="auto">{selected.title}</h3>
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600" dir="auto">{selected.summary}</p>
+            <KnowledgeLabels node={selected}/>
+            {onEvidence&&<button className="mt-3 text-sm text-primary-700 underline" onClick={()=>onEvidence(selected)}>View evidence and versions</button>}
             <div className="mt-5 rounded-xl bg-ink-50/70 p-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">Source</p>
               <p className="mt-1 break-words text-xs leading-relaxed text-ink-600" dir="auto">{selected.source_detail || selected.source}</p>

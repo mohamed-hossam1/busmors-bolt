@@ -1,5 +1,23 @@
 import { useMemo } from 'react'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+
+export function safeMarkdown(content: string): string {
+  const parsed = marked.parse(content, { breaks: true, gfm: true })
+  const html = DOMPurify.sanitize(typeof parsed === 'string' ? parsed : '', {
+    ALLOWED_TAGS: ['p','br','strong','em','del','blockquote','pre','code','h1','h2','h3','h4','h5','h6','ul','ol','li','hr','a','table','thead','tbody','tr','th','td'],
+    ALLOWED_ATTR: ['href','title'],
+    ALLOW_DATA_ATTR: false,
+  })
+  const template = document.createElement('template')
+  template.innerHTML = html
+  template.content.querySelectorAll('a').forEach(link => {
+    const href = link.getAttribute('href') ?? ''
+    if (!/^(https?:\/\/|mailto:|\/[^/]|#)/i.test(href)) link.removeAttribute('href')
+    if (/^https?:\/\//i.test(href)) { link.target = '_blank'; link.rel = 'noopener noreferrer' }
+  })
+  return template.innerHTML
+}
 
 interface MarkdownContentProps {
   content: string
@@ -11,13 +29,9 @@ export default function MarkdownContent({ content, className = '', isUser = fals
   const html = useMemo(() => {
     if (!content) return ''
     try {
-      const parsed = marked.parse(content, {
-        breaks: true,
-        gfm: true,
-      })
-      return typeof parsed === 'string' ? parsed : ''
+      return safeMarkdown(content)
     } catch {
-      return content
+      return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
     }
   }, [content])
 

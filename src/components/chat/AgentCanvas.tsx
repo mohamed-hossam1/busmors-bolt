@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ReactFlow, {
   Background,
   Controls,
@@ -26,6 +27,10 @@ import {
   AlertCircle,
   Loader2,
   Network,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from 'lucide-react'
 import type { AgentEvent } from '../../lib/types'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
@@ -162,14 +167,19 @@ export default function AgentCanvas({
   conversationId,
   events,
   running,
+  taskId,
+  taskStatus,
   previewPosts = EMPTY_PREVIEWS,
 }: {
   conversationId: string | null
   events: AgentEvent[]
   running: boolean
+  taskId?: string | null
+  taskStatus?: string
   previewPosts?: CanvasPreviewPost[]
 }) {
   const [flowNodes, setFlowNodes] = useState<Node[]>([])
+  const [showSteps, setShowSteps] = useState(false)
   const [savedLayout] = useState(() => readCanvasLayout(conversationId))
   const userPositionsRef = useRef({ ...savedLayout.positions })
   const viewportRef = useRef<Viewport | undefined>(savedLayout.viewport)
@@ -185,23 +195,25 @@ export default function AgentCanvas({
     const conns: { from: string; to: string }[] = []
 
     for (const e of events) {
+      const instance=e.instance_id??e.agent_id
       if (e.event_type === 'agent_started') {
-        active.add(e.agent_id)
-        done.delete(e.agent_id)
+        active.add(instance)
+        done.delete(instance)
+        failed.delete(instance)
       }
       if (e.event_type === 'agent_tool_used') {
-        tools.set(e.agent_id, String(e.payload.tool_label ?? ''))
+        tools.set(instance, String(e.payload.tool_label ?? ''))
       }
       if (e.event_type === 'agent_completed') {
-        active.delete(e.agent_id)
-        if (!failed.has(e.agent_id)) {
-          done.add(e.agent_id)
+        active.delete(instance)
+        if (!failed.has(instance)) {
+          done.add(instance)
         }
       }
       if (e.event_type === 'agent_error') {
-        active.delete(e.agent_id)
-        done.delete(e.agent_id)
-        failed.add(e.agent_id)
+        active.delete(instance)
+        done.delete(instance)
+        failed.add(instance)
       }
       if (e.event_type === 'flow_connection') {
         conns.push({ from: String(e.payload.from ?? ''), to: String(e.payload.to ?? '') })
@@ -213,7 +225,7 @@ export default function AgentCanvas({
   useEffect(() => {
     const present = new Set<string>()
     for (const e of events) {
-      if (e.agent_id) present.add(e.agent_id)
+      if (e.agent_id && e.event_type!=='flow_connection') present.add(e.instance_id??e.agent_id)
       if (e.event_type === 'flow_connection') {
         const from = String(e.payload.from ?? '')
         const to = String(e.payload.to ?? '')
@@ -221,12 +233,17 @@ export default function AgentCanvas({
         if (to) present.add(to)
       }
     }
-    if (present.size === 0 && running) present.add('orchestrator')
-
-    const newNodes: Node[] = [...present].map((id) => {
-      const layout = AGENT_LAYOUT[id] ?? { x: 250, y: 300, label: id }
-      const isFailed = errorAgents.has(id)
-      const isActive = activeAgents.has(id) && !isFailed
+    const newNodes: Node[] = [...present].map((id,index) => {
+      const event=events.find(event=>(event.instance_id??event.agent_id)===id && event.event_type!=='flow_connection')
+      const agent=event?.agent_id??id
+      const named=AGENT_LAYOUT[agent]??{x:250,y:300,label:agent}
+      const layout=event?.instance_id?{...named,x:230+(index%2)*60,y:40+index*135}:named
+      // A terminal failure leaves the last started step without a completion
+      // event. Show it as failed instead of leaving a misleading neutral node.
+      const stopped = ['failed','interrupted','cancelled'].includes(taskStatus ?? '')
+        && !doneAgents.has(id) && !errorAgents.has(id)
+      const isFailed = errorAgents.has(id) || stopped
+      const isActive = running && activeAgents.has(id) && !isFailed
       const isDone = doneAgents.has(id) && !isFailed
       const position = userPositionsRef.current[id] ?? { x: layout.x, y: layout.y }
 
@@ -235,8 +252,8 @@ export default function AgentCanvas({
         type: 'agentNode',
         position,
         data: {
-          id,
-          label: layout.label,
+          id:agent,
+          label: event?.instance_id?String(event.payload.task_summary??layout.label):layout.label,
           isActive,
           isDone,
           isError: isFailed,
@@ -259,7 +276,7 @@ export default function AgentCanvas({
       const measured = new Map(previous.map((node) => [node.id, node]))
       return newNodes.map((node) => ({ ...measured.get(node.id), ...node }))
     })
-  }, [events, running, activeAgents, doneAgents, errorAgents, toolLabels, previewPosts])
+  }, [events, running, taskStatus, activeAgents, doneAgents, errorAgents, toolLabels, previewPosts])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     for (const c of changes) {
@@ -316,6 +333,20 @@ export default function AgentCanvas({
     return list
   }, [connections, activeAgents, doneAgents, errorAgents])
 
+  // The detail panel is the chronological record the graph summarizes. One row
+  // per persisted instance keeps the list and the graph in agreement.
+  const recorded = useMemo(() => {
+    const instances = new Map<string, { id: string; first: AgentEvent; last: AgentEvent }>()
+    for (const event of events) {
+      if (event.event_type === 'flow_connection') continue
+      const id = event.instance_id ?? event.agent_id
+      const found = instances.get(id)
+      if (found) found.last = event
+      else instances.set(id, { id, first: event, last: event })
+    }
+    return [...instances.values()]
+  }, [events])
+
   return (
     <div className="relative h-full w-full" dir="ltr">
       <ReactFlow
@@ -339,6 +370,61 @@ export default function AgentCanvas({
           onFitView={() => requestAnimationFrame(persistLayout)}
         />
       </ReactFlow>
+      {recorded.length > 0 && (
+        <div className="absolute bottom-3 right-3 z-10 w-[min(22rem,calc(100%-1.5rem))]">
+          <div className="overflow-hidden rounded-xl border border-ink-200 bg-white/95 shadow-card backdrop-blur">
+            <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setShowSteps((value) => !value)}
+                aria-expanded={showSteps}
+                className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-800"
+              >
+                <Clock size={13} className="shrink-0 text-primary-600" />
+                <span>Recorded steps</span>
+                <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold text-ink-600">{recorded.length}</span>
+                {showSteps ? <ChevronDown size={13} className="shrink-0 text-ink-400" /> : <ChevronUp size={13} className="shrink-0 text-ink-400" />}
+              </button>
+              {taskId && (
+                <Link
+                  to={`/employee?task=${encodeURIComponent(taskId)}`}
+                  className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900"
+                >
+                  Open task <ExternalLink size={11} />
+                </Link>
+              )}
+            </div>
+            {showSteps && (
+              <ol className="max-h-52 space-y-2 overflow-y-auto p-3">
+                {recorded.map(({ id, first, last }) => {
+                  const label = String(last.payload?.task_summary ?? last.payload?.tool_label ?? last.agent_id)
+                  const detail = String(last.payload?.result_summary ?? last.payload?.error ?? '')
+                  const stopped = last.event_type === 'agent_started' && ['failed','interrupted','cancelled'].includes(taskStatus ?? '')
+                  const failed = last.event_type === 'agent_error' || stopped
+                  const complete = last.event_type === 'agent_completed'
+                  const at = last.event_type === 'agent_started' ? first.created_at : last.created_at
+                  return (
+                    <li key={id} className="flex gap-2 text-xs">
+                      <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${failed ? 'bg-red-500' : complete ? 'bg-emerald-500' : 'bg-primary-500'}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate font-medium text-ink-800">{label}</span>
+                          <time className="shrink-0 text-[10px] text-ink-400" dateTime={at}>
+                            {new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </time>
+                        </div>
+                        <p className={`truncate text-[11px] ${failed ? 'text-red-600' : 'text-ink-500'}`}>
+                          {detail || (stopped ? 'Stopped before completion' : last.event_type.replaceAll('_', ' '))}
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </div>
+        </div>
+      )}
       {!running && events.length === 0 && previewPosts.length === 0 && (
         <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
           <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-white text-primary-500"><Network size={24} strokeWidth={1.5} /></span>

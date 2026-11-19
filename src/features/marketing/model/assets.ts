@@ -20,11 +20,12 @@ export const MARKETING_ASSETS = {
   // Captured from the real target UI with fictional test data.
   heroScreenBottomMask: `/marketing/decorations/screen-bottom-mask_line.svg`,
   heroDashboard: "/marketing/product/employee.webp",
+  marketingDirector: "/marketing/product/marketing-director.png",
 
   // Instant ads section
-  aiFeaturesWrap: "/marketing/product/brain.webp",
-  connectorFourImages: "/marketing/product/canvas.webp",
-  approvalFiveImages: "/marketing/product/calendar.webp",
+  aiFeaturesWrap: "/marketing/product/ai-features-wrap.webp",
+  connectorFourImages: "/marketing/product/connector-four-images.webp",
+  approvalFiveImages: "/marketing/product/approval-five-images.webp",
 
   // Infinite reach section
   waveEffect: `/marketing/decorations/wave-effect.svg`,

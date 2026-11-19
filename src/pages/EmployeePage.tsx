@@ -1,6 +1,6 @@
 import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Bot,
   KeyRound,
@@ -17,24 +17,34 @@ import {
   CheckCircle2,
   Loader2,
   X,
+  ArrowUpRight,
+  Gauge,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../context/LangContext'
+import { useCopy } from '../hooks/useCopy'
 import type { AgentEvent, ChatMessage, Conversation, FormField } from '../lib/types'
-import { classifyIntent, persistAgentResults, runAgentTask } from '../lib/agents'
+import type { TaskOrigin } from '../lib/contracts'
+import { useTaskRunner } from '../features/tasks/TaskRunnerProvider'
 import AgentCanvas, { type CanvasPreviewPost } from '../components/chat/AgentCanvas'
 import { PostPreviewCard } from '../components/chat/PostPreview'
 import MarkdownContent from '../components/chat/MarkdownContent'
 import { forgetCanvasLayout, readActiveConversation, saveActiveConversation } from '../lib/chatCanvasStorage'
 
 export default function EmployeePage() {
-  const { t } = useLang()
+  const { t } = useCopy()
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [running, setRunning] = useState(false)
+  const { runner, tasks, error: runnerError } = useTaskRunner()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [actionError,setActionError] = useState('')
+  const [sending,setSending] = useState(false)
+  const requestKey = useRef<{conversation:string;text:string;key:string}|null>(null)
+  const openedTaskLink = useRef<string|null>(null)
+  const composedRef = useRef<string|null>(null)
+  const continuationOrigin = useRef<{deliverableId:string;version:number}|null>(null)
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [activeTask, setActiveTask] = useState<string | null>(null)
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null)
@@ -47,7 +57,9 @@ export default function EmployeePage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const viewedConversationRef = useRef<string | null>(null)
   const workspaceIdRef = useRef<string | null>(null)
-  const inFlightConversations = useRef(new Set<string>())
+  const conversationTasks = tasks.filter(task=>task.conversation_id===conversationId)
+  const running = sending || conversationTasks.some(task=>['queued','running'].includes(task.status))
+  const selectedTask = conversationTasks.find(task=>task.id===activeTask)
   const conversationLoading = !conversationId || loadedConversationId !== conversationId
 
   const selectConversation = (id: string) => {
@@ -111,7 +123,10 @@ export default function EmployeePage() {
       workspaceIdRef.current = userId
       const available = await loadConversationsList(userId)
       if (cancelled) return
-      const savedId = readActiveConversation(userId)
+      // An exact task link owns the initial conversation. Selecting the last
+      // saved conversation here can otherwise race the link and hide the task.
+      if (searchParams.get('task')) return
+      const savedId = searchParams.get('conversation') ?? readActiveConversation(userId)
       let id = available.find((item) => item.id === savedId)?.id ?? available[0]?.id
       if (!id) {
         const { data: created } = await supabase.from('conversations')
@@ -128,83 +143,76 @@ export default function EmployeePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Messages and the latest saved workflow belong to the same conversation.
-  useEffect(() => {
-    if (!conversationId) return
-    let cancelled = false
-    setLoadedConversationId(null)
-    setCanvasLoadError(null)
-    setMessages([])
-    setEvents([])
-    setActiveTask(null)
-    setRunning(false)
-    setInput('')
-    void (async () => {
-      try {
-        const [messageResult, taskResult] = await Promise.all([
-          supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true }),
-          supabase.from('tasks').select('id, status').eq('conversation_id', conversationId)
-            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
-        ])
-        if (cancelled) return
-        if (messageResult.error) throw messageResult.error
-        setMessages((messageResult.data ?? []) as ChatMessage[])
-        if (taskResult.error) throw taskResult.error
-        if (taskResult.data) {
-          const { data, error } = await supabase.from('agent_events').select('*')
-            .eq('task_id', taskResult.data.id).order('seq', { ascending: true })
-          if (cancelled) return
-          if (error) throw error
-          setEvents((data ?? []) as AgentEvent[])
-          const inProgress = ['pending', 'running'].includes(taskResult.data.status) || inFlightConversations.current.has(conversationId)
-          setRunning(inProgress)
-          setActiveTask(inProgress ? taskResult.data.id : null)
-        }
-      } catch (error) {
-        console.error('Could not restore conversation canvas:', error)
-        if (!cancelled) setCanvasLoadError('Could not load this conversation’s graph. Please reopen the chat to retry.')
-      } finally {
-        if (!cancelled) setLoadedConversationId(conversationId)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [conversationId])
+  useEffect(()=>{
+    const requested=searchParams.get('task')
+    if(!requested){openedTaskLink.current=null;return}
+    if(openedTaskLink.current===requested)return
+    const task=tasks.find(task=>task.id===requested)
+    if(task){openedTaskLink.current=requested;selectConversation(task.conversation_id);setActiveTask(task.id);return}
+    // A stale or deleted task link must not leave an empty workspace.
+    if(tasks.length&&conversations.length&&!conversationId)selectConversation(conversations[0].id)
+  },[searchParams,tasks,conversations,conversationId])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [displayedMessages, running])
+  // Exact "Reuse"/"Continue with Director" links prefill the composer once.
+  // A document continuation also keeps the checked origin for the first Task.
+  useEffect(()=>{
+    const compose=searchParams.get('compose')
+    if(!compose){composedRef.current=null;continuationOrigin.current=null;return}
+    if(composedRef.current===compose)return
+    composedRef.current=compose
+    setInput(compose)
+    const document=searchParams.get('document')
+    const version=Number(searchParams.get('version'))
+    continuationOrigin.current=document&&Number.isInteger(version)&&version>0?{deliverableId:document,version}:null
+  },[searchParams])
 
-  // Start polling as soon as the task is created, and stop without clearing its graph.
-  useEffect(() => {
-    if (!activeTask || !conversationId) return
-    let cancelled = false
-    let polling = false
-    const poll = async () => {
-      if (polling) return
-      polling = true
-      try {
-        const [eventResult, taskResult] = await Promise.all([
-          supabase.from('agent_events').select('*').eq('task_id', activeTask).order('seq', { ascending: true }),
-          supabase.from('tasks').select('status').eq('id', activeTask).maybeSingle(),
-        ])
-        if (cancelled) return
-        if (!eventResult.error) setEvents((eventResult.data ?? []) as AgentEvent[])
-        if (taskResult.data && !['pending', 'running'].includes(taskResult.data.status)) {
-          const { data } = await supabase.from('messages').select('*')
-            .eq('conversation_id', conversationId).order('created_at', { ascending: true })
-          if (cancelled) return
-          if (data) setMessages(data as ChatMessage[])
-          if (!inFlightConversations.current.has(conversationId)) {
-            setRunning(false)
-            setActiveTask(null)
-          }
-        }
-      } finally { polling = false }
+  useEffect(()=>{
+    if(!conversationId)return
+    let cancelled=false,polling=false
+    setLoadedConversationId(null);setMessages([]);setEvents([]);setCanvasLoadError(null)
+    if(!composedRef.current)setInput('')
+    const refresh=async()=>{
+      if(polling)return
+      polling=true
+      try{
+        const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
+        if(error)throw error
+        if(!cancelled)setMessages((data??[]) as ChatMessage[])
+      }catch{if(!cancelled)setActionError('Messages could not be loaded. Your saved conversation is kept; retry shortly.')}
+      finally{polling=false;if(!cancelled)setLoadedConversationId(conversationId)}
     }
-    void poll()
-    const interval = setInterval(() => { void poll() }, 900)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [activeTask, conversationId])
+    void refresh();const interval=setInterval(()=>void refresh(),1800)
+    return()=>{cancelled=true;clearInterval(interval)}
+  },[conversationId])
+
+  useEffect(()=>{
+    if(!conversationId)return
+    if(!conversationTasks.some(task=>task.id===activeTask)){
+      const next=conversationTasks.find(task=>['running','queued','awaiting_input'].includes(task.status))??conversationTasks[0]
+      setActiveTask(next?.id??null)
+    }
+  },[conversationId,conversationTasks,activeTask])
+
+  useEffect(()=>{
+    setEvents([])
+    if(!activeTask||!conversationId)return
+    let cancelled=false,polling=false
+    const refresh=async()=>{
+      if(polling)return
+      polling=true
+      try{
+        const {data,error}=await supabase.from('agent_events').select('*').eq('task_id',activeTask).order('created_at',{ascending:true})
+        if(cancelled)return
+        if(error)throw error
+        setEvents((data??[]) as AgentEvent[]);setCanvasLoadError(null)
+      }catch{if(!cancelled)setCanvasLoadError('Saved task events could not be loaded. Retrying…')}
+      finally{polling=false}
+    }
+    void refresh();const interval=setInterval(()=>void refresh(),1800)
+    return()=>{cancelled=true;clearInterval(interval)}
+  },[activeTask,conversationId])
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'})},[displayedMessages.length,running])
 
   // Create new conversation
   const handleNewChat = async () => {
@@ -219,19 +227,9 @@ export default function EmployeePage() {
       .single()
 
     if (error || !created) {
-      console.error('Failed to create conversation:', error)
+      setActionError('A new conversation could not be saved. Try again.')
       return
     }
-
-    const greetingText = t('greetingProactive')
-    await supabase.from('messages').insert({
-      conversation_id: created.id,
-      workspace_id: userId,
-      role: 'agent',
-      type: 'text',
-      content: greetingText,
-      created_at: new Date().toISOString(),
-    })
 
     selectConversation(created.id)
     setMessages([])
@@ -250,7 +248,7 @@ export default function EmployeePage() {
     if (!userId) return
 
     const { error } = await supabase.from('conversations').delete().eq('id', id)
-    if (error) return
+    if (error) { setActionError('This conversation could not be deleted. Its saved data is unchanged.');return }
     forgetCanvasLayout(id)
     const updated = conversations.filter((c) => c.id !== id)
     setConversations(updated)
@@ -275,111 +273,43 @@ export default function EmployeePage() {
   }
 
   const send = async (text: string) => {
-    if (!text.trim() || !conversationId || conversationLoading || running) return
-    const { data: sessionData } = await supabase.auth.getSession()
-    const userId = sessionData.session?.user.id
-    if (!userId) return
-
-    const isCurrentConversation = () => viewedConversationRef.current === conversationId
-    if (inFlightConversations.current.has(conversationId)) return
-    inFlightConversations.current.add(conversationId)
-    if (isCurrentConversation()) { setRunning(true); setEvents([]); setCanvasLoadError(null) }
-
-    // Update conversation title if this is the first user query
-    const userMsgCount = messages.filter((m) => m.role === 'user').length
-    if (userMsgCount === 0) {
-      const summaryTitle = text.trim().slice(0, 36)
-      void supabase.from('conversations').update({ title: summaryTitle }).eq('id', conversationId)
-      setConversations((prev) =>
-        prev.map((c) => (c.id === conversationId ? { ...c, title: summaryTitle } : c))
-      )
-    }
-
-    setInput('')
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      role: 'user',
-      type: 'text',
-      content: text,
-      payload: null,
-      created_at: new Date().toISOString(),
-    }
-    setMessages((m) => [...m, userMsg])
-    await supabase.from('messages').insert({
-      conversation_id: conversationId,
-      workspace_id: userId,
-      role: 'user',
-      type: 'text',
-      content: text,
-    })
-
-    let taskIdForGraph: string | null = null
-    try {
-      const type = classifyIntent(text)
-      const { taskId, result } = await runAgentTask({
-        workspaceId: userId,
-        conversationId,
-        type,
-        userRequest: text,
-        onTaskCreated: (id) => {
-          taskIdForGraph = id
-          if (isCurrentConversation()) setActiveTask(id)
-        },
-      })
-      await persistAgentResults({ workspaceId: userId, conversationId, taskId, result })
-      const { data: fresh } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
-      if (isCurrentConversation()) setMessages((fresh ?? []) as ChatMessage[])
-    } catch (err: unknown) {
-      console.error('Agent task failed:', err)
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        workspace_id: userId,
-        role: 'system',
-        type: 'error',
-        content: t('errorGeneric'),
-      })
-      if (isCurrentConversation()) setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          conversation_id: conversationId,
-          role: 'system',
-          type: 'error',
-          content: t('errorGeneric'),
-          payload: null,
-          created_at: new Date().toISOString(),
-        },
-      ])
-    } finally {
-      if (taskIdForGraph) {
-        const { data } = await supabase.from('agent_events').select('*')
-          .eq('task_id', taskIdForGraph).order('seq', { ascending: true })
-        if (isCurrentConversation() && data) setEvents(data as AgentEvent[])
+    if(!text.trim()||!conversationId||conversationLoading||running||!runner)return
+    setSending(true);setActionError('')
+    if(requestKey.current?.conversation!==conversationId||requestKey.current?.text!==text)requestKey.current={conversation:conversationId,text,key:crypto.randomUUID()}
+    const pending=continuationOrigin.current
+    const origin:TaskOrigin|undefined=pending?{kind:'document',conversationId,deliverableId:pending.deliverableId,version:pending.version}:undefined
+    try{
+      const task=await runner.submit(conversationId,text,requestKey.current.key,origin)
+      requestKey.current=null
+      continuationOrigin.current=null
+      composedRef.current=null
+      if(searchParams.has('compose')){
+        const next=new URLSearchParams(searchParams)
+        for(const key of ['compose','document','version','conversation'])next.delete(key)
+        setSearchParams(next,{replace:true})
       }
-      inFlightConversations.current.delete(conversationId)
-      if (isCurrentConversation()) { setRunning(false); setActiveTask(null) }
-    }
+      if(viewedConversationRef.current===conversationId){setInput('');setActiveTask(task.id)}
+      const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
+      if(viewedConversationRef.current===conversationId){
+        if(error)setActionError('Your request is saved. Messages could not be refreshed yet; they will retry automatically.')
+        else setMessages((data??[]) as ChatMessage[])
+      }
+      if(workspaceIdRef.current)await loadConversationsList(workspaceIdRef.current)
+    }catch{setActionError('Your request could not be confirmed saved. Keep your text and retry; the same request will not be duplicated.')}
+    finally{setSending(false)}
   }
-
-  const submitForm = async (msg: ChatMessage, values: Record<string, string | string[]>) => {
-    const fields = ((msg.payload?.fields as FormField[]) ?? []).map((f) => ({ ...f, value: values[f.name] ?? f.value }))
-    setMessages((m) =>
-      m.map((x) => (x.id === msg.id ? { ...x, payload: { ...x.payload, fields, submitted: true } } : x))
-    )
-    const summary = fields.map((f) => `${f.label}: ${Array.isArray(f.value) ? f.value.join(', ') : f.value}`).join('; ')
-    await send(`Brand voice updated: ${summary}`)
+  const submitForm = async (msg: ChatMessage, values: Record<string,string|string[]>) => {
+    if(!runner||typeof msg.payload?.inputId!=='string')throw new Error('This older form cannot be resumed. Send a new request with your answer.')
+    const selected=String(values.answer??'')
+    const status=['unknown','skipped','not_applicable'].includes(selected)?selected:'answered'
+    await runner.answer(msg.payload.inputId,Number(msg.payload.inputVersion),{status,value:status==='answered'?selected:undefined})
   }
 
   // Derive live progress step details from agent events
   const { currentAgentLabel, currentStepDescription, completedSteps } = useMemo(() => {
     const completed: string[] = []
-    let activeAgent = 'Orchestrator'
-    let currentStep = 'Analyzing your request and planning the workflow…'
+    let activeAgent = 'Director'
+    let currentStep = selectedTask?.status==='queued'?'Queued · waiting for an execution slot.':'Waiting for saved progress…'
 
     const formatAgentName = (id: string) => {
       switch (id) {
@@ -406,7 +336,6 @@ export default function EmployeePage() {
       if (e.event_type === 'agent_tool_used' && e.payload?.tool_label) {
         const tool = String(e.payload.tool_label)
         currentStep = `${tool}…`
-        completed.push(tool)
       } else if (e.event_type === 'agent_started' && e.payload?.task_summary) {
         currentStep = String(e.payload.task_summary)
       } else if (e.event_type === 'agent_completed' && e.payload?.result_summary) {
@@ -419,7 +348,7 @@ export default function EmployeePage() {
       currentStepDescription: currentStep,
       completedSteps: Array.from(new Set(completed)),
     }
-  }, [events])
+  }, [events,selectedTask?.status])
 
   const currentConversation = conversations.find((c) => c.id === conversationId)
 
@@ -502,6 +431,15 @@ export default function EmployeePage() {
           </button>
         </div>
 
+        {(actionError||runnerError)&&<p role="alert" className="m-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{actionError||runnerError}</p>}
+        {conversationTasks.length>0&&<div className="border-b border-ink-200 px-4 py-3 text-xs">
+          <label className="flex items-center gap-2">Task history<select className="input-field min-w-0 flex-1 text-xs" aria-label="Selected task" value={activeTask??''} onChange={e=>setActiveTask(e.target.value)}>{conversationTasks.map(task=><option key={task.id} value={task.id}>{task.user_request?.slice(0,45)||'Saved task'} · {task.status}</option>)}</select></label>
+          {selectedTask&&<div className="mt-2 flex flex-wrap items-center gap-2"><span className="badge capitalize">{selectedTask.status.replaceAll('_',' ')}</span><span>{selectedTask.consumption?.calls??0} / {selectedTask.allowance?.calls??8} model calls · {Math.max(0,(selectedTask.allowance?.calls??8)-(selectedTask.consumption?.calls??0))} remaining</span>
+            {['failed','interrupted'].includes(selectedTask.status)&&<button className="btn-secondary text-xs" onClick={()=>void runner?.resume(selectedTask).catch(()=>setActionError('This task could not be resumed. Reload its latest state.'))}>Resume task</button>}
+            {['running','queued','awaiting_input','awaiting_approval'].includes(selectedTask.status)&&<button className="btn-secondary text-xs" onClick={()=>void runner?.cancel(selectedTask).catch(()=>setActionError('Cancellation could not be saved. Check the task status before retrying.'))}>Cancel task</button>}
+          </div>}
+          <p className="mt-2 text-ink-500">Tasks continue while you navigate this app. Keep this browser open; interrupted work can be resumed.</p>
+        </div>}
         {/* Message Stream */}
         <div className="flex-1 space-y-4 overflow-y-auto p-3.5 sm:p-6">
           {displayedMessages.map((msg) => (
@@ -559,7 +497,7 @@ export default function EmployeePage() {
             {quickPrompts.map((q) => (
               <button
                 key={q.label}
-                disabled={conversationLoading || running}
+                disabled={!runner || conversationLoading || running}
                 onClick={() => void send(q.text)}
                 className="btn-secondary px-3 py-1.5 text-xs shrink-0 sm:shrink"
               >
@@ -586,7 +524,7 @@ export default function EmployeePage() {
           <button
             type="submit"
             aria-label="Send message"
-            disabled={running || conversationLoading || !input.trim()}
+            disabled={!runner || running || conversationLoading || !input.trim()}
             className="btn-primary px-4 shrink-0 h-10 sm:h-11 flex items-center justify-center"
           >
             <Send size={16} />
@@ -610,7 +548,7 @@ export default function EmployeePage() {
           ) : canvasLoadError ? (
             <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
           ) : (
-            <AgentCanvas key={conversationId} conversationId={conversationId} events={events} running={running} previewPosts={canvasPreviews} />
+            <AgentCanvas key={`${conversationId}:${activeTask}`} conversationId={conversationId ? `${conversationId}:${activeTask??'empty'}` : null} events={events} running={selectedTask?.status==='running'} taskId={selectedTask?.id} taskStatus={selectedTask?.status} previewPosts={canvasPreviews} />
           )}
         </div>
       </div>
@@ -754,11 +692,11 @@ function MessageBubble({
   onOpenFull,
 }: {
   msg: ChatMessage
-  onSubmitForm: (msg: ChatMessage, values: Record<string, string | string[]>) => void
+  onSubmitForm: (msg: ChatMessage, values: Record<string, string | string[]>) => Promise<void>
   onDownload: (title: string, content: string) => void
   onOpenFull: (title: string, content: string) => void
 }) {
-  const { t } = useLang()
+  const { t } = useCopy()
   if (msg.type === 'knowledge_notification') {
     const count = Number(msg.payload?.count ?? msg.content)
     return (
@@ -767,6 +705,8 @@ function MessageBubble({
       </div>
     )
   }
+  if(msg.type==='post_reference')return <Link className="card block p-4 text-sm text-primary-800 hover:border-primary-400" to={`/scheduling?post=${encodeURIComponent(String(msg.payload?.postId??''))}`}><span className="font-semibold">Draft Post · review in Scheduling</span><p className="mt-2 line-clamp-3 text-ink-600">{String(msg.payload?.caption??msg.content)}</p></Link>
+  if(msg.type==='task_status')return <p className="rounded-xl bg-ink-100 p-3 text-sm text-ink-600">{msg.content}</p>
   if (msg.type === 'error') {
     return (
       <div className="animate-fade-up rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-600">{msg.content}</div>
@@ -835,6 +775,16 @@ function MessageBubble({
                       <Maximize2 size={13} />
                       <span className="hidden sm:inline">{t('viewFull')}</span>
                     </button>
+                    {typeof msg.payload?.deliverable_id === 'string' && (
+                      <Link
+                        to={`/deliverables?document=${encodeURIComponent(msg.payload.deliverable_id)}`}
+                        className="inline-flex items-center gap-1 rounded-lg bg-white border border-ink-200 px-2 py-1 text-xs font-medium text-ink-700 shadow-2xs hover:bg-ink-100 transition-colors"
+                        title="Open this document in Documents"
+                      >
+                        <ArrowUpRight size={13} />
+                        <span className="hidden sm:inline">Documents</span>
+                      </Link>
+                    )}
                   </div>
                 </div>
 
@@ -849,9 +799,12 @@ function MessageBubble({
       </div>
     )
   }
-  if (msg.type === 'form' && msg.payload) {
+  if ((msg.type === 'form'||msg.type === 'structured_form') && msg.payload) {
     const fields = (msg.payload.fields as FormField[]) ?? []
     const submitted = Boolean(msg.payload.submitted)
+    // Legacy forms have no Task input to resume. Keep them readable but never
+    // show a submit button that would fail after the owner answers.
+    const resumable = typeof msg.payload.inputId === 'string' && !msg.payload.legacy
     return (
       <div className="animate-fade-up">
         <div className="flex items-start gap-2.5">
@@ -860,13 +813,54 @@ function MessageBubble({
           </div>
           <div className="card max-w-[95%] sm:max-w-[85%] p-3.5 sm:p-4">
             <MarkdownContent content={msg.content} className="text-sm font-medium text-ink-800" />
-            {!submitted && <FormFields fields={fields} onSubmit={(v) => onSubmitForm(msg, v)} />}
+            {!submitted && resumable && <FormFields fields={fields} onSubmit={(v) => onSubmitForm(msg, v)} />}
+            {!submitted && !resumable && <p className="mt-2 text-xs text-ink-500">This earlier form is kept for history and cannot be answered here.</p>}
             {submitted && <p className="mt-2 text-xs text-primary-700">✓ {t('submitForm')}</p>}
           </div>
         </div>
       </div>
     )
   }
+  if (msg.type === 'budget_extension_request') {
+    const taskId = typeof msg.payload?.taskId === 'string' ? msg.payload.taskId : ''
+    const used = Number(msg.payload?.used ?? msg.payload?.calls)
+    const limit = Number(msg.payload?.limit ?? msg.payload?.allowance)
+    const storedRemaining = Number(msg.payload?.remaining)
+    const remaining = Number.isFinite(storedRemaining)
+      ? storedRemaining
+      : Number.isFinite(used) && Number.isFinite(limit) ? Math.max(0, limit - used) : null
+    return (
+      <div className="animate-fade-up">
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <Gauge size={16} />
+          </div>
+          <div className="card max-w-[95%] sm:max-w-[85%] p-3.5 sm:p-4">
+            <p className="text-sm font-semibold text-ink-900">Model allowance reached</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink-700">{msg.content}</p>
+            {(Number.isFinite(used) && Number.isFinite(limit)) || remaining !== null ? (
+              <p className="mt-2 text-xs text-ink-600">
+                {Number.isFinite(used) && Number.isFinite(limit) ? `${used} of ${limit} model calls used.` : ''}
+                {remaining !== null ? ` ${remaining} remaining.` : ''}
+              </p>
+            ) : null}
+            {taskId && (
+              <Link
+                to={`/employee?task=${encodeURIComponent(taskId)}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50"
+              >
+                <MessageSquare size={13} />
+                Answer in Chat
+              </Link>
+            )}
+            <p className="mt-2 text-xs text-ink-500">Saved progress is kept. No further model calls run until you explicitly continue.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  // Plain text and text_response share the standard bubble below. Submitting a
+  // legacy form never changes brand voice; only an explicit form action does.
   const isUser = msg.role === 'user'
   return (
     <div className={`animate-fade-up flex ${isUser ? 'justify-end' : 'items-start gap-2.5'}`}>
@@ -897,55 +891,20 @@ function MessageBubble({
   )
 }
 
-function FormFields({ fields, onSubmit }: { fields: FormField[]; onSubmit: (v: Record<string, string | string[]>) => void }) {
-  const { t } = useLang()
-  const [values, setValues] = useState<Record<string, string | string[]>>({})
-
-  return (
-    <div className="mt-3 space-y-3">
-      {fields.map((f) => (
-        <div key={f.name}>
-          <span className="mb-1 block text-xs font-semibold text-ink-600">{f.label}</span>
-          {f.type === 'text' && (
-            <input
-              className="input-field"
-              onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-            />
-          )}
-          {f.type === 'single' && (
-            <div className="flex flex-wrap gap-2">
-              {(f.options ?? []).map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  onClick={() => setValues((v) => ({ ...v, [f.name]: o }))}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    values[f.name] === o
-                      ? 'border-primary-600 bg-primary-50 text-primary-800'
-                      : 'border-ink-200 text-ink-600 hover:border-ink-300'
-                  }`}
-                >
-                  {o}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setValues((v) => ({ ...v, [f.name]: `${f.label} — researched by agent` }))}
-            className="mt-1 text-xs text-primary-700 hover:underline"
-          >
-            {t('searchYourself')}
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => onSubmit(values)}
-        className="btn-primary px-4 py-1.5 text-xs"
-      >
-        {t('submitForm')}
-      </button>
-    </div>
-  )
+function FormFields({fields,onSubmit}:{fields:FormField[];onSubmit:(values:Record<string,string|string[]>)=>Promise<void>}) {
+ const [values,setValues]=useState<Record<string,string>>({}),[busy,setBusy]=useState(false),[error,setError]=useState('')
+ return <form className="mt-3 space-y-4" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await onSubmit(values)}catch(error){setError(error instanceof Error?error.message:'Your answer could not be saved. Try again.')}finally{setBusy(false)}}}>
+  {fields.map(field=>{
+   // Numeric and URL fields ask for the right keyboard/validation without
+   // changing the free-text answer path used by every other clarification.
+   const inputType=field.type==='number'?'number':field.type==='url'?'url':'text'
+   const inputMode=field.type==='number'?'decimal':field.type==='url'?'url':undefined
+   return <fieldset key={field.name} className="space-y-3"><legend className="mb-2 text-sm font-medium">{field.label}</legend>
+   {!!field.options?.length&&<div className="flex flex-wrap gap-2">{field.options.map(option=><button disabled={busy} type="button" key={option} className={`rounded-xl border px-3 py-2 text-xs ${values[field.name]===option?'border-primary-500 bg-primary-50':'border-ink-200'}`} onClick={()=>setValues({...values,[field.name]:option})}>{option}</button>)}</div>}
+   <label className="block text-xs">Your answer or another option<input type={inputType} inputMode={inputMode} className="input-field mt-2" value={values[field.name]??''} maxLength={3000} onChange={e=>setValues({...values,[field.name]:e.target.value})}/></label>
+   <div className="flex flex-wrap gap-2">{[['unknown','I don’t know yet'],['skipped','Skip'],['not_applicable','Not applicable']].map(([value,label])=><button disabled={busy} type="button" key={value} className={`rounded-lg border px-2 py-1.5 text-xs ${values[field.name]===value?'border-primary-500 bg-primary-50':'border-ink-200'}`} onClick={()=>setValues({...values,[field.name]:value})}>{label}</button>)}</div>
+  </fieldset>})}
+  {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
+  <button className="btn-primary text-xs" disabled={busy||fields.some(field=>!values[field.name]?.trim())}>{busy?'Saving answer…':'Save answer and continue'}</button>
+ </form>
 }

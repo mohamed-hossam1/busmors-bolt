@@ -46,7 +46,7 @@ export function cleanPageForAi(markdown: string): string {
     .filter((line) => {
       const key = line.trim().replace(/\s+/g, ' ').toLowerCase()
       if (!key) return true
-      if (/^[-*]?\s*(home|menu|navigation|footer|log ?in|sign ?up|الرئيسية|القائمة)\s*$/i.test(key)) return false
+      if (/^[-*]?\s*(home|menu|navigation|footer|log ?in|sign ?up)\s*$/i.test(key)) return false
       if (seen.has(key)) return false
       seen.add(key)
       return true
@@ -103,7 +103,7 @@ export function buildPageBlocks(pages: CrawledPage[], totalBudget = 32000): { te
     const firstContent = cleanedSections.findIndex((section) => section.body.length > 80)
     const sections = cleanedSections
       .map((section, order) => ({ ...section, order, score: (order === firstContent ? 5 : 0) +
-        (/product|service|pricing|audien|customer|mission|feature|من نحن|خدمات|منتج|عملاء|رؤية/i.test(section.heading + ' ' + section.context) ? 5 : 0) }))
+        (/product|service|pricing|audien|customer|mission|feature/i.test(section.heading + ' ' + section.context) ? 5 : 0) }))
       .sort((a, b) => b.score - a.score || a.order - b.order)
     let remaining = budget
     const sectionLimit = Math.max(1800, Math.floor(budget / Math.max(1, Math.min(sections.length, 4))))
@@ -149,7 +149,7 @@ export function extractCandidates(baseUrl: string, pages: CrawledPage[]): Extrac
   const candidates: ExtractedCandidate[] = []
   const home = pages[0]
   const company = cleanTitle(home?.title?.split(/\s[-–—|]\s|:\s/)[0] || new URL(baseUrl).hostname.replace(/^www\./, '').split('.')[0])
-  const badHeading = /best time to post|\b20\d{2}\b|\b(?:guide|tips|strategies)\b|أفضل وقت|نصائح|دليل|^(?:frequently|faq|resources|apps\s*&|navigation|cookie|privacy)/i
+  const badHeading = /best time to post|\b20\d{2}\b|\b(?:guide|tips|strategies)\b|^(?:frequently|faq|resources|apps\s*&|navigation|cookie|privacy)/i
   const meaningful = (text: string) => text.length >= 35 && text.split(/\s+/).length >= 6 &&
     !/^(?:get started|start your|learn more|enter your|by entering|sign up|log in|navigation|what.s included)/i.test(text)
   const paragraphs = (body: string) => body.split(/\n\s*\n/).map(toPlainText).filter(meaningful)
@@ -163,48 +163,48 @@ export function extractCandidates(baseUrl: string, pages: CrawledPage[]): Extrac
   if (home) {
     const sections = splitSections(cleanPageForAi(home.markdown))
     const hero = sections.find((section) => section.heading && !badHeading.test(section.heading) && paragraphs(section.body).length) || sections.find((section) => paragraphs(section.body).length)
-    const description = hero && (paragraphs(hero.body).find((text) => /helps?|provides?|platform|software|create|manage|نقدم|تساعد/i.test(text)) || paragraphs(hero.body)[0])
+    const description = hero && (paragraphs(hero.body).find((text) => /helps?|provides?|platform|software|create|manage/i.test(text)) || paragraphs(hero.body)[0])
     if (description) add('company_profile', company, /^works with/i.test(description) ? `${hero.heading}\n\n${description}` : description, home, `${hero.heading}\n${hero.body}`)
   }
   const audienceTerms: [string, RegExp][] = [
     ['Creators', /\bcreators?\b/i], ['Brands', /\bbrands?\b/i], ['Agencies', /\bagenc(?:y|ies)\b/i],
-    ['Small businesses', /\bsmall business(?:es)?\b|الشركات الصغيرة/i], ['Startups', /\bstartups?\b|الشركات الناشئة/i],
-    ['Enterprises', /\benterprises?\b|المؤسسات/i], ['Teams', /\bteams?\b|فرق العمل/i],
-    ['Business owners', /\bbusiness owners?\b|أصحاب الأعمال|رواد الأعمال/i], ['Nonprofits', /nonprofits?|غير الربحية/i],
-    ['Developers', /\bdevelopers?\b|المطورين/i], ['Schools & universities', /schools|universities|higher education|الجامعات|المدارس/i],
+    ['Small businesses', /\bsmall business(?:es)?\b/i], ['Startups', /\bstartups?\b/i],
+    ['Enterprises', /\benterprises?\b/i], ['Teams', /\bteams?\b/i],
+    ['Business owners', /\bbusiness owners?\b/i], ['Nonprofits', /nonprofits?/i],
+    ['Developers', /\bdevelopers?\b/i], ['Schools & universities', /schools|universities|higher education/i],
   ]
   const platforms = ['Instagram', 'Facebook', 'TikTok', 'LinkedIn', 'Threads', 'Bluesky', 'YouTube', 'Pinterest', 'Google Business', 'Mastodon', 'Substack', 'Meta', 'Bing']
   for (const page of pages) {
     const cleaned = cleanPageForAi(page.markdown)
     const sections = splitSections(cleaned)
-    const pricingPage = /pric|plans|packages|أسعار/i.test(new URL(page.url).pathname)
+    const pricingPage = /pric|plans|packages/i.test(new URL(page.url).pathname)
     for (const section of sections) {
       const heading = section.heading
       const statements = paragraphs(section.body)
       const context = `${section.context} / ${heading}`
-      const productContext = /features|products|services|solutions|capabilities|خدمات|منتجات|مميزات/i.test(section.context) || /create|publish|insight|analytic|community|collaborat|product|service|solution|feature|platform|campaign|scanner|automat|integration|dashboard|clickfraud|assistant|mobile app|protect|خدمة|منصة|منتج|حملات|تحليل/i.test(heading)
+      const productContext = /features|products|services|solutions|capabilities/i.test(section.context) || /create|publish|insight|analytic|community|collaborat|product|service|solution|feature|platform|campaign|scanner|automat|integration|dashboard|clickfraud|assistant|mobile app|protect/i.test(heading)
       const functionalStatements = [...statements].sort((a, b) => Number(b.length >= 80) - Number(a.length >= 80))
-      const productDescription = functionalStatements.find((text) => /creat|schedul|publish|manag|generat|automat|analy|report|connect|plan|organiz|protect|scan|reply|respond|provide|fine.tune|help|نشر|إدارة|جدولة|تحليل|إنشاء|تساعد/i.test(text) && !/total budget|fraudulent clicks|blocked ips|step \d/i.test(text))
-      if (heading && !badHeading.test(heading) && productContext && productDescription && !/[?؟]$|^(one\b|your\b|powerful ads$|why\b|how\b|what\b|try\b|ready\b|get\b|not sure)/i.test(heading)) {
+      const productDescription = functionalStatements.find((text) => /creat|schedul|publish|manag|generat|automat|analy|report|connect|plan|organiz|protect|scan|reply|respond|provide|fine.tune|help/i.test(text) && !/total budget|fraudulent clicks|blocked ips|step \d/i.test(text))
+      if (heading && !badHeading.test(heading) && productContext && productDescription && !/[?]$|^(one\b|your\b|powerful ads$|why\b|how\b|what\b|try\b|ready\b|get\b|not sure)/i.test(heading)) {
         const name = heading.split(/\s+/).length === 1 ? `${company} ${heading}` : heading
         add('offering', name, productDescription, page, `${heading}\n${section.body}`)
       }
-      if (pricingPage && heading && !badHeading.test(heading) && /\$|€|£|free forever|per month|\/month|billed|مجاني|شهري/i.test(section.body) && !/frequently|faq|why|how|what|support|included|customer|only pay|questions/i.test(heading) && /^(?:free|essentials?|team|pro|professional|business|enterprise|starter|basic|premium|growth|agency|standard|advanced)(?:\s+(?:plan|recommended))?$/i.test(heading)) {
+      if (pricingPage && heading && !badHeading.test(heading) && /\$|€|£|free forever|per month|\/month|billed/i.test(section.body) && !/frequently|faq|why|how|what|support|included|customer|only pay|questions/i.test(heading) && /^(?:free|essentials?|team|pro|professional|business|enterprise|starter|basic|premium|growth|agency|standard|advanced)(?:\s+(?:plan|recommended))?$/i.test(heading)) {
         const pricing = toPlainText(section.body)
         if (pricing.length >= 25) add('company_fact', `${heading.replace(/\s+Recommended$/i, '')} pricing`, pricing, page, `${heading}\n${section.body}`)
       }
-      if (/\b(?:mission|vision|purpose|our goal)\b|رسالتنا|رؤيتنا|هدفنا/i.test(heading) && statements[0]) add('strategic_goal', heading, statements[0], page)
-      if (/values|principles|brand voice|tone|قيمنا|نبرة/i.test(context) && heading && statements[0] && !badHeading.test(heading) && !/^(?:our )?(?:values|principles)$/i.test(heading)) add('brand_rule', heading, statements[0], page)
-      const texts = /[?؟]$/.test(heading) || /testimonial|our clients love/i.test(context) ? [] : [heading, ...statements].filter(Boolean)
+      if (/\b(?:mission|vision|purpose|our goal)\b/i.test(heading) && statements[0]) add('strategic_goal', heading, statements[0], page)
+      if (/values|principles|brand voice|tone/i.test(context) && heading && statements[0] && !badHeading.test(heading) && !/^(?:our )?(?:values|principles)$/i.test(heading)) add('brand_rule', heading, statements[0], page)
+      const texts = /[?]$/.test(heading) || /testimonial|our clients love/i.test(context) ? [] : [heading, ...statements].filter(Boolean)
       for (const text of texts) {
         if (text.length < 25) continue
         const segments = audienceTerms.filter(([, pattern]) => pattern.test(text)).map(([label]) => label)
-        if (segments.length && !/our agency|our team|it.s like|personal team|media buyers|testimonial/i.test(text) && /built for|designed for|made for|using|used by|serves|whether you are|helps? (?:small businesses|creators|brands|agencies|teams|startups)|for (?:small businesses|creators|brands|agencies|teams|startups|enterprises|developers)|يخدم|للشركات|لرواد|للمؤسسات|للمطورين/i.test(text)) add('audience', segments.slice(0, 3).join(', '), text.replace(/^[\d,]+\s+/, ''), page)
-        if (/our (?:mission|vision|goal) is|رسالتنا|رؤيتنا|هدفنا/i.test(text)) add('strategic_goal', 'Stated mission', text, page)
-        if (/unlike|rather than traditional|only platform|differentiat|الأول من نوعه|بخلاف/i.test(text)) add('positioning', 'Stated differentiation', text, page)
-        if (/certified|accredited|premier partner|partner(?:ed)? with|powered by|معتمد|شراكة/i.test(text)) add('company_fact', 'Credentials & partnerships', text, page)
+        if (segments.length && !/our agency|our team|it.s like|personal team|media buyers|testimonial/i.test(text) && /built for|designed for|made for|using|used by|serves|whether you are|helps? (?:small businesses|creators|brands|agencies|teams|startups)|for (?:small businesses|creators|brands|agencies|teams|startups|enterprises|developers)/i.test(text)) add('audience', segments.slice(0, 3).join(', '), text.replace(/^[\d,]+\s+/, ''), page)
+        if (/our (?:mission|vision|goal) is/i.test(text)) add('strategic_goal', 'Stated mission', text, page)
+        if (/unlike|rather than traditional|only platform|differentiat/i.test(text)) add('positioning', 'Stated differentiation', text, page)
+        if (/certified|accredited|premier partner|partner(?:ed)? with|powered by/i.test(text)) add('company_fact', 'Credentials & partnerships', text, page)
         const supported = platforms.filter((platform) => text.toLowerCase().includes(platform.toLowerCase()))
-        if (supported.length >= 2 && /publish|schedule|post|support|advertis|across|نشر|إعلان|يدعم/i.test(text)) add('channel', 'Supported platforms', text, page, supported.join(', ') + '\n' + text)
+        if (supported.length >= 2 && /publish|schedule|post|support|advertis|across/i.test(text)) add('channel', 'Supported platforms', text, page, supported.join(', ') + '\n' + text)
       }
     }
     const text = toPlainText(cleaned)

@@ -4,11 +4,11 @@ import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, CheckCheck, Copy, XCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../context/LangContext'
+import { useCopy } from '../hooks/useCopy'
 import type { PlannedPost } from '../lib/types'
 
 export default function CalendarPage() {
-  const { t } = useLang()
+  const { t } = useCopy()
   const [posts, setPosts] = useState<PlannedPost[]>([])
   const [editing, setEditing] = useState<PlannedPost | null>(null)
   const [editText, setEditText] = useState('')
@@ -293,7 +293,7 @@ function PostCard({
   copied?: boolean
   onMarkPublished?: () => void
 }) {
-  const { t } = useLang()
+  const { t } = useCopy()
   return (
     <div className="card animate-fade-up overflow-hidden p-4 sm:p-5 flex flex-col justify-between hover:shadow-xs transition-shadow" dir="auto">
       <div>

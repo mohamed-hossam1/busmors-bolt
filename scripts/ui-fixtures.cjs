@@ -15,7 +15,7 @@ const knowledge = [
   ['company_fact', 'Made in small batches', 'Each piece is individually finished. Natural variations are part of its character.'],
   ['channel', 'Instagram & Facebook', 'Tell visual stories about the makers, materials, and everyday rituals.'],
   ['competitor', 'Independent homeware studios', 'An illustrative category for comparing messaging and customer expectations.'],
-].map(([category, title, summary], index) => ({ id: `knowledge-${index}`, workspace_id: workspace, category, title, summary, properties: {}, status: 'approved', source: 'manual', source_detail: 'Fictional sample business', confidence: 1, created_at: date, updated_at: date }))
+].map(([category, title, summary], index) => ({ id: `knowledge-${index}`, workspace_id: workspace, category, title, summary, properties: {}, version: 1, approval_state:'approved',verification_state:'owner_reported',epistemic_kind:'claim',is_current:true,status: 'approved', source: 'manual', source_detail: 'Fictional sample business', confidence: 1, created_at: date, updated_at: date }))
 const edges = knowledge.slice(1).map((node, index) => ({ id: `relationship-${index}`, workspace_id: workspace, source_node_id: knowledge[0].id, target_node_id: node.id, relation_type: 'RELATED_TO', status: 'approved', weight: 1, created_at: date }))
 const report = `# A considered launch for the Everyday Collection
 
@@ -73,10 +73,11 @@ async function installFixtures(context) {
   await context.addInitScript(({ workspace }) => {
     localStorage.setItem('sb-busmora-ui-preview-auth-token', JSON.stringify({ access_token: 'fictional-ui-token', refresh_token: 'fictional-ui-refresh', expires_at: 4102444800, expires_in: 3600, token_type: 'bearer', user: { id: workspace, aud: 'authenticated', role: 'authenticated', email: 'hello@luma.example', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01T00:00:00Z' } }))
   }, { workspace })
-  const tables = { conversations: structuredClone(conversations), brain_nodes: structuredClone(knowledge), brain_edges: edges, messages, tasks, agent_events: events, deliverables, planned_posts: structuredClone(posts), audit_log: [], workspace_settings: [{ workspace_id: workspace, company_url: 'https://luma.example', onboarding_state: 'complete' }], ai_keys: [] }
+  const tables = { conversations: structuredClone(conversations), brain_nodes: structuredClone(knowledge), brain_edges: edges, messages, tasks, agent_events: events, deliverables, planned_posts: structuredClone(posts), audit_log: [], brain_proposals: [], brain_versions: [], workspace_settings: [{ workspace_id: workspace, company_url: 'https://luma.example', onboarding_state: 'complete' }], ai_keys: [] }
   await context.route('https://busmora-ui-preview.supabase.co/**', async (route) => {
     const request = route.request(), url = new URL(request.url())
     const table = url.pathname.split('/').pop()
+    if (table === 'bootstrap_workspace') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tables.workspace_settings[0]) })
     let rows = tables[table] ?? []
     const matches = (row) => [...url.searchParams].every(([key, value]) => !value.startsWith('eq.') || String(row[key]) === value.slice(3))
     if (request.method() === 'POST') {

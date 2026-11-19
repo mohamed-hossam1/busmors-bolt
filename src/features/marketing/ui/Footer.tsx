@@ -44,7 +44,7 @@ export default function Footer() {
         {/* Legal Text & Copyright */}
         <div className="space-y-1.5 text-xs text-stage-subtle">
           <p>{t("Footer.busmoraYourAIMarketingDirector")}</p>
-          <p>{t("Footer.arabicFirstYourBusinessAtTheCenter")}</p>
+          <p>{t("Footer.yourBusinessAtTheCenter")}</p>
           <p className="pt-2 text-stage-subtle/80">{t("Footer.2026BusmoraProductInDevelopment")}</p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useLang } from '../../context/LangContext'
+import { useCopy } from '../../hooks/useCopy'
 
 export interface PostPreviewData {
   platform: string
@@ -9,7 +9,7 @@ export interface PostPreviewData {
 }
 
 export function PostPreviewCard({ post, compact }: { post: PostPreviewData; compact?: boolean }) {
-  const { t } = useLang()
+  const { t } = useCopy()
   return (
     <div className="overflow-hidden rounded-xl border border-ink-200 bg-white p-3.5 shadow-sm hover:shadow-card transition-shadow" dir="auto">
       <div className="mb-2 flex items-center justify-between gap-2 border-b border-ink-100 pb-2">

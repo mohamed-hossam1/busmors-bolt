@@ -1,0 +1,1 @@
+import{t as e}from"./createLucideIcon-C-bNdaTa.js";var t={name:`circle-check`,size:24,node:[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`m16 9-5.5 5.5L8 12`,key:`xofnsj`}]],aliases:[`check-circle-2`]};t.node;var n=e(t),r={name:`plus`,size:24,node:[[`path`,{d:`M5 12h14`,key:`1ays0h`}],[`path`,{d:`M12 5v14`,key:`s699le`}]]};r.node;var i=e(r);export{n,i as t};

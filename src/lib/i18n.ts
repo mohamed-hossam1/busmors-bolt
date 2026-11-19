@@ -1,8 +1,16 @@
-export type Lang = 'en'
-
 export const translations = {
   // nav & shell
   appName: 'BusMora',
+  navRoadmap: 'Roadmap',
+  workspace: 'Workspace',
+  more: 'More',
+  retry: 'Try again',
+  saved: 'Saved',
+  saving: 'Saving…',
+  google: 'Continue with Google',
+  verifyEmail: 'Check your email',
+  resend: 'Resend verification email',
+  newPassword: 'Set a new password',
   navEmployee: 'Marketing Director',
   navBrain: 'Brain',
   navCalendar: 'Calendar & Publishing',
@@ -106,7 +114,7 @@ export const translations = {
   quickCompetitors: 'Analyze competitors',
   quickContent: 'Write social posts',
   quickCalendar: 'Plan a content calendar',
-  greetingProactive: 'Hello! I reviewed your company info. Tell me what you need — research, content, or a calendar.',
+  greetingProactive: 'Hello! What would you like to work on? I can use your confirmed business context to help.',
 
   // deliverables
   deliverablesTitle: 'Deliverables',
@@ -156,6 +164,6 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations
 
-export function t(key: TranslationKey): string {
-  return translations[key]
+export function t(key: TranslationKey, values?: Record<string, string | number>): string {
+ return translations[key].replace(/\{(\w+)\}/g, (match, name) => values?.[name] === undefined ? match : String(values[name]))
 }

@@ -1,6 +1,6 @@
 import LoadingState from '../components/LoadingState'
 import { useDialog } from '../hooks/useDialog'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Brain as BrainIcon,
   Plus,
@@ -18,10 +18,16 @@ import {
   X,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../context/LangContext'
-import type { AuditEntry, BrainCategory, BrainEdge, BrainNode } from '../lib/types'
+import { useCopy } from '../hooks/useCopy'
+import { useAuth } from '../context/AuthContext'
+import DeleteKnowledgeDialog from '../components/brain/DeleteKnowledgeDialog'
+import type { AuditEntry, BrainCategory, BrainEdge, BrainNode, BrainProposal } from '../lib/types'
 import BrainGraph from '../components/brain/BrainGraph'
 import NodeEditor from '../components/brain/NodeEditor'
+import KnowledgeEvidence, { KnowledgeLabels } from '../components/brain/KnowledgeEvidence'
+import ProposalReview from '../components/brain/ProposalReview'
+import RelationshipEditor from '../components/brain/RelationshipEditor'
+import { saveBrainItem } from '../lib/brainApi'
 import { organizeBrainWithAi } from '../lib/crawl'
 
 const ALL_CATEGORIES: BrainCategory[] = [
@@ -49,7 +55,17 @@ const CATEGORY_STYLES: Record<string, string> = {
 }
 
 export default function BrainPage() {
-  const { t } = useLang()
+  const { t } = useCopy()
+  const { session } = useAuth()
+  const deletePreferenceKey = `busmora:skip-knowledge-delete-confirmation:${session?.user.id ?? 'anonymous'}`
+  const skippedDeletePrompts = useRef(new Set<string>())
+  const [pendingDelete, setPendingDelete] = useState<BrainNode | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [pageError,setPageError] = useState('')
+  const [evidence,setEvidence] = useState<BrainNode|null>(null)
+  const [relationships,setRelationships] = useState(false)
+  const [proposals,setProposals] = useState<BrainProposal[]>([])
   const [nodes, setNodes] = useState<BrainNode[]>([])
   const [edges, setEdges] = useState<BrainEdge[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
@@ -74,26 +90,25 @@ export default function BrainPage() {
   useDialog(showReorganizeModal, () => { if (!reorganizing) setShowReorganizeModal(false) })
 
   const load = async () => {
-    const [{ data: nodesData }, { data: edgesData }, { data: auditData }] = await Promise.all([
+    const results = await Promise.all([
       supabase.from('brain_nodes').select('*').order('created_at', { ascending: false }),
       supabase.from('brain_edges').select('*'),
       supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('brain_proposals').select('*').eq('status','pending').order('created_at',{ascending:false}),
     ])
-
-    const loadedNodes = (nodesData ?? []) as BrainNode[]
-    const loadedEdges = (edgesData ?? []) as BrainEdge[]
-
-    setNodes(loadedNodes)
-    setEdges(loadedEdges)
-    setAudit((auditData ?? []) as AuditEntry[])
-    setLoading(false)
+    if(results.some(result=>result.error)) { setPageError('Some Brain records could not be loaded. Retry to see current knowledge.');setLoading(false);return }
+    setNodes((results[0].data??[]) as BrainNode[])
+    setEdges((results[1].data??[]) as BrainEdge[])
+    setAudit((results[2].data??[]) as AuditEntry[])
+    setProposals((results[3].data??[]) as BrainProposal[])
+    setPageError('');setLoading(false)
   }
 
   useEffect(() => {
     void load()
   }, [])
 
-  const candidates = useMemo(() => nodes.filter((n) => n.status === 'candidate'), [nodes])
+  const candidates = useMemo(() => nodes.filter((n) => n.status === 'candidate' && !proposals.some(p=>p.node_id===n.id)), [nodes,proposals])
   const approved = useMemo(() => nodes.filter((n) => n.status === 'approved'), [nodes])
 
   const filteredCandidates = useMemo(() => {
@@ -124,99 +139,59 @@ export default function BrainPage() {
     return groups
   }, [filteredApproved])
 
-  const approveAllCandidates = async () => {
-    if (candidates.length === 0) return
-    const ids = candidates.map((c) => c.id)
-    await supabase
-      .from('brain_nodes')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
-      .in('id', ids)
-    await supabase.from('audit_log').insert({
-      action: 'knowledge_batch_approved',
-      entity_type: 'brain_node',
-      details: { count: ids.length },
-    })
-    void load()
-  }
-
-  const rejectAllCandidates = async () => {
-    if (candidates.length === 0) return
-    if (!confirm('Are you sure you want to reject all pending candidates?')) return
-    const ids = candidates.map((c) => c.id)
-    await supabase
-      .from('brain_nodes')
-      .update({ status: 'rejected', updated_at: new Date().toISOString() })
-      .in('id', ids)
-    await supabase.from('audit_log').insert({
-      action: 'knowledge_batch_rejected',
-      entity_type: 'brain_node',
-      details: { count: ids.length },
-    })
-    void load()
-  }
-
   const setStatus = async (node: BrainNode, status: BrainNode['status']) => {
-    await supabase.from('brain_nodes').update({ status, updated_at: new Date().toISOString() }).eq('id', node.id)
-    await supabase.from('audit_log').insert({
-      action: status === 'approved' ? 'knowledge_approved' : 'knowledge_rejected',
-      entity_type: 'brain_node',
-      entity_id: node.id,
-      details: { title: node.title },
-    })
-    void load()
+    try { await saveBrainItem(node,node.title,node.summary,node.category,node.properties,status);await load() }
+    catch(error) { setPageError(error instanceof Error?error.message:'Could not save this decision.') }
+  }
+  const decideAll = async (status:'approved'|'rejected') => {
+    try {
+      for(const node of candidates) await saveBrainItem(node,node.title,node.summary,node.category,node.properties,status)
+      await load()
+    }catch(error){await load();setPageError((error instanceof Error?error.message:'A decision failed.')+' Earlier successful decisions are saved; remaining items still need review.')}
+  }
+  const approveAllCandidates = ()=>decideAll('approved')
+  const rejectAllCandidates = ()=>{if(confirm('Reject all pending candidates?'))void decideAll('rejected')}
+
+  const performDelete = async (node: BrainNode, skipConfirmation = false) => {
+    if (deletingId) return
+    setDeletingId(node.id)
+    setDeleteError(null)
+    try {
+      // The foreign keys cascade related edges in the same database operation.
+      const { error } = await supabase.from('brain_nodes').delete().eq('id', node.id)
+      if (error) throw error
+      if (skipConfirmation) {
+        skippedDeletePrompts.current.add(deletePreferenceKey)
+        try { localStorage.setItem(deletePreferenceKey, 'true') } catch { /* Keep the preference for this session if storage is unavailable. */ }
+      }
+      setPendingDelete(null)
+      setNodes((current) => current.filter((item) => item.id !== node.id))
+      setEdges((current) => current.filter((edge) => edge.source_node_id !== node.id && edge.target_node_id !== node.id))
+      // The deletion trigger records the actor, cleans proposals and holds dependent Posts atomically.
+      void load()
+    } catch {
+      setDeleteError('Could not delete this knowledge card. Please try again.')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
-  const deleteNode = async (node: BrainNode) => {
-    if (!confirm(t('confirmDelete'))) return
-    await supabase
-      .from('brain_edges')
-      .delete()
-      .or(`source_node_id.eq.${node.id},target_node_id.eq.${node.id}`)
-    await supabase.from('brain_nodes').delete().eq('id', node.id)
-    await supabase.from('audit_log').insert({
-      action: 'knowledge_deleted',
-      entity_type: 'brain_node',
-      entity_id: node.id,
-      details: { title: node.title },
-    })
-    void load()
+  const deleteNode = (node: BrainNode) => {
+    if (deletingId) return
+    setDeleteError(null)
+    let skip = skippedDeletePrompts.current.has(deletePreferenceKey)
+    try { skip ||= localStorage.getItem(deletePreferenceKey) === 'true' } catch { /* Browser storage is optional. */ }
+    if (skip) void performDelete(node)
+    else setPendingDelete(node)
   }
 
-  const saveEdit = async (node: BrainNode, title: string, summary: string) => {
-    await supabase
-      .from('brain_nodes')
-      .update({ title, summary, status: 'approved', properties: { ...node.properties, user_edited: true }, updated_at: new Date().toISOString() })
-      .eq('id', node.id)
-    await supabase.from('audit_log').insert({
-      action: 'knowledge_edited_approved',
-      entity_type: 'brain_node',
-      entity_id: node.id,
-      details: { title },
-    })
-    setEditing(null)
-    void load()
+  const saveEdit = async (node: BrainNode, title: string, summary: string, category: BrainCategory, properties: Record<string,unknown>) => {
+    await saveBrainItem(node,title,summary,category,properties)
+    setEditing(null);await load()
   }
-
-  const addManual = async (title: string, summary: string, category: BrainCategory) => {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const userId = sessionData.session?.user.id
-    if (!userId) return
-    await supabase.from('brain_nodes').insert({
-      workspace_id: userId,
-      category,
-      title,
-      summary,
-      status: 'approved',
-      source: 'manual',
-      confidence: 1,
-    })
-    await supabase.from('audit_log').insert({
-      action: 'knowledge_added_manually',
-      entity_type: 'brain_node',
-      details: { title },
-    })
-    setEditing(null)
-    void load()
+  const addManual = async (title: string, summary: string, category: BrainCategory, properties: Record<string,unknown>) => {
+    await saveBrainItem(null,title,summary,category,properties)
+    setEditing(null);await load()
   }
 
   const openReorganizeModal = async () => {
@@ -276,7 +251,7 @@ export default function BrainPage() {
     }
   }
 
-  const pendingCount = candidates.length
+  const pendingCount = candidates.length+proposals.length
 
   return (
     <div className="workspace-page">
@@ -288,6 +263,10 @@ export default function BrainPage() {
           </div>
         )}
 
+        {pageError&&<div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p>{pageError}</p><button className="mt-2 underline" onClick={()=>void load()}>Reload Brain</button></div>}
+        {evidence&&<KnowledgeEvidence node={evidence} onClose={()=>setEvidence(null)}/>}
+        {relationships&&<RelationshipEditor nodes={nodes} edges={edges} onClose={()=>setRelationships(false)} onChanged={load}/>}
+        {deleteError && !pendingDelete && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{deleteError}</p>}
         <header className="brain-page-header">
           <div className="flex items-center gap-3">
             <span className="brain-page-heading"><BrainIcon size={23} /></span>
@@ -328,6 +307,7 @@ export default function BrainPage() {
                 <Network size={15} /> {t('graphView')}
               </button>
             </div>
+            <button className="btn-secondary text-xs sm:text-sm" onClick={()=>setRelationships(true)}><Network size={15}/>Relationships</button>
             <button
               onClick={openReorganizeModal}
               className="btn-secondary px-3 py-1.5 text-xs sm:text-sm flex items-center gap-1.5 text-primary-700 border-primary-200 hover:bg-primary-50"
@@ -368,7 +348,7 @@ export default function BrainPage() {
         )}
 
         {view === 'graph' ? (
-          <BrainGraph nodes={nodes.filter((node) => node.status !== 'rejected')} edges={edges} onEditNode={(node) => setEditing(node)} />
+          <BrainGraph nodes={nodes.filter((node) => !['rejected','retired'].includes(node.status))} edges={edges} onEditNode={(node) => setEditing(node)} onEvidence={setEvidence}/>
         ) : loading ? (
           <LoadingState label="Loading your Business Brain…" />
         ) : (
@@ -472,8 +452,9 @@ export default function BrainPage() {
               </div>
             </div>
 
+            {(filterTab==='all'||filterTab==='candidate')&&<ProposalReview proposals={proposals.filter(p=>(selectedCategory==='all'||p.diff.category===selectedCategory)&&(!searchQuery||`${p.diff.title} ${p.diff.summary}`.toLowerCase().includes(searchQuery.toLowerCase())))} nodes={nodes} onChanged={load}/>}
             {/* Completely Empty State */}
-            {candidates.length === 0 && approved.length === 0 && (
+            {candidates.length === 0 && approved.length === 0 && proposals.length === 0 && (
               <div className="card p-8 text-center text-sm text-ink-500">
                 <p className="mb-3">{t('noCandidates')}</p>
                 <button
@@ -607,12 +588,14 @@ export default function BrainPage() {
                                   </span>
                                 </div>
                                 <p className="mt-1.5 text-sm text-ink-600 leading-relaxed">{node.summary}</p>
+                                <KnowledgeLabels node={node}/>
                               </div>
-                              <div className="mt-4 flex items-center justify-between border-t border-ink-100 pt-2.5">
+                              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 pt-2.5">
                                 <span className="text-xs text-ink-400 truncate max-w-[180px]" dir="ltr">
                                   {node.source_detail || node.source}
                                 </span>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button onClick={()=>setEvidence(node)} className="rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50" aria-label={`Evidence for ${node.title}`}>Evidence</button>
                                   <button
                                     onClick={() => setEditing(node)}
                                     className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900 transition-colors"
@@ -622,6 +605,7 @@ export default function BrainPage() {
                                   </button>
                                   <button
                                     onClick={() => deleteNode(node)}
+                                    disabled={deletingId !== null}
                                     className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
                                     title={t('delete')}
                                   >
@@ -641,6 +625,14 @@ export default function BrainPage() {
           </div>
         )}
       </div>
+
+      {pendingDelete && <DeleteKnowledgeDialog
+        node={pendingDelete}
+        busy={deletingId !== null}
+        error={deleteError}
+        onCancel={() => { if (!deletingId) { setPendingDelete(null); setDeleteError(null) } }}
+        onConfirm={(skip) => { void performDelete(pendingDelete, skip) }}
+      />}
 
       {/* Reorganize with AI Modal */}
       {showReorganizeModal && (
@@ -731,8 +723,8 @@ export default function BrainPage() {
         <NodeEditor
           node={editing === 'new' ? null : editing}
           onCancel={() => setEditing(null)}
-          onSave={(title, summary, category) =>
-            editing === 'new' ? addManual(title, summary, category) : saveEdit(editing, title, summary)
+          onSave={(title, summary, category, properties) =>
+            editing === 'new' ? addManual(title, summary, category, properties) : saveEdit(editing, title, summary, category, properties)
           }
         />
       )}
@@ -751,7 +743,7 @@ function CandidateCard({
   onReject: () => void
   onEdit: () => void
 }) {
-  const { t } = useLang()
+  const { t } = useCopy()
   return (
     <div className="card animate-fade-up p-4">
       <div className="flex items-start justify-between gap-2">

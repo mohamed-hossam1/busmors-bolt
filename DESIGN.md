@@ -16,7 +16,7 @@ Adapted from the local `busmora-web` reference. The target remains React + TypeS
 | Secondary text on light | `#42516b` |
 | Secondary text on dark | `#bdc5e6` |
 
-Inter is the primary typeface, with IBM Plex Sans Arabic available as the Arabic fallback. Fonts are served locally; their OFL licenses are included in `public/fonts/`. Buttons use pill shapes, inputs use 12px corners, content cards use 16–22px corners, and large presentation canvases use 40–48px corners. App gutters are 22–32px on desktop and 10–16px on mobile.
+Inter is the application typeface. Fonts are served locally; their OFL licenses are included in `public/fonts/`. Buttons use pill shapes, inputs use 12px corners, content cards use 16–22px corners, and large presentation canvases use 40–48px corners. App gutters are 22–32px on desktop and 10–16px on mobile.
 
 Use `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.input-field`, `.card`, `.badge`, `.workspace-page`, `.workspace-heading`, and `.workspace-description` for product surfaces. `LoadingState`, `EmptyState`, `Brand`, and `useDialog` own repeated behavior. Popups use `.modal-panel` with opaque white backgrounds; drawers use opaque dark or white surfaces.
 

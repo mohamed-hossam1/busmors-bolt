@@ -109,16 +109,16 @@ test('fallback skips image-only hero sections and slogans and does not fabricate
   assert.equal((await read(h).aiExtractRelations(result.candidates)).length, 0)
 })
 
-test('fallback retains full partner names, separates decoration and supports Arabic statements', () => {
+test('fallback retains full partner names and separates decorative statements', () => {
   const content = createHarness().load('src/lib/crawlContent.ts')
   const result = content.extractCandidates('https://example.com/', [{ url: 'https://example.com/', markdown:
-    '# Northstar\n\nNorthstar provides accounting automation for small businesses and distributed teams.\n\nPowered by AdCreative.ai to generate visual campaigns for small businesses.\n\nMeta Ads\n\nStep 1/5\n\n# من نحن\n\nنقدم خدمات المحاسبة للشركات الصغيرة ورواد الأعمال لمساعدتهم على تنظيم الفواتير والحسابات اليومية.' }])
+    '# Northstar\n\nNorthstar provides accounting automation for small businesses and distributed teams.\n\nPowered by AdCreative.ai to generate visual campaigns for small businesses.\n\nMeta Ads\n\nStep 1/5\n\n# About us\n\nOur accounting services are designed for small businesses and help owners manage their daily invoices and accounts.' }])
   const partner = result.find((c) => c.title === 'Credentials & partnerships')
   assert(partner.summary.includes('AdCreative.ai'))
   assert(!partner.summary.includes('Step 1/5'))
-  const arabic = content.extractCandidates('https://example.com/', [{ url: 'https://example.com/', markdown:
-    '# من نحن\n\nنقدم خدمات المحاسبة للشركات الصغيرة ورواد الأعمال لمساعدتهم على تنظيم الفواتير والحسابات اليومية.' }])
-  assert(arabic.some((c) => c.category === 'audience' && c.summary.includes('للشركات')))
+  const audience = content.extractCandidates('https://example.com/', [{ url: 'https://example.com/', markdown:
+    '# About us\n\nOur accounting services are designed for small businesses and help owners manage their daily invoices and accounts.' }])
+  assert(audience.some((c) => c.category === 'audience' && c.summary.includes('small businesses')))
 })
 
 test('fallback ignores navigation before the hero and excludes article headlines from offerings', () => {
@@ -220,7 +220,8 @@ test('missing migration uses additive saving on the existing schema, preserving 
   assert.equal(legacy.tables.brain_nodes.length, 2); assert.equal(legacy.tables.brain_edges.length, 2)
   assert.deepEqual(legacy.tables.brain_nodes.find((node) => node.id === manual.id), manual)
   assert(legacy.tables.brain_edges.some((edge) => edge.id === 'manual-edge'))
-  assert.equal(legacy.tables.workspace_settings[0].onboarding_state, 'complete')
+  assert.notEqual(legacy.tables.workspace_settings[0].onboarding_state, 'complete')
+  assert.equal(legacy.tables.brain_nodes.find(node=>node.id!==manual.id).status,'candidate')
 })
 
 test('simultaneous compatibility retries use stable IDs instead of creating duplicate facts or edges', async () => {
@@ -309,4 +310,12 @@ test('shared AI failures report a safe configuration reason without returning pr
   const unsafe = createHarness({ fetch: async () => Response.json({ error: 'private upstream response content' }, { status: 500 }) })
   const sanitized = await unsafe.load('src/lib/agents.ts').callAi({ systemPrompt: 'extract', userPrompt: 'page', useSharedCrawlKey: true })
   assert.equal(sanitized.reason, 'http_500')
+})
+
+
+test('public reader rejects internal targets, credentials and unsafe redirect sources', async () => {
+  const { normalizeSiteUrl, crawlPages } = createHarness({fetch:async()=>new Response('Title: redirected\nURL Source: http://127.0.0.1/private\nMarkdown Content:\n'+'Private text '.repeat(30))}).load('src/lib/siteReader.ts')
+  for(const address of ['http://127.0.0.1','http://2130706433','http://[::1]','http://10.0.0.1','http://host.local','http://metadata.internal','http://localhost','https://example.com:8443','https://user:password@example.com','https://example.com?access_token=secret']) assert.throws(()=>normalizeSiteUrl(address))
+  const result=await crawlPages('https://example.com',1)
+  assert.equal(result.pages.length,0)
 })

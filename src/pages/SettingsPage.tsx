@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { KeyRound, Trash2, Check, Loader2, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
+import AccountPreferences from '../components/settings/AccountPreferences'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
@@ -122,7 +123,8 @@ function SettingsContent() {
   return (
     <div className="workspace-page">
       <div className="mx-auto max-w-3xl space-y-6">
-        <header><p className="mb-2 text-xs font-semibold uppercase tracking-[.14em] text-primary-600">Your workspace</p><h1 className="workspace-heading">Settings</h1><p className="workspace-description">Connect the intelligence behind your Marketing Director.</p></header>
+        <header><p className="mb-2 text-xs font-semibold uppercase tracking-[.14em] text-primary-600">Your workspace</p><h1 className="workspace-heading">Settings</h1><p className="workspace-description">Manage your account, region, and Director preferences.</p></header>
+        <AccountPreferences/>
         <section className="card p-4 sm:p-6 border border-ink-200/80 shadow-card">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <h2 className="flex items-center gap-2 font-bold text-lg text-ink-900">

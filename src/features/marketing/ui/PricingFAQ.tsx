@@ -5,7 +5,7 @@ export default function PricingFAQ() {
   const FAQ_ITEMS = [
     {
       "q": t("PricingFAQ.doINeedMarketingExperience"),
-      "a": t("PricingFAQ.noBusmoraIsDesignedForArabicfirstBusinessOwnersStart")
+      "a": t("PricingFAQ.noBusmoraIsDesignedForBusinessOwners")
     },
     {
       "q": t("PricingFAQ.doINeedAWebsiteToGetStarted"),
@@ -13,7 +13,7 @@ export default function PricingFAQ() {
     },
     {
       "q": t("PricingFAQ.whatLanguageCanIWorkIn"),
-      "a": t("PricingFAQ.theInterfaceSupportsArabicAndEnglishContentIsPlanned")
+      "a": t("PricingFAQ.theWorkspaceAndContentAreInEnglish")
     },
     {
       "q": t("PricingFAQ.willBusmoraPublishOrSpendWithoutMe"),

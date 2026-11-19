@@ -59,7 +59,7 @@ npm run test:crawl:ui
 
 The reference landing was adapted into `src/features/marketing/` with React Router links, native image elements, a small English copy adapter, and native smooth scrolling. It has no Next.js runtime dependencies. Hero, workflow, closing scroll scenes, reveal effects, animated connectors, tabs, FAQ, and the existing interactive guest demo are retained. Reduced-motion and small-screen layouts use normal document flow.
 
-The original logo, local Inter and IBM Plex Sans Arabic fonts, cosmic palette, electric purple actions, and light work surfaces form one system across the public page, auth, onboarding, and protected routes. See [DESIGN.md](DESIGN.md).
+The original logo, local Inter fonts, cosmic palette, electric purple actions, and light work surfaces form one system across the public page, auth, onboarding, and protected routes. See [DESIGN.md](DESIGN.md).
 
 Conversation graphs restore their recorded task events independently, with per-conversation browser persistence of node positions and viewport. Browser storage is a local layout preference; Supabase remains the source of task data.
 

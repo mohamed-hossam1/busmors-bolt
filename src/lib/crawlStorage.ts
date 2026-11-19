@@ -39,7 +39,7 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
     id: await stableId(['crawl-node', workspace, key(c)]), workspace_id: workspace,
     category: c.category, title: c.title, summary: c.summary, properties: c.properties,
     source: 'crawler', source_detail: c.source_url, confidence: c.confidence,
-    status: c.properties.extracted_by === 'ai' && c.confidence >= 0.8 ? 'approved' : 'candidate',
+    status: 'candidate',
   })))
   if (rows.length) {
     const { error } = await supabase.from('brain_nodes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
@@ -70,7 +70,7 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
       const source = nodes[relation.source_index], target = nodes[relation.target_index]
       if (!source || !target || source.id === target.id) continue
       const row = { workspace_id: workspace, source_node_id: source.id, target_node_id: target.id,
-        relation_type: relation.relation_type, status: source.status === 'approved' && target.status === 'approved' && relation.confidence >= 0.8 ? 'approved' : 'candidate', weight: relation.confidence }
+        relation_type: relation.relation_type, status: 'candidate', weight: relation.confidence }
       const fingerprint = edgeKey(row)
       counted.add(fingerprint)
       if (seen.has(fingerprint)) continue
@@ -86,10 +86,10 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
   }
   const nodesCount = new Set(nodes.map((node) => node!.id)).size
   const { data: completedSettings, error: settingsError } = await supabase.from('workspace_settings')
-    .update({ company_url: url, onboarding_state: 'complete', crawl_status: { pages_read: pagesRead, nodes_count: nodesCount, edges_count: edgesCount, finished: true } })
+    .update({ company_url: url, crawl_status: { pages_read: pagesRead, nodes_count: nodesCount, edges_count: edgesCount, finished: true } })
     .eq('workspace_id', workspace).select('workspace_id').abortSignal(AbortSignal.timeout(8000))
   if (settingsError || !completedSettings?.length) throw storageError('Knowledge items were saved, but completion could not be confirmed. Please retry')
-  const { error: auditError } = await supabase.from('audit_log').insert({ workspace_id: workspace,
+  const { error: auditError } = await supabase.from('audit_log').insert({ workspace_id: workspace, actor_id: workspace,
     action: 'crawler_knowledge_saved', entity_type: 'brain_nodes', details: { count: nodesCount, edges: edgesCount, url, mode: 'add_only' } })
     .abortSignal(AbortSignal.timeout(8000))
   return { nodesCount, edgesCount, warning: auditError ? 'Your knowledge was saved, but its activity record could not be recorded.' : undefined }
