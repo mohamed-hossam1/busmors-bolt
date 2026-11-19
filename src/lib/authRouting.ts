@@ -8,11 +8,9 @@ export function safeReturnPath(value: unknown): string | null {
     return url.origin === 'https://local.invalid' && allowed.has(resource) && part.length <= (part[0] === 'app' ? 2 : 1) ? url.pathname + url.search : null
   } catch { return null }
 }
-export function rememberReturnPath(value: unknown) {
-  const path = safeReturnPath(value)
-  try { if (path) sessionStorage.setItem('busmora:auth-return', path) } catch { /* Optional navigation hint. */ }
+export const authCallbackUrl = () => {
+ const url = new URL('/auth/callback', window.location.origin)
+ const next = safeReturnPath(new URLSearchParams(window.location.search).get('next'))
+ if (next) url.searchParams.set('next', next)
+ return url.toString()
 }
-export function takeReturnPath(): string | null {
-  try { const path = sessionStorage.getItem('busmora:auth-return'); sessionStorage.removeItem('busmora:auth-return'); return safeReturnPath(path) } catch { return null }
-}
-export const authCallbackUrl = () => `${window.location.origin}/auth/callback`

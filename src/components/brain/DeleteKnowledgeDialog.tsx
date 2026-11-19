@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { Loader2, Trash2, X } from 'lucide-react'
 import { useDialog } from '../../hooks/useDialog'

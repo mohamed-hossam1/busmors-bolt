@@ -1,3 +1,5 @@
+'use client'
+
 import { useDialog } from '../../hooks/useDialog'
 import { useState } from 'react'
 import { X } from 'lucide-react'

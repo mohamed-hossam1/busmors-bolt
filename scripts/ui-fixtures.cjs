@@ -49,8 +49,8 @@ const posts = [
   ['facebook', 'Made slowly. Made to be used. A few everyday favorites from the studio, ready to find a place at your table.', 'published', '2026-11-16T09:00:00Z'],
 ].map(([platform, caption, status, scheduled_for], index) => ({ id: `post-${index}`, workspace_id: workspace, deliverable_id: 'report-launch', task_id: 'task-launch', platform, caption, hashtags: '#LumaStudio #EverydayCollection #MadeByHand', image_url: null, status, scheduled_for, idempotency_key: `sample-${index}`, publish_result: null, created_at: date }))
 const tasks = [
-  { id: 'task-launch', conversation_id: conversations[0].id, status: 'completed', created_at: date },
-  { id: 'task-research', conversation_id: conversations[1].id, status: 'completed', created_at: date },
+  { workspace_id: workspace, type: 'content_creation', version: 1, checkpoint: { phase: 'done' }, id: 'task-launch', conversation_id: conversations[0].id, status: 'completed', created_at: date },
+  { workspace_id: workspace, type: 'competitor_analysis', version: 1, checkpoint: { phase: 'done' }, id: 'task-research', conversation_id: conversations[1].id, status: 'completed', created_at: date },
 ]
 function workflow(task, agents) {
   let seq = 0
@@ -78,8 +78,15 @@ async function installFixtures(context) {
     const request = route.request(), url = new URL(request.url())
     const table = url.pathname.split('/').pop()
     if (table === 'bootstrap_workspace') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tables.workspace_settings[0]) })
+    if (table === 'list_deliverables') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tables.deliverables) })
+    if (table === 'update_brain_item') {
+      const input = request.postDataJSON()
+      const node = { id: input.p_node_id ?? 'new-knowledge', workspace_id: workspace, title: input.p_title, summary: input.p_summary, category: input.p_category, properties: input.p_properties ?? {}, status: input.p_status, version: 1, created_at: date }
+      tables.brain_nodes.push(node)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(node) })
+    }
     let rows = tables[table] ?? []
-    const matches = (row) => [...url.searchParams].every(([key, value]) => !value.startsWith('eq.') || String(row[key]) === value.slice(3))
+    const matches = (row) => [...url.searchParams].every(([key, value]) => value.startsWith('eq.') ? String(row[key]) === value.slice(3) : value.startsWith('in.(') ? value.slice(4,-1).split(',').includes(String(row[key])) : true)
     if (request.method() === 'POST') {
       const payload = request.postDataJSON()
       const inserted = (Array.isArray(payload) ? payload : [payload]).map((row) => ({ id: `created-${Date.now()}`, created_at: date, ...row }))

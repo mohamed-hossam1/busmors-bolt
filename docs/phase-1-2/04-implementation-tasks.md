@@ -8,27 +8,29 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 ## C01 — Lock the competition scope and baseline
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Scope, forty task rows, local baseline and rehearsal setup instructions exist. Source: `docs/phase-1-2/REHEARSAL_SETUP.md`.
+**Already implemented / evidence:** Scope, forty task rows, local baseline and rehearsal setup instructions exist. C01 records the owner-confirmed deadline (Tuesday 24 November 2026, `Africa/Cairo`), Vercel/`https://busmora.com` target, Supabase reuse decision, dashboard-managed AI provider, Firecrawl selection, Google in-scope status, Facebook deferral, Next.js/React + Supabase architecture and English-only scope. Source: [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md); [REHEARSAL_SETUP.md](REHEARSAL_SETUP.md); [integration readiness inventory](../evidence/integration-readiness.md).
 
-**To complete:** Record the exact competition deadline, rehearsal URL/test project and responsible integration owners; verify model/search/Google/Facebook access or record an explicit blocker for each. The previous verified label covered only the local baseline.
+**Current baseline (verified 19 November 2026):** Framework is **Next.js 16 + React 19 + `@supabase/supabase-js` 2** (App Router, `next build`); there is no Vite dependency. The backend is **Next.js server-side API routes** under `src/app/api/*` (`ai`, `crawl`, `tasks`, `workspace`, `oauth/[action]`) backed by server modules in `src/server/*`; the legacy `supabase/functions` Edge Functions have been removed. Database migrations (23 files in `supabase/migrations/`) define the schema and **have been applied to the hosted project** — core tables (`workspaces`, `brain_nodes`, `tasks`, `planned_posts`, `ai_keys`, `app_secrets`, etc.) now return HTTP 200. `.env` (git-ignored) declares `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `FIRECRAWL_API_KEY` and server-side `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-120b` (plus optional `AI_BASE_URL`/`AI_ALLOWED_BASE_URLS`/`SUPABASE_SERVICE_ROLE_KEY`); no secret values are printed. `npm run build` passed; `npm run lint` exit 0 with warnings only; `npm run test:crawl` 26/26; `npm run test:tasks` 7/7; `npm run test:ai-gateway` 6/6. Hosted Supabase (`ojlgnqdhykgzgkbqyatd`): `/auth/v1/settings` 200 with `mailer_autoconfirm: true`; **live Groq `openai/gpt-oss-120b` chat completion verified HTTP 200** via `AI_API_KEY`. No live Firecrawl/Google/Meta/email-delivery/publishing/deployment pass is claimed.
 
-**Dependencies:** none. **Files:** this plan, `package.json`, `README.md`, existing Git diff; new `docs/evidence/competition-status.md`.
+**To complete:** None for C01. Follow-ups (not C01 gaps): C03 email delivery; C04 Google; C10 dashboard live AI; C14/C15 Firecrawl research; C25/C26 Facebook when owner resumes; C39 Vercel deployment.
 
-1. Record current dirty files without reverting them. Confirm work happens in `busmors-bolt`.
-2. Record deployed URL/test project and actual competition deadline when known. Inventory config variable names without printing secret values.
-3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately.
-4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving.
-5. Keep React/Supabase. No architecture migration, billing, Ads, or native image-generation work.
+**Dependencies:** none. **Files:** this plan, `package.json`, `README.md`, existing Git diff; `docs/evidence/competition-status.md`; `docs/evidence/integration-readiness.md`; `REHEARSAL_SETUP.md`.
 
-**Acceptance:** build/lint/crawl baseline recorded; changes preserved; external integration owners and missing configuration are explicit. Do not call a configured integration verified without a real request.
+1. Record current dirty files without reverting them. Confirm work happens in `busmors-bolt`. **Done:** changes retained; no reset/stash.
+2. Record deployed URL/test project and actual competition deadline when known. Inventory config variable names without printing secret values. **Done:** date/timezone recorded; Vercel target not deployed; `.env` names only.
+3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** counts updated to 1 complete / 4 verification pending / 19 partial / 16 missing; H01–H10 remain separate.
+4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving. **Done:** live Groq `openai/gpt-oss-120b` call returned HTTP 200; Firecrawl credential present in `.env`; Google disabled; Facebook disabled and deferred by owner. All blockers/owner actions in the inventory.
+5. Keep Next.js/React + Supabase. No architecture migration, billing, Ads, or native image-generation work. **Confirmed.**
+
+**Acceptance:** satisfied — build/lint/crawl baseline recorded; changes preserved; external integration owners and missing configuration are explicit. No integration is called verified without a real request.
 
 ## C02 — Add minimum schema contracts and ownership checks
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Domain tables, shared contracts, ownership guards and empty/upgrade database checks exist. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `scripts/local-migration-check.py`; `src/pages/CalendarPage.tsx`.
+**Already implemented / evidence:** Domain tables, shared contracts, ownership guards and empty/upgrade database checks exist. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `scripts/local-migration-check.py`; `src/screens/CalendarPage.tsx`.
 
 **To complete:** Protect planned_posts approval/publication fields from direct client writes and finish domain transition/relationship guards as publishing and Roadmap commands land. Recreate the disposable database, rerun empty/upgrade checks, then verify the intended Supabase environment.
 
@@ -46,11 +48,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Email verification/resend, recovery callback/new password, workspace bootstrap and safe routing are implemented. Source: `src/App.tsx`; `src/pages/auth/`; `src/context/AuthContext.tsx`.
+**Already implemented / evidence:** Immediate signup without email verification, recovery callback/new password, workspace bootstrap and safe routing are implemented. Source: `src/screens/auth/`; `src/context/AuthContext.tsx`.
 
 **To complete:** Add the actual /roadmap route; test real signup/email delivery, expired/replayed verification and reset links, recovery completion and authorized deep-link return against the intended Supabase project.
 
-**Dependencies:** C02. **Files:** `src/context/AuthContext.tsx`, `src/pages/auth/{SignUp,SignIn,ResetPassword}.tsx`, `src/App.tsx`; new auth callback/verification/new-password components.
+**Dependencies:** C02. **Files:** `src/context/AuthContext.tsx`, `src/app/auth/{signup,signin,reset-password}/page.tsx`, `src/screens/auth/`, `src/app/layout.tsx`; auth callback/verification components.
 
 1. Remove company name from signup. Use configured verification redirect and show email-pending/resend/expired/error states.
 2. Make workspace/settings bootstrap idempotent once an authenticated user is available. Do not ignore failed setup inserts.
@@ -64,11 +66,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Google buttons, OAuth callback handling and actual account provider metadata exist. Source: `src/components/auth/GoogleButton.tsx`; `src/pages/auth/AuthCallback.tsx`; `src/components/settings/AccountPreferences.tsx`.
+**Already implemented / evidence:** Google buttons, OAuth callback handling and actual account provider metadata exist. Source: `src/components/auth/GoogleButton.tsx`; `src/app/auth/callback/route.ts`; `src/components/settings/AccountPreferences.tsx`.
 
 **To complete:** Configure and verify Google redirects/access in the chosen environment and complete a real dedicated-account login/cancellation test. The earlier inspection reported Google disabled; it was not rechecked in this audit. Keep full linking conformance under H02.
 
-**Dependencies:** C03; start provider configuration on day one. **Files:** auth pages/context, new auth helper; Supabase/Google configuration; Settings account section.
+**Dependencies:** C03; start provider configuration on day one. **Files:** `src/app/auth/callback/route.ts`, `src/components/auth/GoogleButton.tsx`; Supabase/Google configuration; Settings account section.
 
 1. Configure exact authorized redirect URLs for local and deployed origins; use Supabase's supported OAuth/PKCE flow.
 2. Add a visually consistent Continue with Google control on sign-in/signup and truthful pending/cancel/error handling.
@@ -81,7 +83,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** English UI/prompts, additive preference normalization and independent region/timezone controls exist; earlier local browser/SQL checks are recorded. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `supabase/functions/_shared/operations.ts`.
+**Already implemented / evidence:** English UI/prompts, additive preference normalization and independent region/timezone controls exist; earlier local browser/SQL checks are recorded. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `src/server/agents/operations.ts`.
 
 **To complete:** Verify preferences and English output with real storage/provider calls, and apply timezone/English acceptance to the still-missing Roadmap, calendar, analysis and notification journeys.
 
@@ -116,11 +118,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Shared manual/website form, offering price modes, saved drafts, exact-version confirmation and completion choices exist. Source: `src/pages/Onboarding.tsx`; `src/features/onboarding/BusinessForm.tsx`; `src/App.tsx`.
+**Already implemented / evidence:** Shared manual/website form, offering price modes, saved drafts, exact-version confirmation and completion choices exist. Source: `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`.
 
-**To complete:** Make Create my Roadmap open a working destination: it currently reaches the router fallback. Verify the full manual intake, reload, conflict and confirmation journey with live Supabase.
+**To complete:** Make Create my Roadmap open a working destination: wired to `/roadmap`. Verify the full manual intake, reload, conflict and confirmation journey with live Supabase.
 
-**Dependencies:** C02/C03/C05. **Files:** `src/pages/Onboarding.tsx`; new `src/features/onboarding/`; confirmation RPC/migration.
+**Dependencies:** C02/C03/C05. **Files:** `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`; confirmation RPC/migration.
 
 1. Add Website, Manual, disabled Social Import choices. Manual opens the common form from file 02.
 2. Implement multiple offerings and all four pricing models; amount optional, currency required only with amount. Add contact-route ready/not-ready.
@@ -134,11 +136,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Website extraction feeds the editable draft, preserves edited fields and creates review proposals; 26 crawler checks pass in this audit. Source: `src/pages/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/lib/crawlStorage.ts`; `scripts/crawl-check.cjs`.
+**Already implemented / evidence:** Website extraction feeds the editable draft, preserves edited fields and creates review proposals; 26 crawler checks pass in this audit. Source: `src/screens/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/server/crawl.ts`; `scripts/crawl-check.cjs`.
 
 **To complete:** Exercise a real public website through the actual reader/AI gateway and Supabase save/confirmation flow, including partial fetch failure, late results and no active knowledge before owner confirmation.
 
-**Dependencies:** C07/C10 gateway contract; existing crawl helpers. **Files:** `src/lib/{crawl,crawlStorage,crawlContent,siteReader}.ts`, Onboarding, Edge read-site/extraction path.
+**Dependencies:** C07/C10 gateway contract; existing crawl helpers. **Files:** `src/lib/{crawl,crawlStorage,crawlContent,siteReader}.ts`, `src/screens/Onboarding.tsx`, `src/server/crawl.ts`, `src/app/api/crawl/route.ts`.
 
 1. Reuse cleaning/link discovery/exact-quote validation. Stop saving extracted facts as approved Brain records directly.
 2. Map extracted fields into the same saved draft, retaining source URLs/excerpts and partial results. Keep low-confidence guesses visibly proposed.
@@ -170,13 +172,13 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
 
-**Already implemented / evidence:** Edge-only provider calls, allowlisted server prompts, AI routing, typed failures, output validation and usage recording exist; 6 gateway tests pass in this audit. Source: `src/lib/agents.ts`; `supabase/functions/ai-generate/index.ts`; `supabase/functions/_shared/operations.ts`.
+**Already implemented / evidence:** Next.js Server API routes (`/api/ai`), allowlisted server prompts, AI routing, typed failures, output validation and usage recording exist; 6 gateway tests pass in this audit. Source: `src/server/ai-generate.ts`; `src/app/api/ai/route.ts`; `src/server/agents/operations.ts`; `src/screens/SettingsPage.tsx`.
 
-**To complete:** Verify deployed Edge secrets, managed-model and BYOK calls, real usage responses, malformed outputs/outages and absence of secret leakage. Fixture provider responses do not establish live provider support.
+**To complete:** Verify server secrets (`AI_API_KEY`), managed-model and BYOK calls, real usage responses, malformed outputs/outages and absence of secret leakage. Fixture provider responses do not establish live provider support.
 
-**Dependencies:** C02. **Files:** `src/lib/agents.ts`, `supabase/functions/ai-generate/index.ts`, `_shared/`, settings key metadata; grants migration.
+**Dependencies:** C02. **Files:** `src/server/ai-generate.ts`, `src/app/api/ai/route.ts`, `src/screens/SettingsPage.tsx`, settings key metadata; database migrations.
 
-1. Delete browser `callDirectProvider` fallback and revoke authenticated plaintext-key RPC access. Keep server calls through ai-generate; shared/provider keys never appear in responses.
+1. Delete browser direct provider calls; keep server calls through Next.js `/api/ai` and `src/server/ai-generate.ts`; shared/provider keys never appear in responses.
 2. Add allowlisted operations with server prompts and validated JSON output. Keep a default managed model configuration for ordinary users; BYOK optional.
 3. Add bounded AI routing: direct reply, clarification or substantive task; remove regex as the final routing authority.
 4. Remove canned campaign success and reply-string error classification. Return typed success/partial/failure and retryable codes.
@@ -206,11 +208,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Typed messages, saved clarification answers, eligible Brain/history context, legacy-form protection and document/task links exist. Source: `src/pages/EmployeePage.tsx`; `src/features/tasks/backend.ts`; `src/pages/CalendarPage.tsx`.
+**Already implemented / evidence:** Typed messages, saved clarification answers, eligible Brain/history context, legacy-form protection and document/task links exist. Source: `src/screens/EmployeePage.tsx`; `src/features/tasks/backend.ts`; `src/screens/CalendarPage.tsx`.
 
 **To complete:** Finish exact Post links: Chat emits /scheduling?post= but CalendarPage does not select that Post. Integrate research-return/Discovery links with C19 and verify live follow-up context, form answers and same-task resume. Rendering a reference card alone does not finish its destination.
 
-**Dependencies:** C09–C11. **Files:** EmployeePage, chat forms/renderers, chat types/context loader.
+**Dependencies:** C09–C11. **Files:** `src/screens/EmployeePage.tsx`, `src/app/employee/page.tsx`, chat forms/renderers, chat types/context loader.
 
 1. Implement all nine typed message kinds in file 02 with an exhaustive renderer; migrate legacy form messages.
 2. Load relevant eligible Brain facts plus bounded actual messages/history; retain historical/superseded labels and exclude rejected/deleted knowledge.
@@ -223,7 +225,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
 
-**Already implemented / evidence:** Canvas uses saved step instances, task history, timeline/details and conversation/task-specific layouts; earlier browser checks are recorded. Source: `src/components/chat/AgentCanvas.tsx`; `src/pages/EmployeePage.tsx`; `src/lib/chatCanvasStorage.ts`.
+**Already implemented / evidence:** Canvas uses saved step instances, task history, timeline/details and conversation/task-specific layouts; earlier browser checks are recorded. Source: `src/components/chat/AgentCanvas.tsx`; `src/screens/EmployeePage.tsx`; `src/lib/chatCanvasStorage.ts`.
 
 **To complete:** Rerun conversation-switch/late-event/terminal-state UI acceptance with real task events. Add and verify real research service/evidence events when C14 exists; do not display invented retrieval progress.
 
@@ -241,13 +243,13 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Source/usage schema and a research operation are scaffolding; the runner explicitly returns research_unavailable. Source: `src/features/tasks/runner.ts`; `supabase/functions/_shared/operations.ts`; `supabase/functions/`.
+**Already implemented / evidence:** Source/usage schema and a research operation are scaffolding; the runner explicitly returns research_unavailable. Source: `src/features/tasks/runner.ts`; `src/server/agents/operations.ts`; `src/server/task-executor.ts`.
 
 **To complete:** Implement authenticated application search/fetch, real source/excerpt persistence and deduplication, shared call/page/time/retry budgets, explicit extensions and truthful partial failures. Verify a novel question through actual retrieval.
 
-**Dependencies:** C10/C11; provider configured day one. **Files:** new research-tools Edge Function, research client/types, agents research branch.
+**Dependencies:** C10/C11; provider configured day one. **Files:** new research-tools server route (`src/server/research.ts`, `src/app/api/research/route.ts`), research client/types, agents research branch.
 
-1. Use the Firecrawl REST adapter proposed in file 02, or retain an already configured working provider behind the same interface. Implement search/fetch behind Edge authentication with a separate application credential; no Codex-only tool dependency.
+1. Use the Firecrawl REST adapter proposed in file 02 (`FIRECRAWL_API_KEY` configured in `.env`). Implement search/fetch behind server authentication with a separate application credential; no Codex-only tool dependency.
 2. Dynamically plan queries from goal/market/question; fetch relevant accessible source types. Use competitor sites plus review/community material when relevant, with honest access gaps.
 3. Persist returned URLs, retrieved excerpts, source type/date and dedup hashes. Do not claim a website was read from its search title alone.
 4. Enforce configurable call/page/time limits, account retries/child work, and stop on sufficient/repetitive/inaccessible evidence or exhausted allowance.
@@ -259,7 +261,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** A synthesis prompt and source/claim tables exist; there is no reachable retrieved-evidence report journey. Source: `supabase/functions/_shared/operations.ts`; `src/features/tasks/runner.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`.
+**Already implemented / evidence:** A synthesis prompt and source/claim tables exist; there is no reachable retrieved-evidence report journey. Source: `src/server/agents/operations.ts`; `src/features/tasks/runner.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`.
 
 **To complete:** Connect C14 to synthesis; validate every consequential claim against retrieved IDs/excerpts, expose contradictions/limits, save a sourced document and offer optional Brain proposals without auto-approval.
 
@@ -276,7 +278,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Document search/type/date/cursor queries, immutable versions, editor, copy/txt/md export, Continue and governed deletion exist. Source: `src/pages/DeliverablesPage.tsx`; `supabase/migrations/20261119013000_document_library.sql`; `scripts/deliverable-db-check.sql`.
+**Already implemented / evidence:** Document search/type/date/cursor queries, immutable versions, editor, copy/txt/md export, Continue and governed deletion exist. Source: `src/screens/DeliverablesPage.tsx`; `src/app/deliverables/page.tsx`; `supabase/migrations/20261119013000_document_library.sql`; `scripts/deliverable-db-check.sql`.
 
 **To complete:** Complete legacy Post labeling/links and metadata-preserving exports with C33. Reuse currently copies text into compose without an explicit document origin; preserve lineage there as Continue does. Verify live save/conflict/history/delete and failed-save recovery; add applicable CSV when C31 exists.
 
@@ -293,7 +295,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Copy, campaign and diagnosis prompts/runner branches exist; output quantity is validated and drafts are persisted. Source: `src/features/tasks/runner.ts`; `supabase/functions/_shared/operations.ts`; `src/features/tasks/backend.ts`.
+**Already implemented / evidence:** Copy, campaign and diagnosis prompts/runner branches exist; output quantity is validated and drafts are persisted. Source: `src/features/tasks/runner.ts`; `src/server/agents/operations.ts`; `src/features/tasks/backend.ts`.
 
 **To complete:** Finish the planned recipe coverage, first-class Post/campaign linkage, owner-media handling and explicit tone/market overrides. Evaluate contrasting business scenarios and unsupported-connector handoffs with real generation; prompts alone do not prove useful or grounded results.
 
@@ -309,13 +311,13 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 ## C18 — Build adaptive saved Discovery
 
-**Status (19 November 2026): INCOMPLETE — missing.**
+**Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
 
-**Already implemented / evidence:** Discovery draft/question tables and origin types exist, but no wizard or working Roadmap route exists. Source: `src/App.tsx`; `supabase/migrations/20261118020000_competition_contracts.sql`.
+**Already implemented / evidence:** Choice-first adaptive Discovery wizard (`src/features/roadmap/DiscoveryWizard.tsx`, 961 lines) is implemented and wired to the Next.js App Router at `src/app/roadmap/page.tsx` (rendering `src/screens/RoadmapPage.tsx`). Backed by database migration `supabase/migrations/20261119014000_adaptive_discovery.sql` creating `discovery_drafts` and `discovery_questions` with RPCs (`save_discovery_draft_with_questions`, `get_active_discovery_draft`, etc.), verified via `scripts/discovery-db-check.sql` (PASS) and applied to the remote Supabase database. Source: `src/features/roadmap/DiscoveryWizard.tsx`; `src/screens/RoadmapPage.tsx`; `supabase/migrations/20261119014000_adaptive_discovery.sql`; `scripts/discovery-db-check.sql`.
 
-**To complete:** Build adaptive choice-first Discovery with stable question IDs, known-fact reuse, distinct unknown/skip/N/A states, autosave, conflict handling and close/reopen recovery; wire the route and onboarding choice.
+**To complete:** Run complete end-to-end browser verification against the live Supabase database; wire onboarding completion choice directly to `/roadmap`; connect research return (C19) and roadmap generation/activation (C20).
 
-**Dependencies:** C07/C09/C12. **Files:** new roadmap feature/DiscoveryWizard; App/AppShell; draft/question API/RPCs.
+**Dependencies:** C07/C09/C12. **Files:** `src/features/roadmap/DiscoveryWizard.tsx`; `src/screens/RoadmapPage.tsx`; `src/app/roadmap/page.tsx`; draft/question RPCs.
 
 1. Start with objective selection, then choose questions from goal, current Brain and material unknowns. Use choice-first UI and explanations.
 2. Persist stable question IDs, order/branch, typed answers/status/provenance and draft version. Reuse eligible known facts visibly.
@@ -328,7 +330,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Question-research link schema and task-origin guards exist; no complete research-return UI/command flow exists. Source: `supabase/migrations/20261119011000_task_origin.sql`; `src/pages/EmployeePage.tsx`; `src/App.tsx`.
+**Already implemented / evidence:** Question-research link schema and task-origin guards exist; no complete research-return UI/command flow exists. Source: `supabase/migrations/20261119011000_task_origin.sql`; `src/screens/EmployeePage.tsx`; `src/features/roadmap/DiscoveryWizard.tsx`; `src/app/roadmap/page.tsx`.
 
 **To complete:** Save the draft before research; implement authorized draft/question/task/result linkage, selected evidence-aware answer, exact-question return and separate confirmation, including stale/deleted/cross-workspace rejection.
 
@@ -345,7 +347,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Roadmap tables, a one-active index and a generation prompt exist; there is no review/activation product flow. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `supabase/functions/_shared/operations.ts`; `src/App.tsx`.
+**Already implemented / evidence:** Roadmap tables, a one-active index and a generation prompt exist; there is no review/activation product flow. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `src/server/agents/operations.ts`; `src/screens/RoadmapPage.tsx`; `src/app/roadmap/page.tsx`.
 
 **To complete:** Build the full step-plan schema validation and DAG checks, review/correction UI, exact-version transactional activation and plan history. Test concurrent activation and source-context binding.
 
@@ -362,7 +364,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Task origins and step/action schema provide a foundation; there are no usable Roadmap step controls. Source: `src/lib/contracts.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`; `src/App.tsx`.
+**Already implemented / evidence:** Task origins and step/action schema provide a foundation; there are no usable Roadmap step controls. Source: `src/lib/contracts.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`; `src/screens/RoadmapPage.tsx`; `src/app/roadmap/page.tsx`.
 
 **To complete:** Implement dependency/authority-checked idempotent Run, output links, owner attestation, Skip/Revisit and separate Cancel with truthful readiness/progress counts. Verify double-click and running-step skip cases.
 
@@ -380,7 +382,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Roadmap version storage exists; no strategic revision review/accept/reject workflow exists. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `src/App.tsx`.
+**Already implemented / evidence:** Roadmap version storage exists; no strategic revision review/accept/reject workflow exists. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `src/screens/RoadmapPage.tsx`.
 
 **To complete:** Implement owner-requested proposals, complete step/dependency diffs, base-version conflicts, atomic acceptance/rejection and preserved original task/output references without side-effect execution.
 
@@ -397,7 +399,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Task result saving creates Post rows/versions and Chat references; nullable schedule and legacy review cards exist. Source: `src/pages/CalendarPage.tsx`; `supabase/migrations/20261118028000_task_execution.sql`; `src/pages/EmployeePage.tsx`.
+**Already implemented / evidence:** Task result saving creates Post rows/versions and Chat references; nullable schedule and legacy review cards exist. Source: `src/screens/CalendarPage.tsx`; `supabase/migrations/20261118028000_task_execution.sql`; `src/screens/EmployeePage.tsx`.
 
 **To complete:** Add manual New Post, immutable versioned editing, campaign grouping and exact detail links; replace Calendar recovery-on-read with a one-time migration, remove synthetic unsaved rows/invented dates and prevent deleted Posts returning from messages.
 
@@ -432,7 +434,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Legacy OAuth source and connection/private-credential tables exist; Settings has no Page-selection connection workflow. Source: `supabase/functions/oauth-connect/index.ts`; `src/pages/SettingsPage.tsx`.
+**Already implemented / evidence:** Legacy OAuth source and connection/private-credential tables exist; Settings has no Page-selection connection workflow. Source: `src/server/oauth-connect.ts`; `src/app/api/oauth/route.ts`; `src/screens/SettingsPage.tsx`.
 
 **To complete:** Replace URL-JWT initiation and callback platform override with authenticated POST and expiring one-time state; retrieve/select an actual Page/token, use protected credentials, implement reconnect/disconnect generation changes and verify a real authorized Page. Record current Meta configuration/access evidence.
 
@@ -450,11 +452,11 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Publish attempt/approval schema exists; Calendar only records owner-reported publication. No publish-post/publish-due functions exist. Source: `supabase/functions/`; `src/pages/CalendarPage.tsx`; `supabase/migrations/20261118020000_competition_contracts.sql`.
+**Already implemented / evidence:** Publish attempt/approval schema exists; Calendar only records owner-reported publication. No publish-post/publish-due functions exist. Source: `src/server/`; `src/screens/CalendarPage.tsx`; `supabase/migrations/20261118020000_competition_contracts.sql`.
 
 **To complete:** Implement exact-approved-version dispatch, atomic attempts, real text/link and image sends, provider read-back/permalinks, uncertain-outcome reconciliation, cancellation and deployed due scheduling. Prove real sends and duplicate prevention on the authorized Page.
 
-**Dependencies:** C23–C25/C28 approval contract. **Files:** new publish-post/publish-due Edge Functions and shared core; publish-attempt/claim RPCs; Supabase schedule configuration.
+**Dependencies:** C23–C25/C28 approval contract. **Files:** new publish-post/publish-due server actions/routes and shared core; publish-attempt/claim RPCs; Supabase schedule configuration.
 
 1. Implement text/link and single-image caption publishing with tested Meta endpoints; save provider ID and read-back evidence.
 2. Before sending, validate exact approved version/Page/generation/time/media/cancellation/context holds. Atomically register one claim/attempt.
@@ -468,7 +470,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Scheduling renders review cards and status counts; Month/Week/List/Unscheduled views are absent. Source: `src/pages/CalendarPage.tsx`.
+**Already implemented / evidence:** Scheduling renders review cards and status counts; Month/Week/List/Unscheduled views are absent. Source: `src/screens/CalendarPage.tsx`.
 
 **To complete:** Build range/filter/paginated views of the same Post records, null-date isolation, actual publication placement, shared detail/edit/New/Duplicate actions and keyboard/mobile/DST-safe navigation.
 
@@ -486,7 +488,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Legacy approve/reject/all controls and approval/version tables exist, but controls mutate status directly by Post ID. Source: `src/pages/CalendarPage.tsx`; `src/lib/contracts.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`.
+**Already implemented / evidence:** Legacy approve/reject/all controls and approval/version tables exist, but controls mutate status directly by Post ID. Source: `src/screens/CalendarPage.tsx`; `src/lib/contracts.ts`; `supabase/migrations/20261118020000_competition_contracts.sql`.
 
 **To complete:** Replace direct mutations with exact-version and connection-generation approval RPCs, full execution-detail review, per-item bulk conflicts and complete reschedule inputs. Ensure all content/media/destination/time/zone/allowance edits invalidate approval and errors remain visible.
 
@@ -504,7 +506,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Brain context-impact logic records staleness/holds and tasks retain context references. Source: `supabase/migrations/20261118025000_brain_governance.sql`; `src/features/tasks/runner.ts`; `src/pages/CalendarPage.tsx`.
+**Already implemented / evidence:** Brain context-impact logic records staleness/holds and tasks retain context references. Source: `supabase/migrations/20261118025000_brain_governance.sql`; `src/features/tasks/runner.ts`; `src/screens/CalendarPage.tsx`.
 
 **To complete:** Add held-Post explanation/resolution and failed/uncertain/overdue/reconnect UI; enforce holds in actual dispatch, preserve unresolved attempts across edits and verify offer-change, unrelated-work and disconnect races with C26/C28.
 
@@ -521,7 +523,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Analysis import/metric tables exist; no CSV/XLSX attachment/parser/mapping journey exists. Source: `src/pages/EmployeePage.tsx`; `package.json`; `supabase/migrations/20261118020000_competition_contracts.sql`.
+**Already implemented / evidence:** Analysis import/metric tables exist; no CSV/XLSX attachment/parser/mapping journey exists. Source: `src/screens/EmployeePage.tsx`; `package.json`; `supabase/migrations/20261118020000_competition_contracts.sql`.
 
 **To complete:** Implement bounded CSV/XLSX upload and safe parsing, templates, row preview, explicit mapping/period/currency confirmation, duplicate/overlap/formula/unknown handling and persisted import recovery.
 
@@ -539,7 +541,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** An analyze prompt and performance-diagnosis documents exist; deterministic uploaded-data calculations do not. Source: `supabase/functions/_shared/operations.ts`; `src/features/tasks/runner.ts`; `scripts/`.
+**Already implemented / evidence:** An analyze prompt and performance-diagnosis documents exist; deterministic uploaded-data calculations do not. Source: `src/server/agents/operations.ts`; `src/features/tasks/runner.ts`; `scripts/`.
 
 **To complete:** Implement supported metric definitions/rounding from confirmed C30 mappings, zero/unknown/incompatible input handling, exact expected-value fixtures and a source-aware downloadable one-off report. Use AI only to explain computed values.
 
@@ -556,7 +558,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Account/provider display, independent region settings, AI-key settings and notification schema exist. Source: `src/pages/SettingsPage.tsx`; `src/components/settings/AccountPreferences.tsx`; `src/components/AppShell.tsx`.
+**Already implemented / evidence:** Account/provider display, independent region settings, AI-key settings and notification schema exist. Source: `src/screens/SettingsPage.tsx`; `src/components/settings/AccountPreferences.tsx`; `src/components/AppShell.tsx`.
 
 **To complete:** Add Connections, Usage and Data groups, applicable password controls, collapsed BYOK and checked key-removal errors. Build deduplicated notifications, read/unread/count/mark-all-read and exact authorized/deleted-subject destinations.
 
@@ -573,7 +575,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** Brain/document deletion, document txt/md export and Continue exist; resumed tasks reload eligible Brain facts. Source: `src/pages/DeliverablesPage.tsx`; `src/components/brain/DeleteKnowledgeDialog.tsx`; `src/features/tasks/runner.ts`; `src/pages/CalendarPage.tsx`.
+**Already implemented / evidence:** Brain/document deletion, document txt/md export and Continue exist; resumed tasks reload eligible Brain facts. Source: `src/screens/DeliverablesPage.tsx`; `src/components/brain/DeleteKnowledgeDialog.tsx`; `src/features/tasks/runner.ts`; `src/screens/CalendarPage.tsx`.
 
 **To complete:** Finish metadata/history/source-aware Brain/document exports and safe CSV, explicit Reuse lineage, cross-surface deletion cleanup/no resurrection and real disconnect invalidation. Verify deleted content cannot return through chat, recovery or exports and state retention limits.
 
@@ -608,7 +610,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — partial.**
 
-**Already implemented / evidence:** English/responsive styling and historical screenshots/browser checks exist for implemented surfaces. Source: `src/pages/`; `src/components/`; `artifacts/competition/`; `scripts/foundation-ui-check.cjs`.
+**Already implemented / evidence:** English/responsive styling and historical screenshots/browser checks exist for implemented surfaces. Source: `src/screens/`; `src/components/`; `src/app/`; `artifacts/competition/`; `scripts/foundation-ui-check.cjs`.
 
 **To complete:** Complete missing feature screens, move remaining product strings to the shared dictionary, then run the full visual/keyboard/focus/reduced-motion/error-state checklist at 1440/390/320 and tablet widths, including clear approval details.
 
@@ -677,14 +679,14 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Status (19 November 2026): INCOMPLETE — missing.**
 
-**Already implemented / evidence:** Vite build, SPA redirects, Supabase source/config and rehearsal setup instructions exist; deployment completion is not evidenced. Source: `public/_redirects`; `supabase/config.toml`; `docs/phase-1-2/REHEARSAL_SETUP.md`.
+**Already implemented / evidence:** Next.js build, App Router routes, Supabase source/config and rehearsal setup instructions exist; deployment completion is not evidenced. Source: `next.config.ts`; `supabase/config.toml`; `docs/phase-1-2/REHEARSAL_SETUP.md`.
 
-**To complete:** Select and authorize the target, apply tested migrations/functions/storage/OAuth/schedule configuration, deploy, and verify fresh-device/deep-link/email/Google/model/research/media/publishing/scheduled-send journeys with rollback instructions.
+**To complete:** Select and authorize the target, apply tested migrations/routes/storage/OAuth/schedule configuration, deploy, and verify fresh-device/deep-link/email/Google/model/research/media/publishing/scheduled-send journeys with rollback instructions.
 
-**Dependencies:** C37 and configuration readiness; can prepare hosting early. **Files:** deployment docs/config, Supabase migrations/functions/schedule, environment variable names.
+**Dependencies:** C37 and configuration readiness; can prepare hosting early. **Files:** deployment docs/config, Supabase migrations, server routes/schedule, environment variable names.
 
-1. Build/deploy the React app with SPA redirects and HTTPS. Set only public Supabase configuration in Vite variables; secrets stay in Supabase.
-2. Apply tested additive migrations, deploy Edge Functions, configure OAuth redirects, storage policies and scheduled publisher.
+1. Build/deploy the Next.js app with App Router and HTTPS. Set public Supabase configuration in `NEXT_PUBLIC_*` variables; secrets stay in environment variables / hosting secrets.
+2. Apply tested additive migrations, deploy Next.js Server API routes, configure OAuth redirects, storage policies and scheduled publisher.
 3. Verify the deployed URL's email/Google callback, image upload, model call, research retrieval, publication/read-back and scheduled job.
 4. Confirm network allowlists/CORS and useful error messages; save a rollback/disable-new-feature procedure. Deployment is done only when authorized for the intended target.
 

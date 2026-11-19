@@ -29,7 +29,7 @@ Resource links open exact items: conversation/task, document/version, Post/versi
 
 ### Authentication
 
-Retain the existing branded two-column AuthLayout. Left: compact form and Google button; right: one polished product visual and short benefit. Signup asks only email/password. Verification has a clear email destination, resend cooldown and change-email/back option. Reset completion has new password/confirmation. Localize every error and success message.
+Retain the existing branded two-column AuthLayout. Left: compact form and Google button; right: one polished product visual and short benefit. Signup asks only email/password and signs in directly without email verification. Reset completion has new password/confirmation. Localize every error and success message.
 
 ### Onboarding
 

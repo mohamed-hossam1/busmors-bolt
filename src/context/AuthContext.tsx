@@ -1,3 +1,5 @@
+'use client'
+
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -10,15 +12,15 @@ interface AuthState {
 }
 const AuthContext = createContext<AuthState>({ session: null, settings: null, loading: true, error: null, recovery: false, refreshSettings: async () => {} })
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null)
-  const [settings, setSettings] = useState<WorkspaceSettings | null>(null)
-  const [loading, setLoading] = useState(true)
+export function AuthProvider({ children, initial }: { children: ReactNode; initial?: { session: Session | null; settings: WorkspaceSettings | null } }) {
+  const [session, setSession] = useState<Session | null>(initial?.session ?? null)
+  const [settings, setSettings] = useState<WorkspaceSettings | null>(initial?.settings ?? null)
+  const [loading, setLoading] = useState(!initial)
   const [error, setError] = useState<string | null>(null)
   const [recovery, setRecovery] = useState(false)
-  const identity = useRef<string | null>(null)
+  const identity = useRef<string | null>(initial?.session?.user.id ?? initial?.settings?.workspace_id ?? null)
   const generation = useRef(0)
-  const settingsReady = useRef(false)
+  const settingsReady = useRef(!!initial?.settings)
   const refreshSettings = useCallback(async () => {
     const userId = identity.current
     if (!userId) return
@@ -26,8 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!settingsReady.current) setLoading(true)
     setError(null)
     try {
-      const { data, error } = await supabase.rpc('bootstrap_workspace')
-      if (error) throw error
+      const response = await fetch('/api/workspace', { method: 'POST' })
+      if (!response.ok) throw new Error('Workspace could not be loaded.')
+      const data = await response.json()
       if (!data?.workspace_id || data.workspace_id !== userId) throw new Error('Workspace setup returned an invalid response.')
       if (run === generation.current) { settingsReady.current=true;setSettings(data as WorkspaceSettings) }
     } catch (error) { if (run === generation.current) setError(errorMessage(error)) }
@@ -40,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!alive) return
       setSession(next)
       const nextId = next?.user.id ?? null
-      if (identity.current !== nextId) {
+      if (identity.current !== nextId || (nextId && !settingsReady.current)) {
         identity.current = nextId
         ++generation.current
         setSettings(null)
@@ -63,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) { setError(error.message); setLoading(false) }
       else accept(data.session)
     }).catch(error => { if (alive) { setError(errorMessage(error)); setLoading(false) } })
-    return () => { alive = false; subscription.unsubscribe(); ++generation.current; identity.current = null }
+    return () => { alive = false; subscription.unsubscribe(); ++generation.current }
   }, [refreshSettings])
 
   return <AuthContext.Provider value={{ session, settings, loading, error, recovery, refreshSettings }}>{children}</AuthContext.Provider>

@@ -1,15 +1,13 @@
 // Local UI behavior only. Supabase and the AI gateway are intercepted in memory.
 // No live provider, auth, publishing, or workspace data is used.
-const { chromium } = require('playwright')
-const { spawn } = require('node:child_process')
+const { chromium, startTestApp } = require('./next-test-utils.cjs')
 const { existsSync, mkdirSync } = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
 
 const workspace = '11111111-1111-4111-8111-111111111111'
 const date = '2026-11-18T09:00:00Z'
-let sequence = 0
-const id = (prefix) => `${prefix}-${++sequence}`
+const id = () => require('node:crypto').randomUUID()
 
 function conversation(title) {
   return { id: id('conversation'), workspace_id: workspace, title, created_at: date }
@@ -18,11 +16,7 @@ function conversation(title) {
 async function main() {
   const root = path.resolve(__dirname, '..')
   const base = 'http://127.0.0.1:4186'
-  const server = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '4186', '--strictPort'], {
-    cwd: root,
-    stdio: 'ignore',
-    env: { ...process.env, VITE_SUPABASE_URL: 'https://busmora-task-preview.supabase.co', VITE_SUPABASE_ANON_KEY: 'fictional-task-key' },
-  })
+  const server = await startTestApp(4186, 'busmora-task-preview')
 
   const conversations = [conversation('First conversation'), conversation('Second conversation'), conversation('Third conversation')]
   const messages = []
@@ -84,6 +78,7 @@ async function main() {
   function touch(task) { task.updated_at = new Date().toISOString(); task.version += 1 }
 
   async function rpc(name, body) {
+    if (['reserve_task_call','finish_task_call'].includes(name)) return null
     const now = new Date().toISOString()
     if (name === 'list_deliverables') {
       const search = String(body.p_search ?? '').trim().toLowerCase()
@@ -266,29 +261,26 @@ async function main() {
   const serverUrls = new Set()
   let browser
   try {
-    for (let i = 0; i < 80; i++) { try { if ((await fetch(base)).ok) break } catch { /* starting */ } if (i === 79) throw Error('Vite did not start'); await new Promise((resolve) => setTimeout(resolve, 250)) }
+    for (let i = 0; i < 80; i++) { try { if ((await fetch(base)).ok) break } catch { /* starting */ } if (i === 79) throw Error('Next.js did not start'); await new Promise((resolve) => setTimeout(resolve, 250)) }
     browser = await chromium.launch({ headless: true, ...(existsSync('/usr/bin/google-chrome') ? { executablePath: '/usr/bin/google-chrome' } : {}), args: ['--no-sandbox'] })
     const context = await browser.newContext()
     await context.addInitScript(({ workspace }) => {
       localStorage.setItem('sb-busmora-task-preview-auth-token', JSON.stringify({ access_token: 'fictional-task-token', refresh_token: 'fictional-task-refresh', expires_at: 4102444800, expires_in: 3600, token_type: 'bearer', user: { id: workspace, aud: 'authenticated', role: 'authenticated', email: 'hello@luma.example', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01T00:00:00Z' } }))
     }, { workspace })
 
+    const { OPERATIONS } = require('./crawl-test-utils.cjs').createHarness().load('src/server/ai/operations.ts')
+    await context.route('https://api.openai.com/v1/chat/completions', async route => {
+      const provider = route.request().postDataJSON()
+      const operation = Object.keys(OPERATIONS).find(key => OPERATIONS[key] === provider.messages[0].content)
+      const body = { operation, userPrompt: provider.messages[1].content }
+      const result = operation === 'copy' || operation === 'campaign'
+        ? await copyOutput(JSON.parse(body.userPrompt).quantity || 1) : await gateway(body)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: result.text }, finish_reason: 'stop' }], usage: { prompt_tokens: 30, completion_tokens: 30 } }) })
+    })
     await context.route('https://busmora-task-preview.supabase.co/**', async (route) => {
       const request = route.request()
       const url = new URL(request.url())
       serverUrls.add(url.pathname)
-      if (url.pathname.includes('/functions/v1/ai-generate')) {
-        let body = {}
-        try { body = request.postDataJSON() } catch { /* ignore */ }
-        try {
-          const result = body.operation === 'copy' || body.operation === 'campaign'
-            ? await copyOutput(Number((() => { try { return JSON.parse(body.userPrompt).quantity } catch { return 1 } })()) || 1)
-            : await gateway(body)
-          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: result.text, callId: id('call') }) })
-        } catch {
-          return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'provider_error_500' }) })
-        }
-      }
       const rpcName = url.pathname.includes('/rest/v1/rpc/') ? url.pathname.split('/').pop() : null
       if (rpcName) {
         try {
@@ -330,14 +322,20 @@ async function main() {
     const page = await context.newPage()
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
-    mkdirSync(path.join(root, 'artifacts/competition'), { recursive: true })
-    await page.goto(base + '/employee')
+    mkdirSync(path.join(root, 'artifacts/next-migration'), { recursive: true })
+    await page.goto(base + '/employee', { waitUntil: 'domcontentloaded' })
+    await page.evaluate(() => document.fonts.ready)
+    await page.waitForTimeout(1000)
     await page.getByLabel('Message your Marketing Director').waitFor()
 
     const input = page.getByLabel('Message your Marketing Director')
     const send = page.getByRole('button', { name: 'Send message' })
     async function submit(text) {
       await input.fill(text)
+      if ((await input.inputValue()) !== text) {
+        await page.waitForTimeout(200)
+        await input.fill(text)
+      }
       await send.click()
     }
     async function selectConversation(title) {
@@ -383,16 +381,8 @@ async function main() {
     await page.reload()
     await page.getByLabel('Message your Marketing Director').waitFor()
     const eventually = async (check, timeout = 35000) => { const start = Date.now(); while (Date.now() - start < timeout) { if (check()) return; await page.waitForTimeout(150) } throw new Error('Timed out waiting for condition') }
-    await eventually(() => tasks.filter(task => task.status === 'interrupted').length === 2)
-    const interrupted = tasks.filter(task => task.status === 'interrupted')
-    assert(interrupted.every(task => task.checkpoint.phase === 'generate'), 'Reload must retain the generation checkpoint')
-    // Reload recovery is explicit. It does not silently repeat lost model work.
-    for (const task of interrupted) {
-      await selectConversation(conversations.find(item => item.id === task.conversation_id).title)
-      await page.getByLabel('Selected task').selectOption(task.id)
-      await page.getByRole('button', { name: 'Resume task', exact: true }).click()
-    }
     await eventually(() => tasks.every((task) => task.status === 'completed'))
+    assert.equal(tasks.filter(task => task.status === 'interrupted').length, 0, 'Reload must not interrupt server work')
     assert.equal(posts.length, 7, 'Queued work must run after a slot frees')
     assert.equal(new Set(posts.map((post) => post.id)).size, 7, 'Duplicate result saves must not duplicate outputs')
 
@@ -415,10 +405,12 @@ async function main() {
     const before = posts.length
     await input.fill('break the model')
     await send.click()
-    await page.getByText('The Director returned an unreadable response. Retry this task.').waitFor({ timeout: 15000 })
+    await page.getByText('The model request failed. Saved progress is kept; retry when the connection is available.').waitFor({ timeout: 15000 })
+    const failedTask = tasks[tasks.length - 1]
+    const failVersion = failedTask.version
     await page.getByRole('button', { name: 'Resume task' }).click()
-    await eventually(() => tasks[tasks.length - 1].status === 'failed')
-    await page.getByText('The Director returned an unreadable response. Retry this task.').last().waitFor({ timeout: 15000 })
+    await eventually(() => failedTask.version > failVersion && failedTask.status === 'failed')
+    await page.getByText('The model request failed. Saved progress is kept; retry when the connection is available.').last().waitFor({ timeout: 15000 })
     assert.equal(posts.length, before, 'A failed model response must not create Posts')
     assert.equal(deliverables.length, 0, 'A failed model response must not create a document')
 
@@ -441,7 +433,7 @@ async function main() {
       await page.setViewportSize({ width, height: 900 })
       await page.waitForTimeout(150)
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `No overflow at ${width}px`)
-      await page.screenshot({ path: path.join(root, `artifacts/competition/task-runner-${width}.png`) })
+      await page.screenshot({ path: path.join(root, `artifacts/next-migration/task-runner-${width}.png`) })
     }
 
     // C12: the budget-extension message kind renders truthfully and links to
@@ -536,7 +528,11 @@ async function main() {
     assert(errors.length === 0, errors.join('; '))
     assert(serverUrls.has('/rest/v1/rpc/enqueue_task'), 'The browser must use the checked Task command')
     assert(!serverUrls.has('/rest/v1/rpc/read_ai_key'), 'The browser must never read provider secrets')
-    console.log('PASS: Tasks continue across route navigation; two conversations run and a third queues; reload preserves checkpoints and requires explicit resume; structured answers survive reload; invalid output creates no canned Posts; greetings run no specialists; exact task, budget-extension and document links navigate; document search/filter/pagination, immutable versions, failed-save retry and exact continuation lineage work; 1440/390/320 layouts; browser never reads provider keys')
+    console.log('PASS: Tasks continue across route navigation; two conversations run and a third queues; reload leaves server work running and preserves checkpoints; structured answers survive reload; invalid output creates no canned Posts; greetings run no specialists; exact task, budget-extension and document links navigate; document search/filter/pagination, immutable versions, failed-save retry and exact continuation lineage work; 1440/390/320 layouts; browser never reads provider keys')
+  } catch (error) {
+    console.error(server.log().slice(-6000))
+    const page=browser?.contexts()[0]?.pages()[0]; if(page) console.error((await page.locator('body').innerText()).slice(-2500))
+    throw error
   } finally {
     await browser?.close()
     server.kill('SIGTERM')

@@ -2,7 +2,7 @@
 
 > Scope update — 18 November 2026: the owner requires an English-only project. Interface, conversation and generated-content language are English; locale switching, alternate registers and right-to-left presentation are removed from acceptance. Country, currency, target market and IANA timezone remain independent. This update supersedes the earlier language requirements.
 
-This is a relative schedule because the exact competition date was not provided. Move the freeze earlier if the event is sooner. All work stays in React + Supabase. The schedule is intentionally aggressive; check actual throughput after day two rather than assuming AI guarantees the deadline.
+The competition date is confirmed as **Tuesday 24 November 2026, timezone `Africa/Cairo`** (five days from the 19 November baseline). Freeze at least 24 hours before presentation. All work stays in React + Supabase; hosting target is Vercel with intended domain `https://busmora.com` (not yet deployed). The schedule is intentionally aggressive; check actual throughput after the first vertical slice rather than assuming AI guarantees the deadline. Facebook/Meta is temporarily deferred by the owner and remains in the plan.
 
 ## 1. Execution sequence and daily outcomes
 
@@ -21,11 +21,11 @@ Provider setup work for C04/C14/C25 starts on day one; it does not require waiti
 
 | Day | Focus | Required end-of-day demonstration |
 |---|---|---|
-| 1 | Baseline; essential migrations/types; shared language/shell; email routing; verify Google/model/search/Meta configuration | A real test user enters the app with a correct workspace; required integrations have a real check or named blocker |
+| 1 | Baseline; essential migrations/types; shared language/shell; email routing; verify Google/model/search configuration (Meta deferred) | A real test user enters the app with a correct workspace; required integrations have a real check or named blocker |
 | 2 | Shared manual/website intake; confirmation; Brain; provider gateway/browser runner; basic document save | Business enters/corrects facts, asks a scoped question, and receives a saved real output; navigation keeps the Task alive |
 | 3 | Structured Chat/Canvas; real research/evidence; document editing; single Post/campaign output | One real research question yields inspectable sources; one English Post appears as a Publishing Post; Canvas matches calls |
 | 4 | Discovery/research return; proposed Roadmap/activation; run/attest/skip/revisit; revision | Owner resumes a draft, returns research to an exact question, approves a plan and executes a step |
-| 5 | Media/Page connection; exact approvals; live publisher; schedule; Month/Week/List; holds/recovery | Text/link and image-caption Posts publish to the authorized Page; at least one scheduled result is verified |
+| 5 | Owner media; exact approvals; calendar; holds/recovery (Facebook Page/publisher deferred by owner) | Post appears in Scheduling with truthful approval state; no live Facebook send is claimed while deferred |
 | 6 | CSV/XLSX analysis; Settings/notifications/export/delete; final English/mobile polish; deployed smoke checks | Complete cross-screen journey works in English; deterministic analysis and contextual links work |
 | 7 | Freeze; regression fixes; clean presentation data; real account rehearsal; backup recording | Reproducible deployed build and timed presentation; no new feature development |
 
@@ -77,7 +77,7 @@ Negative fixtures: unknown inquiries; zero impressions; repeated identical row; 
 
 ## 4. Eight-minute main presentation
 
-Adjust to the actual speaking slot. Use the populated presenter workspace and show existing work as existing work. Prepare the connected Page and owner image in advance. Timeboxes are presentation targets, not measured product latency claims.
+Adjust to the actual speaking slot. Use the populated presenter workspace and show existing work as existing work. Prepare the owner image in advance; a connected Page is only needed if the Facebook deferral is lifted. Timeboxes are presentation targets, not measured product latency claims.
 
 | Time | Action | What judges learn |
 |---|---|---|
@@ -90,15 +90,17 @@ Adjust to the actual speaking slot. Use the populated presenter workspace and sh
 | 5:00–6:15 | Open generated Post in Scheduling, preview image/Page/time; approve a prepared valid test Post | Independent Posts, clear approval, strong calendar UI |
 | 6:15–6:50 | Show a confirmed live publish/permalink or the rehearsed scheduled result | Actual external execution with evidence |
 | 6:50–7:35 | Upload/map the fixture or open its saved confirmed analysis and explain one correct ratio | Deterministic math and useful interpretation |
-| 7:35–8:00 | Switch UI language/show mobile view and notification deep link | Finished experience and accessibility |
+| 7:35–8:00 | Show mobile view and a notification deep link | Finished English-only experience and accessibility |
 
 If fresh generation takes longer, continue into saved work and return when it finishes. Do not slow/fake progress to match the script. Live publish requires the exact owner-reviewed content; schedule test Posts early enough to fit the real scheduler interval and delivery allowance. Never post content to an unintended Page for rehearsal.
+
+> **Facebook/Meta deferral (19 November 2026):** the owner temporarily deprioritized Facebook while search/Firecrawl is prioritized. Do not implement, configure, claim or demo a live Facebook connection/publication. If the deferral is still in force at freeze, replace the 6:15–6:50 publish segment with a saved-output walkthrough and state plainly that publishing is upcoming. Keep C25/C26 in the plan; this note is not permission to delete the requirement.
 
 ## 5. Judge exploration checklist
 
 The timed script does not demonstrate every requirement. Keep these paths ready for hands-on review:
 
-- Email verification/resend and Google login; no company field during signup.
+- Immediate signup without email verification, and Google login; no company field during signup.
 - Website/manual setup, incomplete extraction, optional pricing and no-ready-route option.
 - Direct Chat without a Roadmap; form choices/custom/unknown and budget refusal.
 - Two Tasks in separate conversations; third queued; navigation and interrupted-run recovery.
@@ -132,7 +134,7 @@ rtk npm run test:brain-delete:ui
 
 Add new scripts during C37, not imaginary commands claimed to exist now. Keep a focused suite for domain validation/metrics, DB/RPC checks, and Playwright journeys. Build/type-check Edge Functions separately because the frontend build does not cover their runtime.
 
-Audit baseline: build passed; lint exit 0 with eight warnings; crawl tests 25/25 passed. Two isolated UI scripts failed to start Vite in the audit environment; neither is marked passed. A later manual Vite start was stopped after diagnosis and provides no UI-test proof. Re-run browser tests in the working development environment.
+C01 baseline (19 November 2026): build passed; lint exit 0 with 11 warnings and no errors; crawl 26/26, AI gateway 6/6 and task runner 7/7 passed; local DB check blocked by the missing disposable PostgreSQL harness; hosted Supabase app tables/functions absent (404). Browser suites were not rerun. The earlier audit (build passed, lint eight warnings, crawl 25/25, two isolated UI scripts failed to start) remains historical. Re-run browser tests in the working development environment.
 
 ### Real persistence and two-user checks
 
@@ -140,7 +142,7 @@ Use a disposable Supabase project/local DB. Test ownership for Brain, draft, tas
 
 ### Live provider smoke checks
 
-One actual model generation, one actual source retrieval/synthesis, real Google/email auth, one image upload, real Page connect, each committed publish format, read-back and one scheduled send. Save environment/version/time and safe evidence; redact tokens. Intercepted Playwright APIs do not pass this layer.
+One actual model generation, one actual Firecrawl retrieval/synthesis, real Google/email auth, one image upload, and — only when the Facebook deferral is lifted — real Page connect, each committed publish format, read-back and one scheduled send. Save environment/version/time and safe evidence; redact tokens. Intercepted Playwright APIs do not pass this layer.
 
 ### Important failure cases for the competition
 
@@ -166,19 +168,20 @@ Review realistic English examples across the selected markets and task types. As
 
 Measure actual time for the fresh-input demo and track corrections/latency separately from presenter interaction. Do not advertise the ten-minute first-value target as achieved without measurements.
 
-Freeze at least 24 hours before presentation. Prepare: deployment URL/build, test credentials stored safely, configured Page, reviewed test content, image, sample files, charger/network fallback, saved real outputs, a labeled recording, and a demo-only reset procedure. Rehearse once from a different device/browser. Remove noisy developer logs and any exposed secret before sharing.
+Freeze at least 24 hours before presentation. Prepare: deployment URL/build, test credentials stored safely, reviewed test content, image, sample files, charger/network fallback, saved real outputs, a labeled recording, and a demo-only reset procedure. A configured Facebook Page is required only if the deferral is lifted. Rehearse once from a different device/browser. Remove noisy developer logs and any exposed secret before sharing.
 
 ## 8. Configuration and external dependencies
 
 | Dependency | Required evidence before presentation |
 |---|---|
 | Supabase database/storage/functions | Tested migrations/RLS/storage policies and deployed function versions |
-| Email verification/recovery | Real delivered link and correct deployed callback |
+| Email signup & password recovery | Direct signup without verification; real delivered password recovery link and correct deployed callback |
 | Google | Real dedicated-identity login on deployed origin |
-| Model/search provider | Working keys stored server-side; measured call and source output |
-| Meta Page | Authorized Page selection, supported token/scopes, live test and read-back |
-| Scheduling | Real scheduled invocation, exact approval binding, correct zone/window |
-| Hosting | HTTPS, SPA redirects, fresh-device login and deep-link refresh |
+| Model provider | Dashboard-managed key (or server fallback) deployed and one measured real generation |
+| Search provider | Firecrawl credential stored server-side; measured query and inspectable source output |
+| Meta Page | **Deferred by owner** — do not require for the current demo; requirements retained for C25/C26/H05/H06 |
+| Scheduling | Real scheduled invocation, exact approval binding, correct zone/window (Facebook sends deferred with C26) |
+| Hosting | Vercel project, HTTPS, SPA redirects, `busmora.com` DNS, fresh-device login and deep-link refresh |
 
 Supabase documents scheduled Edge Function invocation using pg_cron/pg_net and server-side credentials; use the supported setup appropriate to the project's key type and current configuration. Do not accept a public publishable key as sufficient scheduler authority. [Official scheduling guide](https://supabase.com/docs/guides/functions/schedule-functions).
 

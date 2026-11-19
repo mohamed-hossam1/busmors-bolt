@@ -1,12 +1,12 @@
-const { chromium } = require('playwright')
-const { spawn, execFileSync } = require('node:child_process')
+const { chromium, startTestApp } = require('./next-test-utils.cjs')
+const { execFileSync } = require('node:child_process')
 const { mkdirSync, writeFileSync, existsSync } = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
 const { installFixtures, workspace } = require('./ui-fixtures.cjs')
 
 const root = path.resolve(__dirname, '..')
-const output = path.join(root, 'artifacts/redesign')
+const output = path.join(root, 'artifacts/next-migration')
 const base = process.env.UI_BASE_URL || 'http://127.0.0.1:4179'
 const results = []
 const captureProducts = process.argv.includes('--capture-products')
@@ -15,14 +15,12 @@ const check = (label) => { results.push(label); console.log('PASS:', label) }
 
 async function main() {
   mkdirSync(output, { recursive: true })
-  const server = process.env.UI_BASE_URL ? null : spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '4179', '--strictPort'], {
-    cwd: root, stdio: 'ignore', env: { ...process.env, VITE_SUPABASE_URL: 'https://busmora-ui-preview.supabase.co', VITE_SUPABASE_ANON_KEY: 'fictional-preview-key' },
-  })
+  const server = process.env.UI_BASE_URL ? null : await startTestApp(4179, 'busmora-ui-preview')
   let browser
   try {
     for (let i = 0; i < 80; i++) {
-      try { if ((await fetch(base)).ok) break } catch { /* Wait for isolated Vite. */ }
-      if (i === 79) throw new Error('The isolated Vite server did not start.')
+      try { if ((await fetch(base)).ok) break } catch { /* Wait for isolated Next.js. */ }
+      if (i === 79) throw new Error('The isolated Next.js server did not start.')
       await delay(250)
     }
     browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : existsSync('/usr/bin/google-chrome') ? { executablePath: '/usr/bin/google-chrome' } : {}), args: ['--no-sandbox'] })
@@ -115,8 +113,9 @@ async function main() {
     await page.mouse.up()
     await page.locator('.employee-canvas .react-flow__controls-zoomin').click()
     await settle()
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('busmora:chat-canvas:conversation-launch')))
-    assert.ok(saved.positions.orchestrator)
+    const canvasKey = await page.evaluate(() => Object.keys(localStorage).find(k => k.startsWith('busmora:chat-canvas:')) || 'busmora:chat-canvas:task-launch')
+    const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), canvasKey)
+    assert.ok(saved?.positions?.orchestrator, 'orchestrator position must be saved in ' + canvasKey)
     assert.ok(saved.viewport?.zoom > 0)
     const transform = await canvasNode.evaluate((element) => element.style.transform)
     await page.getByRole('button', { name: /History/ }).first().click()
@@ -132,7 +131,7 @@ async function main() {
     await canvasNode.waitFor()
     await settle()
     assert.equal(await canvasNode.evaluate((element) => element.style.transform), transform)
-    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem('busmora:chat-canvas:conversation-launch')))
+    const restored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), canvasKey)
     assert.deepEqual(restored, saved)
     assert.equal(await page.evaluate((id) => localStorage.getItem('busmora:active-conversation:' + id), workspace), 'conversation-launch')
     check('Conversation isolation, node positions, viewport, and refresh restoration')
@@ -167,7 +166,10 @@ async function main() {
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await page.getByText('A revised fictional caption, ready for review.', { exact: true }).waitFor()
     await page.getByRole('button', { name: 'Approve', exact: true }).first().click()
-    await page.waitForFunction(() => document.querySelectorAll('button').length > 0)
+    for (let i = 0; i < 50; i++) {
+      if (tables.planned_posts[0].status === 'approved') break
+      await delay(100)
+    }
     assert.equal(tables.planned_posts[0].status, 'approved')
     check('Calendar post editing and approval keep the existing data operations')
 
@@ -188,7 +190,7 @@ async function main() {
     for (const viewport of [{ width: 1440, height: 960 }, { width: 768, height: 1024 }, { width: 390, height: 844 }, { width: 320, height: 740 }]) {
       await page.setViewportSize(viewport)
       for (const route of ['/', '/signin', '/signup', '/reset', '/onboarding']) {
-        await page.goto(base + route)
+        try { await page.goto(base + route, { waitUntil: 'domcontentloaded' }) } catch { await page.goto(base + route, { waitUntil: 'domcontentloaded' }) }
         await settle()
         await noOverflow(viewport.width + ' ' + route)
         if (route === '/') assert.equal(await page.locator('.marketing-testimonials article').evaluateAll((cards) => cards.every((card) => { const box = card.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; })), true, 'Use-case cards fit their columns')
@@ -263,7 +265,7 @@ async function main() {
     const anonymous = await browser.newContext()
     const authPage = await anonymous.newPage()
     await authPage.goto(base + '/app/brain')
-    await authPage.waitForURL('**/signin')
+    await authPage.waitForURL('**/signin**')
     await authPage.route('https://busmora-ui-preview.supabase.co/**', (route) => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_grant', error_description: 'Example authentication error' }) }))
     await authPage.getByLabel('Email').fill('sample@example.com')
     await authPage.getByLabel(/Password/).fill('fictional-password')

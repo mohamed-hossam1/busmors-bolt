@@ -1,15 +1,14 @@
 // Fictional API responses exercise browser behavior; SQL acceptance is separate.
-const { chromium }=require('playwright')
-const { spawn }=require('node:child_process')
+const { chromium, startTestApp }=require('./next-test-utils.cjs')
 const { existsSync,mkdirSync }=require('node:fs')
 const path=require('node:path'),assert=require('node:assert/strict')
 const { installFixtures }=require('./ui-fixtures.cjs')
 async function main(){
  const root=path.resolve(__dirname,'..'),base='http://127.0.0.1:4186'
- const server=spawn(process.execPath,[path.join(root,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port','4186','--strictPort'],{cwd:root,stdio:'ignore',env:{...process.env,VITE_SUPABASE_URL:'https://busmora-ui-preview.supabase.co',VITE_SUPABASE_ANON_KEY:'fictional-preview-key'}})
+ const server=await startTestApp(4186, 'busmora-ui-preview')
  let browser
  try{
-  for(let i=0;i<80;i++){try{if((await fetch(base)).ok)break}catch{}if(i===79)throw Error('Vite did not start');await new Promise(r=>setTimeout(r,250))}
+  for(let i=0;i<80;i++){try{if((await fetch(base)).ok)break}catch{}if(i===79)throw Error('Next.js did not start');await new Promise(r=>setTimeout(r,250))}
   browser=await chromium.launch({headless:true,...(existsSync('/usr/bin/google-chrome')?{executablePath:'/usr/bin/google-chrome'}:{}),args:['--no-sandbox']})
   const context=await browser.newContext(),tables=await installFixtures(context)
   tables.brain_nodes=tables.brain_nodes.slice(0,2);tables.brain_edges=[]
@@ -45,6 +44,7 @@ async function main(){
   })
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message))
   await page.goto(base+'/brain',{waitUntil:'domcontentloaded'})
+  await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(1500)
   const offering=page.locator('.card').filter({has:page.getByRole('heading',{name:'The Everyday Collection',exact:true})})
   await offering.getByRole('button',{name:'Edit',exact:true}).click()
   const editor=page.getByRole('dialog',{name:'Edit knowledge'})
@@ -53,11 +53,12 @@ async function main(){
   await editor.getByRole('button',{name:'Save',exact:true}).click();await editor.waitFor({state:'detached'})
   assert.equal(tables.brain_nodes[1].properties.amount,'125');assert.equal(tables.brain_nodes[1].version,2)
   await page.reload({waitUntil:'domcontentloaded'})
+  await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(1000)
   await page.getByRole('button',{name:'Evidence for Owner corrected offering'}).click()
   const evidence=page.getByRole('dialog',{name:'Knowledge evidence and history'})
   await evidence.getByText('fixed · 100 EGP').waitFor();await evidence.getByText('fixed · 125 EGP').waitFor()
-  await page.setViewportSize({width:390,height:844});mkdirSync(path.join(root,'artifacts/competition'),{recursive:true})
-  await page.screenshot({path:path.join(root,'artifacts/competition/brain-history-mobile.png')})
+  await page.setViewportSize({width:390,height:844});mkdirSync(path.join(root,'artifacts/next-migration'),{recursive:true})
+  await page.screenshot({path:path.join(root,'artifacts/next-migration/brain-history-mobile.png')})
   await evidence.getByRole('button',{name:'Close evidence'}).click()
   await page.getByRole('button',{name:'Approve for use',exact:true}).click()
   await page.getByRole('alert').filter({hasText:'This item changed'}).waitFor()

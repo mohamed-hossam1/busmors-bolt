@@ -1,20 +1,16 @@
-const { chromium } = require('playwright')
-const { spawn } = require('node:child_process')
+const { chromium, startTestApp } = require('./next-test-utils.cjs')
 const { existsSync } = require('node:fs')
-const path = require('node:path')
 const assert = require('node:assert/strict')
 const { installFixtures } = require('./ui-fixtures.cjs')
 
 async function main() {
-  const root = path.resolve(__dirname, '..'), base = 'http://127.0.0.1:4183'
-  const server = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '4183', '--strictPort'], {
-    cwd: root, stdio: 'ignore', env: { ...process.env, VITE_SUPABASE_URL: 'https://busmora-ui-preview.supabase.co', VITE_SUPABASE_ANON_KEY: 'fictional-preview-key' },
-  })
+  const base = 'http://127.0.0.1:4183'
+  const server = await startTestApp(4183, 'busmora-ui-preview')
   let browser
   try {
     for (let i = 0; i < 80; i++) {
-      try { if ((await fetch(base)).ok) break } catch { /* Wait for local Vite. */ }
-      if (i === 79) throw new Error('Isolated Vite did not start')
+      try { if ((await fetch(base)).ok) break } catch { /* Wait for local Next.js. */ }
+      if (i === 79) throw new Error('Isolated Next.js did not start')
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
     browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : existsSync('/usr/bin/google-chrome') ? { executablePath: '/usr/bin/google-chrome' } : {}), args: ['--no-sandbox'] })

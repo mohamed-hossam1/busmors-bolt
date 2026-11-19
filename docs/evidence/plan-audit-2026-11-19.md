@@ -2,6 +2,12 @@
 
 Reviewed by Codex against the current local working tree in `busmors-bolt`, including existing uncommitted implementation. Scope: audit and update the plan; no product feature implementation, deployment, provider calls or publication was performed. Existing source changes were preserved; build output was directed to `/tmp`.
 
+> **Post-audit update (19 November 2026):**
+> 1. C01 was completed with owner-confirmed dates/hosting and read-only environment probes.
+> 2. The project architecture is established on **Next.js 16 (App Router + Turbopack) + React 19 + Supabase**. Backend operations (`ai-generate`, `crawl`, `tasks`, `oauth`) are implemented as internal Next.js Server API routes (`/api/*`), resolving the missing Supabase Edge Functions dependency.
+> 3. `npm run build` now executes `next build` and cleanly compiles 19 routes; `npm run lint` uses `oxlint` (0 errors, 17 warnings).
+> See the [C01 scope lock](../phase-1-2/IMPLEMENTATION_PROGRESS.md#c01-scope-lock--19-november-2026-complete), [integration readiness inventory](integration-readiness.md) and [competition evidence](competition-status.md) for current status.
+
 ## Result
 
 **No C task is fully accepted on the available evidence.** This does not mean the project has no completed components: intake, Brain governance, task execution, Chat, Canvas and document editing contain substantial working local implementation. The remaining gaps combine missing behavior with live/environment acceptance that has not been established.
@@ -30,8 +36,8 @@ The actionable checklist is now **under every C01–C40 heading** in [the implem
 
 | Command | Result | What this proves / does not prove |
 |---|---|---|
-| `rtk npm run build -- --outDir /tmp/busmora-plan-audit-build` | PASS | TypeScript and Vite build; no deployment or backend acceptance. |
-| `rtk npm run lint` | PASS, 11 warnings, no errors | Static checks only; warnings include hooks, component exports and Date purity. |
+| `npm run build` | PASS — Next.js 16.4.6 (Turbopack), 19 routes generated | Production Next.js build; hosted Supabase DB migrations not covered. |
+| `npm run lint` | PASS, 17 warnings, no errors | Static checks via oxlint. |
 | `rtk npm run test:crawl` | PASS, 26/26 | Local crawler/fixture behavior; not a new live website run. |
 | `rtk npm run test:tasks` | PASS, 7/7 | Local runner recovery/cancellation/context/save behavior; not live Supabase execution. |
 | `rtk npm run test:ai-gateway` | PASS, 6/6 | Gateway checks with fixture provider responses; not real managed/BYOK provider verification. |

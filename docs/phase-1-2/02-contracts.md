@@ -7,32 +7,35 @@ This file chooses a small implementation on the existing stack. New paths and ta
 ## 1. Architecture and folder boundaries
 
 ```text
-React/Vite
+Next.js 16 (App Router + Turbopack) & React 19
+  ├─ Browser TaskRunner above route components with 2-task queue and step state machine
+  ├─ Canvas layout and event timeline
   ├─ Supabase Auth for application sessions
   ├─ Supabase reads and owner-scoped CRUD
-  ├─ SQL RPCs for important atomic transitions
-  ├─ browser TaskRunner above route components
-  └─ Supabase Edge Functions for model/search/crawl/Meta secrets
+  ├─ SQL RPCs for atomic transitions
+  └─ Native Server API Routes (/api/ai, /api/crawl, /api/tasks, /api/oauth) for secrets/provider calls
 
-Supabase PostgreSQL + private Storage
-  └─ scheduled Edge Function invocation for due approved Posts
+Supabase PostgreSQL 17 + private Storage
+  └─ scheduled background invocation / webhook for due approved Posts
 ```
 
 No separate server, queue service, AI deployment, or worker host. React can coordinate research/model calls for the competition. It must not contain provider keys or Meta tokens. The optional Supabase scheduled publisher is the only background slice needed to demonstrate real scheduling without depending on the Calendar route staying mounted.
 
-Keep the current pages as route shells. Add feature modules when logic becomes substantial:
+Keep the screen components in `src/screens/` and Next.js routes in `src/app/`. Add feature modules when logic becomes substantial:
 
 ```text
+src/app/{layout,page,employee,roadmap,brain,deliverables,scheduling,settings,auth}/
+src/app/api/{ai,crawl,tasks,oauth,research}/route.ts
+src/server/{ai-generate,crawl,task-executor,oauth-connect,agents,calendar-actions}.ts
+src/screens/{EmployeePage,RoadmapPage,BrainPage,DeliverablesPage,CalendarPage,SettingsPage,Onboarding}.tsx
 src/features/onboarding/{BusinessForm,ConfirmBusiness,api,types}.ts(x)
-src/features/chat/{TaskRunnerProvider,taskRunner,forms,api}.ts(x)
+src/features/tasks/{TaskRunnerProvider,runner,backend,types}.ts(x)
 src/features/research/{types,evidence,api}.ts
 src/features/roadmap/{DiscoveryWizard,RoadmapTimeline,StepDetail,RevisionReview,api,types}.ts(x)
 src/features/publishing/{PostEditor,PostDetail,CalendarMonth,CalendarWeek,PostList,BatchReview,api,types}.ts(x)
 src/features/analysis/{UploadDialog,MappingPreview,AnalysisResult,metrics,types}.ts(x)
 src/features/notifications/{NotificationCenter,api}.ts(x)
-src/shared/{api/errors,i18n/en,i18n/ar,validation}.ts
-supabase/functions/{ai-generate,research-tools,read-site,oauth-connect,publish-post,publish-due}/
-supabase/functions/_shared/{auth,schemas,provider,errors,publishing}.ts
+src/lib/{types,supabase,i18n,region,contracts}.ts
 supabase/migrations/<timestamp>_<change>.sql
 ```
 
@@ -77,7 +80,7 @@ For the sprint, JSONB is appropriate for bounded forms and display contracts. It
 
 ## 4. Authentication and routing
 
-Signup collects email/password only. Supabase verification → confirmation page → onboarding; resend/expired-link/replayed-link errors are visible. Reset-email link leads to a new-password page, not back to a reset-request form. Workspace creation is idempotent after a usable authenticated identity exists.
+Signup collects email/password only and proceeds directly to onboarding without email verification. Reset-email link leads to a new-password page, not back to a reset-request form. Workspace creation is idempotent after a usable authenticated identity exists.
 
 Preserve `/app/*` links. Add the PRD's public entry routes `/employee`, `/roadmap`, `/brain`, `/deliverables`, `/scheduling`, and `/settings` as real aliases to the same components; `/scheduling` maps to the existing Calendar feature. Successful ordinary login opens `/employee` for completed setup and `/onboarding` otherwise. Authenticated deep-link refresh stays at that resource. Do not restore an arbitrary last page at login. Check resource access after restoring an intended route.
 
@@ -139,15 +142,15 @@ Chat message kinds: `text`, `text_response`, `structured_form`, `task_status`, `
 
 ## 8. AI, research, and usage
 
-Use the existing `ai-generate` Edge Function as the provider gateway. Add an allowlisted `operation` field with server-owned prompts for route/clarify/research-synthesize/plan/copy/analyze. Do not accept arbitrary privileged tool instructions from model text. Validate output shape before persistence. Remove `callDirectProvider` and authenticated key-decrypt access. Use a server-managed default key for a smooth ordinary-owner demo; BYOK can remain optional advanced settings.
+Use the internal Next.js Server API route (`/api/ai`) backed by `src/server/ai-generate.ts` as the provider gateway. Add an allowlisted `operation` field with server-owned prompts for route/clarify/research-synthesize/plan/copy/analyze. Do not accept arbitrary privileged tool instructions from model text. Validate output shape before persistence. Remove browser direct provider calls and authenticated key-decrypt access. **Owner decision (19 November 2026): keep the dashboard-managed provider/model/key as the primary configuration flow; do not hardcode a provider.** A server-managed fallback (`AI_API_KEY` in `.env`) remains available, but it must not replace the dashboard path or introduce unnecessary configuration changes.
 
 A small router returns direct reply, structured clarification, or task intent. Simple conversation produces no specialist activity. For substantive work choose from a bounded set of real tools/specialists; planning can vary with inputs. A single English Post must not force research or six calendar Posts.
 
-`research-tools` supports `search` and `fetch` through one configured provider. The default implementation choice for this plan is Firecrawl REST search with retrieved Markdown, using a separate application credential in Supabase secrets. If the team already has a working provider, preserve it behind the same small interface. Do not block UI work while configuring access. Use the current documented search payload with query/limit and Markdown scrape options, and validate the actual returned shape in a smoke test. [Official Firecrawl search API](https://docs.firecrawl.dev/api-reference/endpoint/search).
+`research-tools` supports `search` and `fetch` through one configured provider. **Owner decision (19 November 2026): Firecrawl is the selected search provider** for the application's research/search functionality. Implement it behind a small adapter using Firecrawl REST search with retrieved Markdown and server-side credential (`FIRECRAWL_API_KEY` configured in `.env`). This is C14/C15 implementation. Use the current documented search payload with query/limit and Markdown scrape options, and validate the actual returned shape in a smoke test. [Official Firecrawl search API](https://docs.firecrawl.dev/api-reference/endpoint/search).
 
 Store query/result URLs, retrieved excerpts, dates, source type, and accessibility. Use accessible websites and reviews/community material where relevant; no claims of private-group/Ads Library access. Reject fabricated/non-retrieved source IDs during synthesis. Duplicate articles count as duplicated coverage, not independent confirmation. Quotes/translations stay separate.
 
-Per-task limits are real and visible: maximum calls/pages/tokens/time plus consumed usage. Start with configurable conservative demo limits, record them, then tune using actual latency/cost. Edge functions enforce per-call ceilings; browser/RPC tracks task allowance and extension decisions. Child work and retries consume the same allowance. A budget increase prompts an explicit decision. Refusal returns partial findings. Production-grade concurrent reservation reconciliation is deferred, not silently described as solved.
+Per-task limits are real and visible: maximum calls/pages/tokens/time plus consumed usage. Start with configurable conservative demo limits, record them, then tune using actual latency/cost. Server routes enforce per-call ceilings; browser/RPC tracks task allowance and extension decisions. Child work and retries consume the same allowance. A budget increase prompts an explicit decision. Refusal returns partial findings. Production-grade concurrent reservation reconciliation is deferred, not silently described as solved.
 
 Successful outputs are saved before completion is shown. A result RPC can create a document, Posts, proposed Brain updates, typed chat references, audit and notification; it returns persisted IDs. Retry must not duplicate results. No canned fallback content disguised as successful AI output.
 

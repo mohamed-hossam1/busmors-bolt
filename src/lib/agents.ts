@@ -12,7 +12,7 @@ export interface AiCallResult {
   callId?: string
 }
 
-/** Provider credentials never leave the authenticated Edge gateway. */
+/** Provider credentials never leave the authenticated Next.js gateway. */
 export async function callAi(input: {
   systemPrompt?: string
   userPrompt: string
@@ -30,7 +30,7 @@ export async function callAi(input: {
   const token = sessionData.session?.access_token
   if (!token) return { ok: false, text: '', error: 'unauthorized' }
   try {
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-generate`, {
+    const res = await fetch('/api/ai', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...input, signal: undefined, operation: input.operation ?? 'chat', systemPrompt: undefined }),

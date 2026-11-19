@@ -1,3 +1,5 @@
+'use client'
+
 import { useDialog } from '@/hooks/useDialog';
 
 

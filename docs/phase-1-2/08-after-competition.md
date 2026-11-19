@@ -19,10 +19,11 @@ The owner explicitly accepts browser-driven Tasks and prioritizes visible functi
 
 ## Status audit — 19 November 2026
 
-**H01–H10: INCOMPLETE — deferred production acceptance.** No production gate is signed off. Each row's “Required outcome and evidence” is its completion checklist; the [current local audit](../evidence/plan-audit-2026-11-19.md) does not replace real production evidence.
+**H01–H10: INCOMPLETE — deferred production acceptance.** No production gate is signed off. Each row's “Required outcome and evidence” is its completion checklist; the [current local audit](../evidence/plan-audit-2026-11-19.md) does not replace real production evidence. The [C01 scope lock](IMPLEMENTATION_PROGRESS.md#c01-scope-lock--19-november-2026-complete) and [integration inventory](../evidence/integration-readiness.md) add environment blockers; they do not satisfy any H row.
 
 ## Known sprint deviations to preserve explicitly
 
+- **Facebook/Meta is temporarily deferred by owner direction (19 November 2026)** to prioritize search/Firecrawl. C25/C26/C28/C29 and H05/H06 requirements remain in the plan and must not be deleted. The Supabase Facebook provider is currently disabled; no Page connection or publication was configured or verified.
 - Long AI/research/crawl Tasks may depend on the browser. Navigation continuation and checkpoint resume are useful but do not establish FR-23/NFR-05 durability.
 - Basic Google sign-in may work while explicit-only account linking still conflicts with the configured Supabase behavior. A dedicated demo identity does not solve that product requirement.
 - Basic task limits/usage UI may work while production-grade concurrent budget accounting is unfinished.

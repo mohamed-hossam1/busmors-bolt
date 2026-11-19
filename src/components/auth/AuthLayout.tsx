@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowUpRight, Brain, ShieldCheck } from 'lucide-react'
 import Brand from '../Brand'

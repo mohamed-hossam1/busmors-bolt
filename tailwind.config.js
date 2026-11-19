@@ -6,7 +6,7 @@ const themeColor = (name, hex) => {
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       opacity: { 15: ".15", 35: ".35", 55: ".55", 65: ".65", 85: ".85" },

@@ -18,23 +18,24 @@ function createHarness({ fetch = async () => new Response('missing', { status: 4
     if (modules.has(file)) return modules.get(file)
     const exports = {}
     modules.set(file, exports)
-    let source = fs.readFileSync(file, 'utf8').replaceAll('import.meta.env.VITE_SUPABASE_URL', '"https://test.supabase.invalid"')
+    const source = fs.readFileSync(file, 'utf8')
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
     const requireStub = (name) => {
-      if (name === './agents') return { callAi: ai }
-      if (name.endsWith('/supabase') || name === './supabase') return { supabase: {
+      if (name === 'server-only') return {}
+      if (name === './agents' || name === './call-ai') return { callAi: ai }
+      if (name.endsWith('/supabase') || name === './supabase') { const client = {
         auth: database.auth, from: (...args) => database.from(...args), rpc: (...args) => {
           const request = Promise.resolve(database.rpc(...args))
           request.abortSignal = () => request
           return request
         },
-      } }
-      if (name === 'npm:@supabase/supabase-js@2') return { createClient: () => database }
+      }; return { supabase: client, createServerSupabase: async () => client } }
+      if (name === '@supabase/supabase-js') return { createClient: () => database }
       const dependency = path.resolve(path.dirname(file), name)
       return load(dependency.endsWith('.ts') ? dependency : dependency + '.ts')
     }
     vm.runInNewContext(code, { exports, require: requireStub, console, URL, Response, Request, AbortController, AbortSignal, DOMException, crypto: webcrypto, TextEncoder,
-      setTimeout, clearTimeout, fetch, ...extra }, { filename: file })
+      setTimeout, clearTimeout, fetch, process: { env: {} }, ...extra }, { filename: file })
     return exports
   }
   return { load, db: database }

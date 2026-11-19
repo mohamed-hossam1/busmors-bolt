@@ -1,6 +1,6 @@
 # Busmora
 
-React 19 + TypeScript + Vite workspace for the Busmora Marketing Director. Authentication, workspace data, and agent execution continue to use the existing Supabase integration.
+Next.js 16 (App Router) + React 19 + TypeScript workspace for the Busmora Marketing Director. Authentication, workspace data, and agent execution use the existing Supabase integration.
 
 ## Development
 
@@ -9,7 +9,7 @@ npm ci
 npm run dev
 ```
 
-Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your local `.env`. Never commit that file. Existing database migrations and Edge Functions live in `supabase/`.
+Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your local `.env`. Never commit that file. Database migrations live in `supabase/migrations/`; backend operations run as Next.js server API routes under `src/app/api/*` with server modules in `src/server/*` (no Supabase Edge Functions).
 
 ```sh
 npm run build
@@ -17,7 +17,7 @@ npm run lint
 npm run test:ui
 ```
 
-The browser suite starts its own Vite server on port 4179 with an isolated Supabase URL and intercepts its requests. It uses fictional Luma Studio fixtures; it never reads or writes a live workspace. It uses installed Chrome when available; otherwise install Playwright Chromium with `npx playwright install chromium`. Set `CHROME_PATH` to select a browser executable.
+The browser suite runs against a local Next.js server with an isolated Supabase URL and intercepts its requests. It uses fictional Luma Studio fixtures; it never reads or writes a live workspace. It uses installed Chrome when available; otherwise install Playwright Chromium with `npx playwright install chromium`. Set `CHROME_PATH` to select a browser executable.
 
 To refresh the real product images on the landing page:
 
@@ -57,7 +57,7 @@ npm run test:crawl:ui
 
 ## Interface
 
-The reference landing was adapted into `src/features/marketing/` with React Router links, native image elements, a small English copy adapter, and native smooth scrolling. It has no Next.js runtime dependencies. Hero, workflow, closing scroll scenes, reveal effects, animated connectors, tabs, FAQ, and the existing interactive guest demo are retained. Reduced-motion and small-screen layouts use normal document flow.
+The reference landing was adapted into `src/features/marketing/` with links, native image elements, a small English copy adapter, and native smooth scrolling. Hero, workflow, closing scroll scenes, reveal effects, animated connectors, tabs, FAQ, and the existing interactive guest demo are retained. Reduced-motion and small-screen layouts use normal document flow.
 
 The original logo, local Inter fonts, cosmic palette, electric purple actions, and light work surfaces form one system across the public page, auth, onboarding, and protected routes. See [DESIGN.md](DESIGN.md).
 

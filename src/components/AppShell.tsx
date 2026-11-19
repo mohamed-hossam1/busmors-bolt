@@ -1,17 +1,20 @@
+'use client'
+
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Brain, LogOut, MessageSquare, CalendarDays, FolderOpen, Settings, Menu, X, Sparkles, ChevronRight } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import NavLink from './NavLink'
+import { Brain, LogOut, MessageSquare, CalendarDays, FolderOpen, Settings, Menu, X, Sparkles, ChevronRight, Route as RouteIcon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCopy } from '../hooks/useCopy'
 import { supabase } from '../lib/supabase'
 import { useDialog } from '../hooks/useDialog'
 import Brand from './Brand'
 
-export default function AppShell() {
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useCopy()
   const { session } = useAuth()
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const router = useRouter()
+  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [signOutError, setSignOutError] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -19,6 +22,7 @@ export default function AppShell() {
 
   const items = [
     { to: '/employee', icon: MessageSquare, label: t('navEmployee'), shortLabel: t('navEmployee') },
+    { to: '/roadmap', icon: RouteIcon, label: t('navRoadmap'), shortLabel: t('navRoadmap') },
     { to: '/brain', icon: Brain, label: t('navBrain'), shortLabel: t('navBrain') },
     { to: '/scheduling', icon: CalendarDays, label: t('navCalendar'), shortLabel: t('navCalendar') },
     { to: '/deliverables', icon: FolderOpen, label: t('navDeliverables'), shortLabel: t('navDeliverables') },
@@ -30,14 +34,14 @@ export default function AppShell() {
     setSignOutError(false)
     const { error } = await supabase.auth.signOut()
     setSigningOut(false)
-    if (!error) navigate('/signin')
+    if (!error) router.push('/signin')
     else setSignOutError(true)
   }
   const navigation = (
     <nav aria-label="Workspace navigation" className="flex-1 space-y-2 overflow-y-auto px-1 py-4">
       <p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[.16em] text-stage-subtle">{t('workspace')}</p>
       {items.map(({ to, icon: Icon, label }) => (
-        <NavLink key={to} to={to} onClick={() => setMobileMenuOpen(false)} className="dashboard-nav-link">
+        <NavLink key={to} href={to} onClick={() => setMobileMenuOpen(false)} className="dashboard-nav-link">
           <Icon size={18} strokeWidth={1.7} /><span>{label}</span>
         </NavLink>
       ))}
@@ -81,11 +85,11 @@ export default function AppShell() {
             <div className="flex items-center gap-2 text-xs text-ink-600"><span>{t('workspace')}</span><ChevronRight size={13} /><span className="font-medium text-ink-900">{current?.label}</span></div>
             
           </header>
-          <div className="dashboard-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"><Outlet /></div>
+          <div className="dashboard-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
         </main>
         <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 flex min-h-16 items-center justify-around gap-1 border-t border-ink-200 bg-white px-1 pb-[env(safe-area-inset-bottom)] md:hidden">
-          {items.filter(item => ['/employee', '/scheduling'].includes(item.to)).map(({ to, icon: Icon, shortLabel }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-[10px] transition ${isActive ? 'bg-primary-50 font-semibold text-primary-700' : 'text-ink-600 hover:bg-ink-50'}`}><Icon size={19} strokeWidth={1.8} /><span>{shortLabel}</span></NavLink>
+          {items.filter(item => ['/employee', '/roadmap', '/scheduling'].includes(item.to)).map(({ to, icon: Icon, shortLabel }) => (
+            <NavLink key={to} href={to} className={({ isActive }) => `flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-[10px] transition ${isActive ? 'bg-primary-50 font-semibold text-primary-700' : 'text-ink-600 hover:bg-ink-50'}`}><Icon size={19} strokeWidth={1.8} /><span>{shortLabel}</span></NavLink>
           ))}
           <button className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-[10px] text-ink-600" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />{t('more')}</button>
         </nav>

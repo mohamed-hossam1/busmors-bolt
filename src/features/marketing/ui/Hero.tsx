@@ -1,3 +1,5 @@
+'use client'
+
 
 import { useTranslations } from "@/features/marketing/model/translations";
 import { useRef } from "react";

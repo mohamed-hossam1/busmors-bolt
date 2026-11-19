@@ -67,8 +67,8 @@ The marketing examples already have illustrative-example labels. Preserve them; 
 | `rtk npm run build` | Passed | Frontend compilation; not deployed backend verification |
 | `rtk npm run lint` | Exit 0, eight warnings | Not runtime/security proof |
 | `rtk npm run test:crawl` | 25/25 passed | Fictional source/intercepted API tests |
-| `rtk npm run test:crawl:ui` | Isolated Vite did not start | No UI pass claimed; rerun in working server/browser environment |
-| `rtk npm run test:brain-delete:ui` | Isolated Vite did not start | Same environment limitation |
+| `rtk npm run test:crawl:ui` | Isolated server did not start | No UI pass claimed; rerun in working server/browser environment |
+| `rtk npm run test:brain-delete:ui` | Isolated server did not start | Same environment limitation |
 | DB/RLS/live providers/deployment | Not exercised | Must be verified in the actual test environment |
 
 ## External compatibility checks

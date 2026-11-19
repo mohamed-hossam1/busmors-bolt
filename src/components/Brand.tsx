@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 
 export default function Brand({ light = false, compact = false, href = '/' }: { light?: boolean; compact?: boolean; href?: string }) {
   const className = `inline-flex shrink-0 items-center gap-2.5 ${light ? 'text-white' : 'text-ink-900'}`
@@ -10,5 +10,5 @@ export default function Brand({ light = false, compact = false, href = '/' }: { 
   )
   return href.startsWith('#')
     ? <a href={href} aria-label="Busmora home" className={className}>{content}</a>
-    : <Link to={href} aria-label="Busmora home" className={className}>{content}</Link>
+    : <Link href={href} aria-label="Busmora home" className={className}>{content}</Link>
 }

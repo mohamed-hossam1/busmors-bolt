@@ -8,8 +8,6 @@ export const translations = {
   saved: 'Saved',
   saving: 'Saving…',
   google: 'Continue with Google',
-  verifyEmail: 'Check your email',
-  resend: 'Resend verification email',
   newPassword: 'Set a new password',
   navEmployee: 'Marketing Director',
   navBrain: 'Brain',

@@ -25,7 +25,7 @@ for mode in ['empty', 'upgrade']:
             run(db, '-f', str(migration))
         if mode == 'upgrade':
             run(db, '-f', 'scripts/migration-upgrade-assert.sql')
-        for check in ['competition-db-check.sql', 'intake-db-check.sql', 'brain-governance-db-check.sql', 'task-execution-db-check.sql', 'deliverable-db-check.sql']:
+        for check in ['competition-db-check.sql', 'intake-db-check.sql', 'brain-governance-db-check.sql', 'task-execution-db-check.sql', 'deliverable-db-check.sql', 'discovery-db-check.sql']:
             if (root / 'scripts' / check).exists():
                 run(db, '-f', 'scripts/' + check)
         print(f'PASS: {mode} migration path and available database acceptance checks', flush=True)

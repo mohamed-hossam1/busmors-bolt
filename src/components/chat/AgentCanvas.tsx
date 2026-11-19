@@ -1,5 +1,7 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import ReactFlow, {
   Background,
   Controls,
@@ -387,7 +389,7 @@ export default function AgentCanvas({
               </button>
               {taskId && (
                 <Link
-                  to={`/employee?task=${encodeURIComponent(taskId)}`}
+                  href={`/employee?task=${encodeURIComponent(taskId)}`}
                   className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900"
                 >
                   Open task <ExternalLink size={11} />

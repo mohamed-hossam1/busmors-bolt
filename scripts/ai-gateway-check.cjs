@@ -1,4 +1,4 @@
-// Execute the actual Edge handler with a fake Supabase admin and provider.
+// Execute the actual Next.js server handler with a fake Supabase admin and provider.
 // This checks gateway behavior, not deployed provider compatibility.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
@@ -27,13 +27,11 @@ function gateway({ taskOwner = workspace, activeRun = runId, status = 'running',
       return { data: null, error: name === 'reserve_task_call' && reserveError ? { message: reserveError } : null }
     },
   }
-  createHarness({ db, extra: { Deno: {
-    serve: callback => { handler = callback },
-    env: { get: name => ({ SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service', AI_API_KEY: 'fixture-provider', AI_PROVIDER: 'openai', AI_MODEL: 'fixture-model' })[name] },
-  } }, fetch: async (url, options) => {
+  const module = createHarness({ db, extra: { process: { env: { SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service', AI_API_KEY: 'fixture-provider', AI_PROVIDER: 'openai', AI_MODEL: 'fixture-model' } } }, fetch: async (url, options) => {
     providerCalls.push({ url, body: JSON.parse(options.body) })
     return new Response(JSON.stringify(providerStatus === 200 ? { choices: [{ message: { content: generated }, finish_reason: 'stop' }], usage: { prompt_tokens: 35, completion_tokens: 20 } } : { error: { message: 'Sensitive raw provider failure' } }), { status: providerStatus })
-  } }).load('supabase/functions/ai-generate/index.ts')
+  } }).load('src/server/ai-generate.ts')
+  handler = module.generateAi
   return {
     rpcCalls, providerCalls,
     request: async overrides => {
@@ -90,7 +88,7 @@ test('provider error responses never expose raw provider messages', async () => 
 })
 
 test('campaign validation requires a complete brief as well as drafts', () => {
-  const { validateOutput } = createHarness().load('supabase/functions/_shared/operations.ts')
+  const { validateOutput } = createHarness().load('src/server/ai/operations.ts')
   const drafts = { posts: [{ caption: 'A useful draft', hashtags: '' }] }
   assert.equal(validateOutput('copy', JSON.stringify(drafts)), true)
   assert.equal(validateOutput('campaign', JSON.stringify(drafts)), false)

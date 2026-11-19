@@ -59,8 +59,29 @@ function fixture(t, initial = task()) {
       return copy(row)
     },
   }
-  const { BrowserTaskRunner } = createHarness({ extra: { setInterval, clearInterval } }).load('src/features/tasks/runner.ts')
-  const runner = new BrowserTaskRunner(backend, 'this-tab')
+  const { executeTask } = createHarness().load('src/server/task-executor.ts')
+  let controller, running
+  const runner = {
+    tasks: [], error: '',
+    async refresh() {
+      try {
+        if (running && rows[0].run_id !== running.runId) controller.abort()
+        if (running) await backend.rpc('heartbeat_task', { p_task_id: rows[0].id, p_run_id: running.runId })
+        await backend.rpc('recover_tasks', { p_runner_id: null })
+        this.tasks = copy(rows); this.error = ''
+        if (rows[0].status === 'queued' && !running) {
+          const admitted = await backend.rpc('admit_task', { p_task_id: rows[0].id, p_runner_id: 'server-request' })
+          controller = new AbortController()
+          running = { runId: admitted.run_id }
+          void executeTask(backend, admitted, controller.signal).finally(() => { running = null })
+        }
+      } catch { this.error = 'Task progress could not be refreshed.' }
+    },
+    start() { return this.refresh() },
+    stop() { controller?.abort() },
+    async resume(row) { await until(() => !running); await backend.rpc('resume_task', { p_task_id: row.id }); await this.refresh() },
+    async cancel(row) { await backend.rpc('stop_task', { p_task_id: row.id, p_status: 'cancelled' }); controller?.abort() },
+  }
   t.after(() => runner.stop())
   return { runner, backend, rows, calls, aiCalls, saved }
 }
@@ -73,7 +94,7 @@ test('a stale foreign run is recovered during later refreshes, with explicit res
   await f.runner.refresh()
   assert.equal(f.runner.tasks[0].status, 'interrupted')
   assert.equal(f.aiCalls.length, 0, 'Recovery must not regenerate work automatically')
-  assert.deepEqual(f.calls.filter(c => c.name === 'recover_tasks').map(c => c.args.p_runner_id), ['this-tab', null])
+  assert.deepEqual(f.calls.filter(c => c.name === 'recover_tasks').map(c => c.args.p_runner_id), [null, null])
 })
 
 test('temporary startup recovery failure is retried without a page reload', async t => {
@@ -91,7 +112,7 @@ test('temporary startup recovery failure is retried without a page reload', asyn
   assert.equal(f.saved.length, 1)
 })
 
-test('a superseded browser execution aborts and never heartbeats the new run', async t => {
+test('a superseded server execution aborts and never heartbeats the new run', async t => {
   const f = fixture(t)
   let signal
   f.backend.ai = async (_task, _operation, _prompt, abortSignal) => {
@@ -167,8 +188,8 @@ test('unfinished tasks are paged independently of the latest 100 history items',
     }
     return q
   } }
-  const { taskBackend } = createHarness({ db }).load('src/features/tasks/backend.ts')
-  const loaded = await taskBackend('owner').list()
+  const { taskBackend } = createHarness({ db }).load('src/server/task-backend.ts')
+  const loaded = await taskBackend(db, 'owner', 'token').list()
   assert.equal(loaded.filter(row => row.status === 'queued').length, 250)
   assert.equal(loaded.filter(row => row.status === 'completed').length, 100)
   assert.equal(new Set(loaded.map(row => row.id)).size, loaded.length)

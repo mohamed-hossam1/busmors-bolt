@@ -2,7 +2,9 @@
 
 > Scope update — 18 November 2026: the owner requires an English-only project. Interface, conversation and generated-content language are English; locale switching, alternate registers and right-to-left presentation are removed from acceptance. Country, currency, target market and IANA timezone remain independent. This update supersedes the earlier language requirements.
 
-Source: PRD v2.0 supplied by the owner. Baseline audit date: 18 November 2026. Current task-status reconciliation: 19 November 2026.
+> C01 decision lock — 19 November 2026: competition **Tuesday 24 November 2026, `Africa/Cairo`**; hosting **Vercel / `https://busmora.com`** (not deployed, authorization required); **reuse the existing Supabase project** (no second project); preserve the **dashboard-managed AI provider** flow; **Firecrawl** selected for search/research; **Google remains in scope**; **Facebook/Meta temporarily deferred** (requirements retained); **Next.js/React + Supabase** architecture and **English-only** product. See [integration readiness](../evidence/integration-readiness.md) for live status and blockers.
+
+Source: PRD v2.0 supplied by the owner. Baseline audit date: 18 November 2026. Current task-status reconciliation: 19 November 2026. C01 is the only fully accepted C task; no FR/NFR/AC is promoted by this scope lock.
 
 This ledger covers **57 active FRs, 9 NFRs, and 57 active acceptance scenarios**. FR-47 and AC-26 are retired and reserved. Future-phase items are visibility boundaries, not current execution features.
 
@@ -123,7 +125,7 @@ The observable pass conditions below include the owner-authorized English-only s
 | AC-28 | Timeout, revocation, cancellation race, or overdue publish | Reconcile or hold uncertain outcomes; no blind duplicate, unauthorized late dispatch, or silent send after reconnection; cancellation state and platform acceptance remain honest | C25 C26 C29 | H05 |
 | AC-29 | Mobile mixed-script review and approval | Text/media, destination, date/time/timezone, status and controls are legible and usable in English LTR; keyboard/detail alternatives and independent region settings work | C05 C24 C28 C35 | H10 |
 | AC-30 | Intended ordinary owner connects and publishes | The production configuration supports the owner's actual access path and genuine publication; developer-role account success alone cannot satisfy the gate | C25 C26 demonstrate only the tested account class | H06 |
-| AC-31 | Email verification link | Email/password-only signup sends a single-use expiring link; invalid/expired/replayed tokens fail, resend works, verification continues to Onboarding. | C03 | H02 |
+| AC-31 | Direct email signup | Email/password signup signs in immediately without email verification and continues directly to Onboarding. | C03 | H02 |
 | AC-32 | Google identity | Signup/login validate state/PKCE/nonce/claims; cancellation is safe, matching email never silently links, explicit reauthenticated link succeeds without takeover. | C04 demonstrates basic Google login only | H02 |
 | AC-33 | Optional offering pricing | Multiple offerings accept fixed, starting-from, quote-required and unknown models; optional amounts require currency and missing values never become zero. | C07 | H10 |
 | AC-34 | Completion and return routing | Existing verified users with completed Onboarding enter Marketing Director Chat (`/employee`) after successful normal login; incomplete Onboarding opens required setup (`/onboarding`); first-time completion offers Chat (`/employee`) or Create My Roadmap (`/roadmap`); authorized explicit deep links open requested resources; refreshing a valid authenticated route preserves current route; no last-visited-page restoration occurs. | C03 C06 C07 | H10 |

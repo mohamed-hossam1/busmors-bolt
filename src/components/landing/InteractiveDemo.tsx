@@ -1,5 +1,7 @@
+'use client'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import {
   ArrowRight,
   Brain,
@@ -157,7 +159,7 @@ export default function InteractiveDemo() {
 
           <div className="flex flex-col items-start justify-between gap-5 border-t border-ink-100 bg-primary-50/70 px-6 py-6 sm:flex-row sm:items-center sm:px-8">
             <div><p className="font-bold text-ink-900">Ready to use your own business?</p><p className="mt-1 text-sm text-ink-600">Your sample inputs and edits will stay saved on this device as you sign up.</p></div>
-            <Link to="/signup" className="btn-primary shrink-0 !rounded-xl">Create my workspace <ArrowRight size={16} /></Link>
+            <Link href="/signup" className="btn-primary shrink-0 !rounded-xl">Create my workspace <ArrowRight size={16} /></Link>
           </div>
         </div>
       </div>

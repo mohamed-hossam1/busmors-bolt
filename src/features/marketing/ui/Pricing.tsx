@@ -1,3 +1,5 @@
+'use client'
+
 
 import { Link } from "@/shared/i18n";
 import { useTranslations } from "@/features/marketing/model/translations";

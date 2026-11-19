@@ -1,6 +1,8 @@
+'use client'
+
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { removeAiKey } from '../server/key-actions'
 
 interface Props {
   children: ReactNode
@@ -28,13 +30,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   resetKey = async () => {
     try {
-      const { data } = await supabase.auth.getSession()
-      const userId = data.session?.user.id
-      if (userId) {
-        await supabase.from('ai_keys').delete().eq('workspace_id', userId)
-      } else {
-        await supabase.from('ai_keys').delete().not('id', 'is', null)
-      }
+      const { error } = await removeAiKey()
+      if (error) throw new Error(error)
     } catch (e) {
       console.error('Failed to reset key:', e)
     }

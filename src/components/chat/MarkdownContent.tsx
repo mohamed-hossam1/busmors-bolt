@@ -1,4 +1,6 @@
-import { useMemo } from 'react'
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -26,14 +28,18 @@ interface MarkdownContentProps {
 }
 
 export default function MarkdownContent({ content, className = '', isUser = false }: MarkdownContentProps) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const html = useMemo(() => {
+    if (!mounted) return content.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
     if (!content) return ''
     try {
       return safeMarkdown(content)
     } catch {
       return DOMPurify.sanitize(content, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
     }
-  }, [content])
+  }, [content, mounted])
 
   return (
     <div

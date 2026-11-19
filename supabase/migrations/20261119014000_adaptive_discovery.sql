@@ -67,6 +67,7 @@ BEGIN
   UPDATE discovery_drafts
    SET goal=p_goal,
        context_refs=coalesce(p_context_refs,d.context_refs),
+       status=CASE WHEN d.goal IS DISTINCT FROM p_goal THEN 'draft' ELSE d.status END,
        version=version+1,
        updated_at=now()
    WHERE id=d.id
@@ -157,10 +158,10 @@ BEGIN
  UPDATE discovery_drafts SET version=version+1,updated_at=now()
   WHERE id=d.id RETURNING * INTO d;
 
- SELECT coalesce(jsonb_agg(to_jsonb(q) ORDER BY q.position,q.created_at),'[]'::jsonb)
+ SELECT coalesce(jsonb_agg(to_jsonb(row_value) ORDER BY row_value.position,row_value.created_at),'[]'::jsonb)
   INTO p_questions
-  FROM discovery_questions q
-  WHERE q.workspace_id=w AND q.draft_id=d.id;
+  FROM discovery_questions row_value
+  WHERE row_value.workspace_id=w AND row_value.draft_id=d.id;
  RETURN jsonb_build_object('draft',to_jsonb(d),'questions',p_questions);
 END $$;
 REVOKE ALL ON FUNCTION sync_discovery_questions(uuid,integer,jsonb,jsonb) FROM PUBLIC,anon;
