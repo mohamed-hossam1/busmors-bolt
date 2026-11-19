@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowRight,
@@ -10,6 +10,8 @@ import {
   FileText,
   Globe,
   Network,
+  PenLine,
+  Share2,
   ShieldCheck,
   Sparkles,
   Users,
@@ -19,58 +21,247 @@ import AuthLayout from '../components/auth/AuthLayout'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
-import { organizeBrainWithAi, DEFAULT_CRAWL_PAGES, type CrawlProgressEvent } from '../lib/crawl'
+import {
+  organizeBrainWithAi,
+  readWebsiteKnowledge,
+  DEFAULT_CRAWL_PAGES,
+  type CrawlProgressEvent,
+  type ExtractedCandidate,
+} from '../lib/crawl'
+import BusinessForm from '../features/onboarding/BusinessForm'
+import {
+  mergeWebsiteFields,
+  validateBusiness,
+  type BusinessDraftRow,
+  type BusinessFormData,
+  type Offering,
+} from '../features/onboarding/types'
 
+type Phase = 'choose' | 'website' | 'manual' | 'summary' | 'done'
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type CrawlStep = 'idle' | 'crawling' | 'ai_analysis' | 'linking' | 'done'
+type DraftPath = 'manual' | 'website'
+
+const PRICING_LABEL: Record<Offering['pricingModel'], string> = {
+  unknown: 'Not set',
+  fixed: 'Fixed price',
+  starting_from: 'Starting from',
+  quote_required: 'Quote required',
+}
+
+/**
+ * C08: project source-backed crawl candidates onto the editable business draft.
+ * Only fields the website actually supports are returned, so the merge never
+ * blanks a value the owner already typed. Every populated field keeps its
+ * source URL + excerpt for provenance.
+ */
+function mapCandidatesToBusiness(
+  candidates: ExtractedCandidate[]
+): { form: Partial<BusinessFormData>; fieldSources: Record<string, { url: string; excerpt: string }> } {
+  const form: Partial<BusinessFormData> = {}
+  const fieldSources: Record<string, { url: string; excerpt: string }> = {}
+  const profile = candidates.find((c) => c.category === 'company_profile')
+  if (profile) {
+    if (profile.title.trim()) {
+      form.name = profile.title.trim().slice(0, 150)
+      fieldSources.name = { url: profile.source_url, excerpt: profile.summary.slice(0, 500) }
+    }
+    if (profile.summary.trim()) {
+      form.description = profile.summary.trim().slice(0, 3000)
+      fieldSources.description = { url: profile.source_url, excerpt: profile.summary.slice(0, 500) }
+    }
+  }
+  const offerings = candidates.filter((c) => c.category === 'offering')
+  if (offerings.length) {
+    form.offerings = offerings.slice(0, 20).map((c) => ({
+      id: crypto.randomUUID(),
+      name: c.title.trim().slice(0, 150) || 'Offering',
+      description: c.summary.trim(),
+      pricingModel: 'unknown',
+      amount: null,
+      currency: null,
+    }))
+    fieldSources.offerings = { url: offerings[0].source_url, excerpt: offerings.map((c) => c.title).join(', ').slice(0, 500) }
+  }
+  const brand = candidates.find((c) => c.category === 'brand_rule')
+  if (brand && brand.summary.trim()) {
+    form.tone = brand.summary.trim().slice(0, 300)
+    fieldSources.tone = { url: brand.source_url, excerpt: brand.summary.slice(0, 500) }
+  }
+  return { form, fieldSources }
+}
 
 export default function Onboarding() {
   const { t } = useCopy()
   const router = useRouter()
   const { session, refreshSettings } = useAuth()
+
+  const [phase, setPhase] = useState<Phase>('choose')
+  const [path, setPath] = useState<DraftPath>('manual')
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
   const [pagesRead, setPagesRead] = useState(0)
+  const [totalPages, setTotalPages] = useState(DEFAULT_CRAWL_PAGES)
   const [currentUrl, setCurrentUrl] = useState('')
   const [crawlStep, setCrawlStep] = useState<CrawlStep>('idle')
   const [progressStatus, setProgressStatus] = useState('')
-  const [done, setDone] = useState(false)
   const [qualityNotice, setQualityNotice] = useState('')
   const [discoveredCategories, setDiscoveredCategories] = useState<string[]>([])
   const [summaryStats, setSummaryStats] = useState({ pages: 0, nodes: 0, edges: 0 })
 
-  const calculateProgressPercent = () => {
-    if (crawlStep === 'done') return 100
-    if (crawlStep === 'linking') return 95
-    if (crawlStep === 'ai_analysis') return 88
-    if (crawlStep === 'crawling') {
-      if (pagesRead === 0) return 15
-      return Math.min(85, Math.round(15 + (pagesRead / DEFAULT_CRAWL_PAGES) * 70))
+  const [version, setVersion] = useState(0)
+  const [form, setForm] = useState<BusinessFormData>(() => ({
+    name: '',
+    description: '',
+    country: '',
+    serviceArea: '',
+    offerings: [{ id: crypto.randomUUID(), name: '', description: '', pricingModel: 'unknown', amount: null, currency: null }],
+    conversionRoute: { state: 'not_ready' },
+  }))
+  const [fieldSources, setFieldSources] = useState<Record<string, { url: string; excerpt: string }>>({})
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [conflict, setConflict] = useState(false)
+
+  const userId = session?.user.id
+
+  // Load any existing draft so a returning owner continues where they left off.
+  useEffect(() => {
+    if (!userId) return
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase.from('business_drafts').select('*').eq('workspace_id', userId).maybeSingle()
+      if (!alive || !data) return
+      const row = data as unknown as BusinessDraftRow
+      setVersion(row.version)
+      setForm(row.form)
+      setFieldSources(row.field_sources ?? {})
+      setPath(row.path ?? 'manual')
+    })()
+    return () => {
+      alive = false
     }
-    return 0
+  }, [userId])
+
+  const fetchDraft = async (): Promise<BusinessDraftRow | null> => {
+    if (!userId) return null
+    const { data } = await supabase.from('business_drafts').select('*').eq('workspace_id', userId).maybeSingle()
+    return (data as unknown as BusinessDraftRow) ?? null
   }
 
-  const start = async (e: FormEvent) => {
-    e.preventDefault()
-    if (busy) return
-    if (done) {
-      router.push('/brain')
+  const applyRow = (row: BusinessDraftRow) => {
+    setVersion(row.version)
+    setForm(row.form)
+    setFieldSources(row.field_sources ?? {})
+  }
+
+  // C07: persist through the SECURITY DEFINER RPC. It owns the expected-version
+  // check, so a stale save raises STALE_VERSION and we reload the newer draft.
+  const persistDraft = async (opts: {
+    path: DraftPath
+    form: BusinessFormData
+    fieldSources: Record<string, { url: string; excerpt: string }>
+  }): Promise<BusinessDraftRow | null> => {
+    setSaveState('saving')
+    setError(null)
+    if (!userId) {
+      setSaveState('error')
+      setError('Please sign in again to save.')
+      return null
+    }
+    const { data, error: rpcError } = await supabase.rpc('save_business_draft', {
+      p_form: opts.form,
+      p_expected_version: version,
+      p_path: opts.path,
+      p_field_sources: opts.fieldSources,
+    })
+    if (rpcError) {
+      setSaveState('error')
+      if (rpcError.message?.includes('STALE_VERSION')) {
+        const fresh = await fetchDraft()
+        if (fresh) applyRow(fresh)
+        setConflict(false)
+        setError('This draft was updated in another session and has been reloaded. Please apply your change again.')
+      } else {
+        setError(rpcError.message || 'Your changes could not be saved. Please try again.')
+      }
+      return null
+    }
+    const row = data as unknown as BusinessDraftRow
+    applyRow(row)
+    setSaveState('saved')
+    return row
+  }
+
+  const reloadAfterConflict = async () => {
+    const fresh = await fetchDraft()
+    if (fresh) applyRow(fresh)
+    setConflict(false)
+    setError(null)
+    setSaveState('idle')
+  }
+
+  // C07: confirmation writes owner-approved context and completes onboarding.
+  const confirmDraft = async () => {
+    const problems = validateBusiness(form)
+    if (problems.length) {
+      setError('Please complete the required fields before confirming.')
+      setPhase('manual')
       return
     }
+    setConflict(false)
+    const saved = await persistDraft({ path, form, fieldSources })
+    if (!saved) return
+    setSaveState('saving')
+    const { error: confirmError } = await supabase.rpc('confirm_business_draft', {
+      p_draft_id: saved.id,
+      p_expected_version: saved.version,
+    })
+    if (confirmError) {
+      setSaveState('error')
+      if (confirmError.message?.includes('STALE_VERSION')) {
+        setConflict(true)
+        setError('This draft changed while confirming. Reload to continue.')
+      } else {
+        setError(confirmError.message || 'Confirmation failed. Please try again.')
+      }
+      return
+    }
+    await supabase.rpc('set_onboarding_state', { p_state: 'complete' })
+    await refreshSettings()
+    setSaveState('saved')
+    setPhase('done')
+  }
+
+  const saveManualDraft = async () => {
+    await persistDraft({ path, form, fieldSources })
+  }
+
+  const reviewManual = () => {
+    const problems = validateBusiness(form)
+    if (problems.length) {
+      setError('Please complete the required fields (business name, description, country, service area, and at least one offering).')
+      return
+    }
+    setError(null)
+    setPhase('summary')
+  }
+
+  const startCrawl = async (e: FormEvent) => {
+    e.preventDefault()
+    if (busy) return
 
     const raw = url.trim()
     if (!raw) {
       setError('Enter your company website to continue.')
       return
     }
-
     if (raw.includes('@')) {
       setError('Please enter your website URL (e.g. busmora.com), not an email address.')
       return
     }
-
     const normalized = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
-
     try {
       const parsed = new URL(normalized)
       if (!parsed.hostname || !parsed.hostname.includes('.') || parsed.username || parsed.password) {
@@ -82,41 +273,61 @@ export default function Onboarding() {
       return
     }
 
+    if (!userId) {
+      setError('Please sign in to continue.')
+      return
+    }
+
     setBusy(true)
     setError(null)
     setPagesRead(0)
     setCurrentUrl('')
-    setDone(false)
     setQualityNotice('')
     setDiscoveredCategories([])
+    setConflict(false)
     setCrawlStep('crawling')
     setProgressStatus('Connecting to website and discovering pages...')
 
-    const userId = session?.user.id
-    if (!userId) {
-      setError('Please sign in to continue.')
-      setBusy(false)
-      setCrawlStep('idle')
-      return
-    }
+    // C08: snapshot the owner's current draft at request start. When the crawl
+    // returns we merge extracted fields through mergeWebsiteFields so edits made
+    // while the crawl was in flight are never overwritten by late results.
+    const baselineForm = form
+    const baselineSources = fieldSources
 
     try {
       await supabase.rpc('set_onboarding_state', { p_state: 'crawling', p_company_url: normalized })
 
+      // 1) Read pages first to obtain source-backed candidates. This warms the
+      // server read cache so the organize call below reuses it (single crawl).
+      const knowledge = await readWebsiteKnowledge(normalized, (stage, read, current) => {
+        if (current) setCurrentUrl(current)
+        if (stage === 'read') {
+          setPagesRead(read)
+          setCrawlStep('crawling')
+          setProgressStatus(read > 0 ? `Reading website (${read} useful pages)...` : 'Discovering website structure and pages...')
+        } else if (stage === 'extract') {
+          setCrawlStep('ai_analysis')
+          setProgressStatus('Finding business information supported by your website...')
+        }
+      })
+
+      // 2) Map candidates onto the editable draft and save as a website draft.
+      const incoming = mapCandidatesToBusiness(knowledge.candidates)
+      const mergedForm = mergeWebsiteFields(form, baselineForm, incoming.form)
+      const mergedSources = { ...baselineSources, ...incoming.fieldSources }
+      const savedRow = await persistDraft({ path: 'website', form: mergedForm, fieldSources: mergedSources })
+      if (savedRow) {
+        setPath('website')
+      }
+
+      // 3) Organize the Business Brain (reuses cache). Candidates stay unreviewed.
       const result = await organizeBrainWithAi(normalized, userId, (event: CrawlProgressEvent) => {
         if (event.currentUrl) setCurrentUrl(event.currentUrl)
         if (event.categories && event.categories.length > 0) {
           setDiscoveredCategories((prev) => Array.from(new Set([...prev, ...event.categories!])))
         }
-        if (event.stage === 'read') {
-          const count = event.read ?? 0
-          setPagesRead(count)
-          setProgressStatus(
-            count > 0
-              ? `Reading website (${count} useful pages, up to ${event.total ?? DEFAULT_CRAWL_PAGES})...`
-              : 'Discovering website structure and pages...'
-          )
-        } else if (event.stage === 'extract') {
+        if (event.total) setTotalPages(event.total)
+        if (event.stage === 'extract') {
           setCrawlStep('ai_analysis')
           if (event.read) setPagesRead(event.read)
           setProgressStatus(event.message ?? 'Finding business information supported by your website...')
@@ -132,7 +343,7 @@ export default function Onboarding() {
       }
 
       setSummaryStats({
-        pages: result.pagesRead ?? pagesRead ?? 5,
+        pages: result.pagesRead ?? pagesRead,
         nodes: result.nodesCount,
         edges: result.edgesCount,
       })
@@ -143,14 +354,10 @@ export default function Onboarding() {
         setQualityNotice(result.warning)
       }
 
-      await supabase.rpc('set_onboarding_state', { p_state: 'complete' })
-
-      await refreshSettings()
       setCrawlStep('done')
-      setDone(true)
+      setPhase('summary')
     } catch (err) {
       await supabase.rpc('set_onboarding_state', { p_state: 'awaiting_url', p_crawl_status: { finished: false } })
-        .eq('workspace_id', userId)
       setError(err instanceof Error ? err.message : 'The website could not be fully read or saved. Your current fields are kept; continue manually or retry.')
       setCrawlStep('idle')
     } finally {
@@ -158,21 +365,38 @@ export default function Onboarding() {
     }
   }
 
-  const progressPercent = calculateProgressPercent()
+  const progressPercent = crawlStep === 'done' ? 100 : totalPages > 0 ? Math.min(100, Math.round((pagesRead / totalPages) * 100)) : 0
   const hasKnowledge = summaryStats.nodes > 0
-  const title = busy
-    ? 'Getting to know your business.'
-    : done
-      ? hasKnowledge ? 'Your Business Brain is ready.' : 'Your workspace is ready.'
-      : 'Let’s get to know your business.'
-  const subtitle = busy
-    ? 'We’re turning your website into a starting point for your Marketing Director.'
-    : done
-      ? hasKnowledge
-        ? 'Website knowledge and review suggestions are saved. Review them in your Business Brain.'
-        : 'We couldn’t find enough information on this website. You can add your business knowledge directly in your workspace.'
-      : 'Add your website so your Marketing Director starts with context about your company.'
   const activeStep = crawlStep === 'crawling' ? 0 : crawlStep === 'ai_analysis' ? 1 : 2
+
+  const title =
+    phase === 'choose'
+      ? 'Let’s get to know your business.'
+      : phase === 'website'
+        ? busy
+          ? 'Getting to know your business.'
+          : 'Add your website'
+        : phase === 'manual'
+          ? 'Tell us about your business'
+          : phase === 'summary'
+            ? 'Review your business details'
+            : hasKnowledge
+              ? 'Your Business Brain is ready.'
+              : 'Your business is ready.'
+  const subtitle =
+    phase === 'choose'
+      ? 'Choose how to set up your business. Your Marketing Director starts with this context.'
+      : phase === 'website'
+        ? busy
+          ? 'We’re turning your website into a starting point for your Marketing Director.'
+          : 'Add your website so your Marketing Director starts with context about your company.'
+        : phase === 'manual'
+          ? 'Add your details yourself. You can save a draft and finish later.'
+          : phase === 'summary'
+            ? 'Check the details below, then confirm to make this your business context.'
+            : hasKnowledge
+              ? 'Website knowledge and review suggestions are saved. Review them in your Business Brain.'
+              : 'Your setup is saved. You can keep building your Business Brain anytime.'
 
   return (
     <AuthLayout
@@ -181,56 +405,70 @@ export default function Onboarding() {
       eyebrow={
         <div className="flex items-center gap-2 text-xs font-medium text-primary-700">
           <CheckCircle2 size={16} />
-          <span>{done ? 'Ready to explore' : 'Workspace created'}<span className="mx-2 text-ink-300">/</span>Your business</span>
+          <span>{phase === 'done' ? 'Ready to explore' : 'Workspace created'}<span className="mx-2 text-ink-300">/</span>Your business</span>
         </div>
       }
       panel={<BusinessContextPanel />}
     >
-      {done && qualityNotice && (
+      {phase === 'done' && qualityNotice && (
         <p role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
           {qualityNotice}
         </p>
       )}
-      {!busy && !done ? (
-        <form onSubmit={start} noValidate className="space-y-6">
-          <div>
-            <label htmlFor="company-website" className="mb-1.5 block text-sm font-medium text-ink-700">{t('websiteUrl')}</label>
-            <div className="relative">
-              <Globe size={18} aria-hidden="true" className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-ink-500" />
-              <input
-                id="company-website"
-                type="text"
-                inputMode="url"
-                autoComplete="url"
-                required
-                value={url}
-                onChange={(e) => { setUrl(e.target.value); if (error) setError(null) }}
-                placeholder="company.com"
-                className="input-field ps-10"
-                dir="ltr"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? 'website-hint website-error' : 'website-hint'}
-              />
-            </div>
-            <p id="website-hint" className="mt-2 text-xs leading-5 text-ink-500">Use your main website. We’ll read up to {DEFAULT_CRAWL_PAGES} relevant public pages.</p>
-          </div>
 
-          {error && <p id="website-error" role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
+      {conflict && phase !== 'choose' && phase !== 'website' && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+          <p>This draft changed in another session. Reload to see the latest version before continuing.</p>
+          <button type="button" onClick={() => void reloadAfterConflict()} className="mt-2 font-semibold underline">
+            Reload draft
+          </button>
+        </div>
+      )}
 
-          <div className="flex items-start gap-3 rounded-2xl border border-primary-200/60 bg-primary-50/60 p-4">
-            <Brain size={19} className="mt-0.5 shrink-0 text-primary-600" aria-hidden="true" />
-            <p className="text-xs leading-6 text-ink-600">Business knowledge is saved automatically. You can review, edit and add to it anytime.</p>
-          </div>
+      {phase === 'choose' && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => { setPath('website'); setError(null); setPhase('website') }}
+            className="flex w-full items-center gap-4 rounded-2xl border border-ink-200 bg-white p-4 text-start transition hover:border-primary-300 hover:bg-primary-50/40"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Globe size={20} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-ink-900">Website</span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-500">Read your public website and turn it into an editable draft.</span>
+            </span>
+            <ArrowRight size={18} className="shrink-0 text-ink-400" />
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPath('manual'); setError(null); setPhase('manual') }}
+            className="flex w-full items-center gap-4 rounded-2xl border border-ink-200 bg-white p-4 text-start transition hover:border-primary-300 hover:bg-primary-50/40"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><PenLine size={20} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-ink-900">Manual</span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-500">Enter your business details yourself.</span>
+            </span>
+            <ArrowRight size={18} className="shrink-0 text-ink-400" />
+          </button>
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            className="flex w-full cursor-not-allowed items-center gap-4 rounded-2xl border border-ink-200 bg-ink-50 p-4 text-start opacity-60"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ink-100 text-ink-400"><Share2 size={20} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2 text-sm font-semibold text-ink-500">Social import
+                <span className="rounded-full bg-ink-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-600">Coming soon</span>
+              </span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-400">Import from your social profiles.</span>
+            </span>
+          </button>
+        </div>
+      )}
 
-          <div>
-            <button type="submit" className="btn-primary w-full">Build my Business Brain<ArrowRight size={16} /></button>
-            <button type="button" onClick={() => router.push('/brain')} className="mx-auto mt-3 flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-ink-600 transition hover:text-primary-600">{t('skipForNow')}</button>
-          </div>
-        </form>
-      ) : busy ? (
+      {phase === 'website' && (busy ? (
         <div className="space-y-5" aria-busy="true">
           <div className="rounded-2xl border border-ink-200 bg-white p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3 text-sm">
@@ -269,20 +507,122 @@ export default function Onboarding() {
           <p className="text-center text-xs leading-5 text-ink-500">Keep this page open while we gather your business context.</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {[
-              { label: 'Pages read', value: summaryStats.pages, icon: FileText },
-              { label: 'Knowledge items', value: summaryStats.nodes, icon: Brain },
-              { label: 'Connections', value: summaryStats.edges, icon: Network },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
-                <Icon size={18} className="mx-auto text-primary-500" />
-                <p className="mt-3 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
-                <p className="mt-1 text-[11px] leading-4 text-ink-500 sm:text-xs">{label}</p>
-              </div>
-            ))}
+        <form onSubmit={startCrawl} noValidate className="space-y-6">
+          <div>
+            <label htmlFor="company-website" className="mb-1.5 block text-sm font-medium text-ink-700">{t('websiteUrl')}</label>
+            <div className="relative">
+              <Globe size={18} aria-hidden="true" className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-ink-500" />
+              <input
+                id="company-website"
+                type="text"
+                inputMode="url"
+                autoComplete="url"
+                required
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); if (error) setError(null) }}
+                placeholder="company.com"
+                className="input-field ps-10"
+                dir="ltr"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'website-hint website-error' : 'website-hint'}
+              />
+            </div>
+            <p id="website-hint" className="mt-2 text-xs leading-5 text-ink-500">Use your main website. We’ll read up to {DEFAULT_CRAWL_PAGES} relevant public pages.</p>
           </div>
+
+          {error && <p id="website-error" role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
+
+          <div className="flex items-start gap-3 rounded-2xl border border-primary-200/60 bg-primary-50/60 p-4">
+            <Brain size={19} className="mt-0.5 shrink-0 text-primary-600" aria-hidden="true" />
+            <p className="text-xs leading-6 text-ink-600">Business knowledge is saved automatically. You can review, edit and add to it anytime.</p>
+          </div>
+
+          <div>
+            <button type="submit" className="btn-primary w-full">Build my Business Brain<ArrowRight size={16} /></button>
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <button type="button" onClick={() => { setPath('manual'); setPhase('manual') }} className="flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-primary-600 transition hover:text-primary-700">
+                Complete manually
+              </button>
+              <span className="text-ink-300">·</span>
+              <button type="button" onClick={() => router.push('/brain')} className="flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-ink-600 transition hover:text-primary-600">{t('skipForNow')}</button>
+            </div>
+          </div>
+        </form>
+      ))}
+
+      {phase === 'manual' && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); reviewManual() }}
+          className="space-y-6"
+        >
+          <BusinessForm value={form} onChange={setForm} />
+          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
+          <div className="flex items-center justify-between text-xs text-ink-500">
+            <span>{saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : 'Draft'}</span>
+            <button type="button" onClick={() => { setPhase('choose'); setError(null) }} className="font-medium text-ink-500 hover:text-primary-600">Back</button>
+          </div>
+          <div className="space-y-3">
+            <button type="submit" className="btn-primary w-full">Review details<ArrowRight size={16} /></button>
+            <button type="button" onClick={() => void saveManualDraft()} disabled={saveState === 'saving'} className="btn-secondary w-full">
+              {saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : t('save')}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {phase === 'summary' && (
+        <div className="space-y-6">
+          {summaryStats.pages > 0 && (
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              {[
+                { label: 'Pages read', value: summaryStats.pages, icon: FileText },
+                { label: 'Knowledge items', value: summaryStats.nodes, icon: Brain },
+                { label: 'Connections', value: summaryStats.edges, icon: Network },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
+                  <Icon size={18} className="mx-auto text-primary-500" />
+                  <p className="mt-3 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-500 sm:text-xs">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <DraftSummary form={form} />
+          {fieldSources && Object.keys(fieldSources).length > 0 && (
+            <p className="text-xs leading-5 text-ink-500">Some fields were prefilled from your website. You can edit any of them before confirming.</p>
+          )}
+          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
+          <div className="space-y-3">
+            <button type="button" onClick={() => void confirmDraft()} disabled={saveState === 'saving'} className="btn-primary w-full">
+              {saveState === 'saving' ? t('saving') : 'Confirm & finish'}<Check size={16} />
+            </button>
+            <button type="button" onClick={() => { setPhase('manual'); setError(null) }} className="btn-secondary w-full">
+              {t('edit')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'done' && (
+        <div className="space-y-6">
+          {summaryStats.pages > 0 && (
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              {[
+                { label: 'Pages read', value: summaryStats.pages, icon: FileText },
+                { label: 'Knowledge items', value: summaryStats.nodes, icon: Brain },
+                { label: 'Connections', value: summaryStats.edges, icon: Network },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
+                  <Icon size={18} className="mx-auto text-primary-500" />
+                  <p className="mt-3 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-500 sm:text-xs">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
           {hasKnowledge && (
             <p className="flex items-start gap-2 text-xs leading-6 text-ink-600">
               <CheckCircle2 size={16} className="mt-1 shrink-0 text-primary-600" />
@@ -290,9 +630,13 @@ export default function Onboarding() {
             </p>
           )}
           <div className="space-y-3">
-            <button type="button" onClick={() => router.push('/brain')} className="btn-primary w-full">
-              {hasKnowledge ? 'Explore my Business Brain' : 'Add business knowledge'}
+            <button type="button" onClick={() => router.push('/roadmap')} className="btn-primary w-full">
+              Create my Roadmap
               <ArrowRight size={16} />
+            </button>
+            <button type="button" onClick={() => router.push('/brain')} className="btn-secondary w-full">
+              {hasKnowledge ? 'Explore my Business Brain' : 'Add business knowledge'}
+              <Brain size={16} />
             </button>
             <button type="button" onClick={() => router.push('/employee')} className="btn-secondary w-full">
               Talk to my Director
@@ -302,6 +646,53 @@ export default function Onboarding() {
         </div>
       )}
     </AuthLayout>
+  )
+}
+
+function DraftSummary({ form }: { form: BusinessFormData }) {
+  const contact =
+    form.conversionRoute.state === 'ready'
+      ? `${form.conversionRoute.type ?? ''} ${form.conversionRoute.value ?? ''}`.trim() || 'Ready'
+      : 'Not ready yet'
+  return (
+    <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-5">
+      <section>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Business</p>
+        <p className="mt-1 text-lg font-semibold text-ink-900">{form.name || '—'}</p>
+        {form.description && <p className="mt-2 text-sm leading-6 text-ink-600">{form.description}</p>}
+      </section>
+      {form.offerings.length > 0 && (
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Offerings</p>
+          <ul className="mt-2 space-y-3">
+            {form.offerings.map((o) => (
+              <li key={o.id} className="rounded-xl border border-ink-100 p-3">
+                <p className="text-sm font-medium text-ink-900">{o.name || '—'}</p>
+                {o.description && <p className="mt-1 text-xs leading-5 text-ink-500">{o.description}</p>}
+                <p className="mt-1 text-xs text-ink-500">
+                  {PRICING_LABEL[o.pricingModel]}
+                  {o.amount ? ` · ${o.amount}${o.currency ? ` ${o.currency}` : ''}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Country</p>
+          <p className="mt-1 text-sm text-ink-700">{form.country || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Service area</p>
+          <p className="mt-1 text-sm text-ink-700">{form.serviceArea || '—'}</p>
+        </div>
+      </section>
+      <section>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Contact route</p>
+        <p className="mt-1 text-sm text-ink-700">{contact}</p>
+      </section>
+    </div>
   )
 }
 

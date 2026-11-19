@@ -16,6 +16,7 @@ import type { BrainCategory, BrainEdge, BrainNode, BrainProposal } from '../../l
 import { useCopy } from '../../hooks/useCopy'
 import { KnowledgeLabels } from './KnowledgeEvidence'
 import {
+  BRAIN_CAT_HEIGHT, BRAIN_CAT_WIDTH, BRAIN_HUB_HEIGHT, BRAIN_HUB_WIDTH,
   BRAIN_CARD_HEIGHT, BRAIN_CARD_WIDTH, BRAIN_CATEGORY_ORDER, calculateBrainPositions,
 } from '../../lib/brainGraphLayout'
 
@@ -37,41 +38,119 @@ interface BrainNodeData {
   connectionCount: number
 }
 
+// 1. Central Hub Node (Company profile or Business root)
+const CustomHubNode = memo(function CustomHubNode({ data, selected }: NodeProps<{ title: string; subtitle: string }>) {
+  return (
+    <div className={`brain-map-hub ${selected ? 'is-selected' : ''}`}>
+      <Handle type="source" id="out-left" position={Position.Left} />
+      <Handle type="source" id="out-right" position={Position.Right} />
+      <Handle type="target" id="in-left" position={Position.Left} />
+      <Handle type="target" id="in-right" position={Position.Right} />
+      <div className="flex items-center gap-2.5 w-full">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
+          <Building2 size={16} />
+        </span>
+        <div className="min-w-0 flex-1 text-start">
+          <h3 className="truncate text-xs font-bold text-white tracking-wide" dir="auto">{data.title}</h3>
+          <p className="text-[10px] text-white/80 leading-tight">{data.subtitle}</p>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// 2. Category Branch Node (Capsule pill)
+const CustomCategoryNode = memo(function CustomCategoryNode({ data, selected }: NodeProps<{ category: BrainCategory; label: string; count: number }>) {
+  const config = CATEGORY_CONFIG[data.category]
+  const Icon = config.icon
+  return (
+    <div
+      className={`brain-map-category-node ${selected ? 'is-selected' : ''}`}
+      style={{
+        borderColor: config.color,
+        backgroundColor: config.bg,
+        color: config.color,
+      }}
+    >
+      <Handle type="target" id="in-left" position={Position.Left} />
+      <Handle type="target" id="in-right" position={Position.Right} />
+      <Handle type="source" id="out-left" position={Position.Left} />
+      <Handle type="source" id="out-right" position={Position.Right} />
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style={{ color: config.color }}>
+        <Icon size={13} />
+      </span>
+      <span className="text-xs font-bold tracking-tight whitespace-nowrap">{data.label}</span>
+      <span
+        className="ml-auto px-1.5 py-0.2 rounded-full text-[10px] font-bold"
+        style={{ backgroundColor: `${config.color}25`, color: config.color }}
+      >
+        {data.count}
+      </span>
+    </div>
+  )
+})
+
+// 3. Leaf Knowledge Item Node (Sleek minimalist capsule)
 const CustomBrainNode = memo(function CustomBrainNode({ data, selected }: NodeProps<BrainNodeData>) {
   const { node, categoryLabel, connectionCount } = data
   const config = CATEGORY_CONFIG[node.category]
   const Icon = config.icon
   const isPending = node.status === 'candidate'
+
   return (
-    <div className={`brain-map-node ${selected ? 'is-selected' : ''} ${isPending ? 'is-pending' : ''}`}>
-      {Object.values(Position).map((side) => (
-        <span key={side}>
-          <Handle type="target" id={`in-${side}`} position={side} />
-          <Handle type="source" id={`out-${side}`} position={side} />
-        </span>
-      ))}
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="brain-map-node-category" style={{ color: config.color, background: config.bg }}>
-          <Icon size={12} /> {categoryLabel}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {isPending && (
-            <span className="rounded-full bg-amber-100 text-amber-800 text-[10px] font-semibold px-1.5 py-0.2 border border-amber-300">
-              Pending
-            </span>
-          )}
-          <span className="flex items-center gap-1 text-[10px] text-ink-500" title={`${connectionCount} connections`}>
-            <GitBranch size={11} /> {connectionCount}
-          </span>
-        </div>
+    <div
+      className={`brain-map-node ${selected ? 'is-selected' : ''} ${isPending ? 'is-pending' : ''}`}
+      style={{
+        borderColor: selected ? '#7c3aed' : isPending ? '#f59e0b' : `${config.color}45`,
+      }}
+    >
+      <Handle type="target" id="in-left" position={Position.Left} />
+      <Handle type="target" id="in-right" position={Position.Right} />
+      <Handle type="source" id="out-left" position={Position.Left} />
+      <Handle type="source" id="out-right" position={Position.Right} />
+      <Handle type="target" id="in-top" position={Position.Top} />
+      <Handle type="source" id="out-bottom" position={Position.Bottom} />
+
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
+        style={{ backgroundColor: config.bg, color: config.color }}
+        title={categoryLabel}
+      >
+        <Icon size={13} />
+      </span>
+
+      <div className="min-w-0 flex-1 px-2 text-start">
+        <h3 className="truncate text-xs font-semibold text-ink-900 leading-snug" dir="auto" title={node.title}>
+          {node.title}
+        </h3>
       </div>
-      <h3 className="line-clamp-2 text-[15px] font-semibold leading-5 text-ink-900" dir="auto">{node.title}</h3>
-      <p className="mt-1.5 line-clamp-2 text-[13px] leading-[17px] text-ink-500" dir="auto">{node.summary}</p>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {isPending && (
+          <span
+            className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"
+            title="Pending proposal awaiting review"
+          />
+        )}
+        {connectionCount > 0 && (
+          <span
+            className="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-600"
+            title={`${connectionCount} connections`}
+          >
+            <GitBranch size={9} />
+            <span>{connectionCount}</span>
+          </span>
+        )}
+      </div>
     </div>
   )
 })
 
-const nodeTypes = { brainNode: CustomBrainNode }
+const nodeTypes = {
+  hubNode: CustomHubNode,
+  categoryNode: CustomCategoryNode,
+  brainNode: CustomBrainNode,
+}
 const cardStyle = { width: BRAIN_CARD_WIDTH, height: BRAIN_CARD_HEIGHT }
 
 type BrainGraphProps = {
@@ -124,8 +203,7 @@ function BrainGraphView({
   const canvasWidth = useStore((state) => state.width)
   const canvasHeight = useStore((state) => state.height)
   const nodesInitialized = useNodesInitialized()
-  const selected = statusNodes.find((node) => node.id === selectedId) ?? null
-  const layout = useMemo(() => calculateBrainPositions(statusNodes), [statusNodes])
+
   const categoryCounts = useMemo(() => {
     const counts = new Map<BrainCategory, number>()
     for (const node of statusNodes) counts.set(node.category, (counts.get(node.category) ?? 0) + 1)
@@ -136,16 +214,23 @@ function BrainGraphView({
   const completeEdges = useMemo(() => {
     const nodeIds = new Set(statusNodes.map((node) => node.id))
     return edges.filter((edge) => edge.status !== 'rejected' && nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id))
-      .map((edge) => ({ id: edge.id, source: edge.source_node_id, target: edge.target_node_id,
-        label: edge.relation_type.replace(/_/g, ' ').toLowerCase(), inferred: edge.status === 'candidate' }))
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source_node_id,
+        target: edge.target_node_id,
+        label: edge.relation_type.replace(/_/g, ' ').toLowerCase(),
+        inferred: edge.status === 'candidate',
+      }))
   }, [statusNodes, edges])
 
   const filteredNodes = useMemo(() => statusNodes.filter((node) =>
     (category === 'all' || node.category === category)
     && `${node.title} ${node.summary}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   ), [statusNodes, category, query])
+
   const visibleIds = useMemo(() => new Set(filteredNodes.map((node) => node.id)), [filteredNodes])
   const visibleSignature = [...visibleIds].sort().join('|')
+
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const edge of completeEdges) {
@@ -155,60 +240,197 @@ function BrainGraphView({
     return counts
   }, [completeEdges])
 
+  // Layout positions calculated bilaterally
+  const layout = useMemo(() => calculateBrainPositions(filteredNodes), [filteredNodes])
+
+  // Selected state: can be a knowledge node, category node, or hub
+  const selectedNode = statusNodes.find((node) => node.id === selectedId) ?? null
+  const selectedCategory = selectedId?.startsWith('cat-') ? (selectedId.replace('cat-', '') as BrainCategory) : null
+  const selectedHub = selectedId === layout.hubId && !layout.hubNode
+
   const nodeData = useMemo(() => new Map(filteredNodes.map((node) => [node.id, {
     node,
     categoryLabel: String(t(`cat_${node.category}` as never)),
     connectionCount: connectionCounts.get(node.id) ?? 0,
   }])), [filteredNodes, t, connectionCounts])
 
-  const flowNodes: Node<BrainNodeData>[] = useMemo(() => filteredNodes.map((node) => ({
-    id: node.id,
-    type: 'brainNode',
-    position: positions[node.id] ?? layout.get(node.id) ?? { x: 0, y: 0 },
-    selected: node.id === selected?.id,
-    // These cards are fixed-size. Keep their measured dimensions when positions change.
-    width: BRAIN_CARD_WIDTH,
-    height: BRAIN_CARD_HEIGHT,
-    ariaLabel: `${node.title}. ${t(`cat_${node.category}` as never)}. Open knowledge details.`,
-    style: cardStyle,
-    data: nodeData.get(node.id)!,
-  })), [filteredNodes, positions, layout, selected, t, nodeData])
+  // Construct ReactFlow nodes: Hub + Category pills + Leaf items
+  const flowNodes: Node[] = useMemo(() => {
+    if (filteredNodes.length === 0) return []
+    const result: Node[] = []
+
+    // 1. Center Hub Node
+    const hubPos = positions[layout.hubId] ?? layout.positions.get(layout.hubId) ?? { x: -BRAIN_HUB_WIDTH / 2, y: -BRAIN_HUB_HEIGHT / 2 }
+    result.push({
+      id: layout.hubId,
+      type: 'hubNode',
+      position: hubPos,
+      selected: layout.hubId === selectedId,
+      width: BRAIN_HUB_WIDTH,
+      height: BRAIN_HUB_HEIGHT,
+      style: { width: BRAIN_HUB_WIDTH, height: BRAIN_HUB_HEIGHT },
+      data: {
+        title: layout.hubNode ? layout.hubNode.title : 'Business Brain',
+        subtitle: `${filteredNodes.length} knowledge items`,
+      },
+    })
+
+    // 2. Category Nodes
+    const activeCategories = [...layout.rightCategories, ...layout.leftCategories]
+    for (const cat of activeCategories) {
+      const catId = `cat-${cat}`
+      const catPos = positions[catId] ?? layout.positions.get(catId) ?? { x: 0, y: 0 }
+      const count = filteredNodes.filter((n) => n.category === cat).length
+      result.push({
+        id: catId,
+        type: 'categoryNode',
+        position: catPos,
+        selected: catId === selectedId,
+        width: BRAIN_CAT_WIDTH,
+        height: BRAIN_CAT_HEIGHT,
+        style: { width: BRAIN_CAT_WIDTH, height: BRAIN_CAT_HEIGHT },
+        data: {
+          category: cat,
+          label: String(t(`cat_${cat}` as never)),
+          count,
+        },
+      })
+    }
+
+    // 3. Leaf Knowledge Item Nodes
+    for (const node of filteredNodes) {
+      if (node.id === layout.hubNode?.id) continue
+      const itemPos = positions[node.id] ?? layout.positions.get(node.id) ?? { x: 0, y: 0 }
+      result.push({
+        id: node.id,
+        type: 'brainNode',
+        position: itemPos,
+        selected: node.id === selectedId,
+        width: BRAIN_CARD_WIDTH,
+        height: BRAIN_CARD_HEIGHT,
+        ariaLabel: `${node.title}. ${t(`cat_${node.category}` as never)}. Open knowledge details.`,
+        style: cardStyle,
+        data: nodeData.get(node.id)!,
+      })
+    }
+
+    return result
+  }, [filteredNodes, positions, layout, selectedId, t, nodeData])
 
   const visibleEdges = useMemo(() => completeEdges.filter((edge) =>
     visibleIds.has(edge.source) && visibleIds.has(edge.target)
   ), [completeEdges, visibleIds])
-  const flowEdges: Edge[] = useMemo(() => showConnections ? visibleEdges.map((edge) => {
-    const active = selected?.id === edge.source || selected?.id === edge.target
-    const source = positions[edge.source] ?? layout.get(edge.source)!
-    const target = positions[edge.target] ?? layout.get(edge.target)!
-    const horizontal = source.x !== target.x
-    const forward = horizontal ? target.x > source.x : target.y > source.y
-    return {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: `out-${horizontal ? forward ? 'right' : 'left' : forward ? 'bottom' : 'top'}`,
-      targetHandle: `in-${horizontal ? forward ? 'left' : 'right' : forward ? 'top' : 'bottom'}`,
-      type: 'smoothstep',
-      pathOptions: { borderRadius: 18, offset: 30 },
-      style: {
-        stroke: active ? '#7954e8' : '#b9bed2',
-        strokeWidth: active ? 1.8 : 1.1,
-        strokeDasharray: edge.inferred ? '5 5' : undefined,
-        opacity: selected && !active ? 0.12 : active ? 1 : 0.55,
-      },
-      zIndex: active ? 1 : 0,
-    }
-  }) : [], [showConnections, visibleEdges, selected, positions, layout])
 
-  // Keep the initial map readable; Fit view remains available for a complete overview.
+  // Construct ReactFlow edges: Tree branches (Hub -> Cat -> Item) + Cross connections
+  const flowEdges: Edge[] = useMemo(() => {
+    if (filteredNodes.length === 0) return []
+    const edgesList: Edge[] = []
+
+    // 1. Hub -> Right Categories
+    for (const cat of layout.rightCategories) {
+      const config = CATEGORY_CONFIG[cat]
+      edgesList.push({
+        id: `branch-hub-cat-${cat}`,
+        source: layout.hubId,
+        target: `cat-${cat}`,
+        sourceHandle: 'out-right',
+        targetHandle: 'in-left',
+        type: 'default',
+        style: { stroke: config.color, strokeWidth: 2, opacity: 0.8 },
+      })
+    }
+
+    // 2. Hub -> Left Categories
+    for (const cat of layout.leftCategories) {
+      const config = CATEGORY_CONFIG[cat]
+      edgesList.push({
+        id: `branch-hub-cat-${cat}`,
+        source: layout.hubId,
+        target: `cat-${cat}`,
+        sourceHandle: 'out-left',
+        targetHandle: 'in-right',
+        type: 'default',
+        style: { stroke: config.color, strokeWidth: 2, opacity: 0.8 },
+      })
+    }
+
+    // 3. Category -> Leaf Items
+    for (const cat of layout.rightCategories) {
+      const config = CATEGORY_CONFIG[cat]
+      const items = filteredNodes.filter((n) => n.category === cat && n.id !== layout.hubNode?.id)
+      for (const item of items) {
+        edgesList.push({
+          id: `branch-cat-${cat}-${item.id}`,
+          source: `cat-${cat}`,
+          target: item.id,
+          sourceHandle: 'out-right',
+          targetHandle: 'in-left',
+          type: 'default',
+          style: { stroke: config.color, strokeWidth: 1.5, opacity: 0.65 },
+        })
+      }
+    }
+
+    for (const cat of layout.leftCategories) {
+      const config = CATEGORY_CONFIG[cat]
+      const items = filteredNodes.filter((n) => n.category === cat && n.id !== layout.hubNode?.id)
+      for (const item of items) {
+        edgesList.push({
+          id: `branch-cat-${cat}-${item.id}`,
+          source: `cat-${cat}`,
+          target: item.id,
+          sourceHandle: 'out-left',
+          targetHandle: 'in-right',
+          type: 'default',
+          style: { stroke: config.color, strokeWidth: 1.5, opacity: 0.65 },
+        })
+      }
+    }
+
+    // 4. Cross-knowledge connections from completeEdges
+    if (showConnections) {
+      for (const edge of visibleEdges) {
+        const active = selectedId === edge.source || selectedId === edge.target
+        const sourcePos = positions[edge.source] ?? layout.positions.get(edge.source)
+        const targetPos = positions[edge.target] ?? layout.positions.get(edge.target)
+        if (!sourcePos || !targetPos) continue
+
+        const horizontal = Math.abs(sourcePos.x - targetPos.x) > 30
+        const forward = horizontal ? targetPos.x > sourcePos.x : targetPos.y > sourcePos.y
+
+        edgesList.push({
+          id: `rel-${edge.id}`,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: horizontal ? (forward ? 'out-right' : 'out-left') : (forward ? 'out-bottom' : 'out-top'),
+          targetHandle: horizontal ? (forward ? 'in-left' : 'in-right') : (forward ? 'in-top' : 'in-bottom'),
+          type: 'default',
+          label: edge.label,
+          style: {
+            stroke: active ? '#7c3aed' : '#e11d48',
+            strokeWidth: active ? 2.2 : 1.2,
+            strokeDasharray: '5 4',
+            opacity: selectedId && !active ? 0.15 : active ? 1 : 0.6,
+          },
+          labelStyle: { fontSize: 10, fill: active ? '#6d28d9' : '#be123c', fontWeight: 600 },
+          labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9, rx: 4, ry: 4 },
+          labelBgPadding: [4, 2],
+          zIndex: active ? 10 : 2,
+        })
+      }
+    }
+
+    return edgesList
+  }, [filteredNodes, layout, showConnections, visibleEdges, selectedId, positions])
+
+  // Zoom to fit on initial load and reset
   useEffect(() => {
     if (!nodesInitialized || selectedId || !canvasWidth || !canvasHeight) return
     const frame = requestAnimationFrame(() => {
       const bounds = getNodesBounds(getNodes())
-      const zoom = Math.min(1, Math.max(0.68, Math.min(
-        (canvasWidth - 48) / bounds.width,
-        (canvasHeight - 48) / bounds.height,
+      const zoom = Math.min(1, Math.max(0.65, Math.min(
+        (canvasWidth - 60) / (bounds.width || 800),
+        (canvasHeight - 60) / (bounds.height || 600),
       )))
       setViewport({
         x: Math.max(24, (canvasWidth - bounds.width * zoom) / 2) - bounds.x * zoom,
@@ -219,13 +441,16 @@ function BrainGraphView({
     return () => cancelAnimationFrame(frame)
   }, [nodesInitialized, visibleSignature, layoutVersion, selectedId, canvasWidth, canvasHeight, getNodes, setViewport])
 
+  // Center selected node
   useEffect(() => {
     if (!selectedId || !nodesInitialized) return
     const node = getNode(selectedId)
     if (!node) return
+    const nodeWidth = (node.style?.width as number) || BRAIN_CARD_WIDTH
+    const nodeHeight = (node.style?.height as number) || BRAIN_CARD_HEIGHT
     const frame = requestAnimationFrame(() => setCenter(
-      node.position.x + BRAIN_CARD_WIDTH / 2,
-      node.position.y + BRAIN_CARD_HEIGHT / 2,
+      node.position.x + nodeWidth / 2,
+      node.position.y + nodeHeight / 2,
       { zoom: Math.max(getZoom(), 0.9), duration: 250 },
     ))
     return () => cancelAnimationFrame(frame)
@@ -250,9 +475,8 @@ function BrainGraphView({
   }, [])
 
   const clearFilters = () => { setCategory('all'); setQuery(''); setSelectedId(null) }
-  const connections = selected ? completeEdges.filter((edge) => edge.source === selected.id || edge.target === selected.id) : []
-
-  const matchingProposal = selected ? proposals?.find((p) => p.node_id === selected.id) : null
+  const connections = selectedNode ? completeEdges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id) : []
+  const matchingProposal = selectedNode ? proposals?.find((p) => p.node_id === selectedNode.id) : null
 
   return (
     <section className="brain-map" aria-label="Business knowledge map">
@@ -325,7 +549,7 @@ function BrainGraphView({
           <button type="button" className={`brain-map-tool ${showConnections ? 'is-active' : ''}`} aria-pressed={showConnections} onClick={() => setShowConnections(!showConnections)} title="Show or hide connections">
             <GitBranch size={15} /><span className="hidden sm:inline">Connections</span>
           </button>
-          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.17, duration: 250, maxZoom: 1 })} title="Fit all visible cards" aria-label="Fit map to view"><Scan size={16} /></button>
+          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.2, duration: 250, maxZoom: 1 })} title="Fit all visible cards" aria-label="Fit map to view"><Scan size={16} /></button>
           <button type="button" className="brain-map-tool" onClick={() => { setPositions({}); setSelectedId(null); setLayoutVersion((version) => version + 1) }} title="Reset card positions" aria-label="Reset map layout"><RotateCcw size={15} /></button>
         </div>
       </div>
@@ -370,168 +594,282 @@ function BrainGraphView({
             nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange}
             nodesConnectable={false} edgesFocusable={false} minZoom={0.3} maxZoom={1.6}
             selectNodesOnDrag={false} nodeDragThreshold={4}
-            fitView fitViewOptions={{ padding: 0.17, maxZoom: 1 }}
+            fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             onNodeClick={(_, node) => setSelectedId(node.id)} onPaneClick={() => setSelectedId(null)}
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#dce0ef" gap={22} size={0.8} />
             <Controls showInteractive={false} />
-            {statusNodes.length > 6 && <MiniMap className="brain-map-minimap" pannable zoomable maskColor="rgba(239, 241, 250, 0.65)" nodeColor={(node) => CATEGORY_CONFIG[(node.data as BrainNodeData).node.category].color} nodeBorderRadius={5} />}
+            {statusNodes.length > 6 && (
+              <MiniMap
+                className="brain-map-minimap"
+                pannable
+                zoomable
+                maskColor="rgba(239, 241, 250, 0.65)"
+                nodeColor={(node) => {
+                  if (node.type === 'hubNode') return '#7c3aed'
+                  if (node.type === 'categoryNode') {
+                    const cat = (node.data as { category: BrainCategory })?.category
+                    return CATEGORY_CONFIG[cat]?.color ?? '#6366f1'
+                  }
+                  const n = (node.data as BrainNodeData)?.node
+                  return n ? (CATEGORY_CONFIG[n.category]?.color ?? '#94a3b8') : '#94a3b8'
+                }}
+                nodeBorderRadius={6}
+              />
+            )}
           </ReactFlow>
 
           {filteredNodes.length === 0 && (
-            <div className="brain-map-empty max-w-md text-center p-6" role="status">
-              {statusFilter === 'approved' && approvedCount === 0 && pendingCount > 0 ? (
-                <>
-                  <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
-                    <AlertCircle size={28} />
-                  </span>
-                  <h3 className="text-base font-bold text-ink-900">Your Knowledge Map starts here</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-ink-600">
-                    You have <strong className="text-amber-800">{pendingCount} pending suggestions</strong> extracted from your website awaiting your approval. Once approved, they will form your confirmed Knowledge Map.
-                  </p>
-                  <div className="mt-5 flex flex-wrap justify-center gap-2">
-                    {onSwitchToList && (
+            <div className="brain-map-empty" role="status">
+              <div className="max-w-md w-full mx-auto text-center p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-ink-200/80 shadow-lg">
+                {statusFilter === 'approved' && approvedCount === 0 && pendingCount > 0 ? (
+                  <>
+                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                      <AlertCircle size={28} />
+                    </span>
+                    <h3 className="text-base font-bold text-ink-900">Your Knowledge Map starts here</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-ink-600">
+                      You have <strong className="text-amber-800">{pendingCount} pending suggestions</strong> extracted from your website awaiting your approval. Once approved, they will form your confirmed Knowledge Map.
+                    </p>
+                    <div className="mt-5 flex flex-wrap justify-center gap-2">
+                      {onSwitchToList && (
+                        <button
+                          type="button"
+                          onClick={onSwitchToList}
+                          className="btn-primary text-xs flex items-center gap-1.5"
+                        >
+                          <List size={14} /> Review & Approve ({pendingCount})
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={onSwitchToList}
-                        className="btn-primary text-xs flex items-center gap-1.5"
+                        onClick={() => setStatusFilter('candidate')}
+                        className="btn-secondary text-xs text-amber-800 border-amber-300 hover:bg-amber-50 flex items-center gap-1.5"
                       >
-                        <List size={14} /> Review & Approve ({pendingCount})
+                        <Network size={14} /> Preview on Map
+                      </button>
+                      {onApproveAllProposals && (
+                        <button
+                          type="button"
+                          onClick={() => void onApproveAllProposals()}
+                          className="btn-secondary text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 flex items-center gap-1.5"
+                        >
+                          <CheckCircle2 size={14} /> Approve All Now
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
+                      {statusNodes.length ? <Search size={23} /> : <Network size={23} />}
+                    </span>
+                    <h3 className="text-base font-semibold text-ink-900">
+                      {statusNodes.length ? 'No matching knowledge' : 'No knowledge items in this view'}
+                    </h3>
+                    <p className="mt-2 max-w-xs mx-auto text-sm leading-relaxed text-ink-500">
+                      {statusNodes.length
+                        ? 'Try a different search or explore another category.'
+                        : 'Add or approve knowledge to see how your business connects.'}
+                    </p>
+                    {statusNodes.length > 0 && (
+                      <button type="button" onClick={clearFilters} className="btn-secondary mt-4 text-xs">
+                        Clear filters
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setStatusFilter('candidate')}
-                      className="btn-secondary text-xs text-amber-800 border-amber-300 hover:bg-amber-50 flex items-center gap-1.5"
-                    >
-                      <Network size={14} /> Preview on Map
-                    </button>
-                    {onApproveAllProposals && (
-                      <button
-                        type="button"
-                        onClick={() => void onApproveAllProposals()}
-                        className="btn-secondary text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 flex items-center gap-1.5"
-                      >
-                        <CheckCircle2 size={14} /> Approve All Now
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
-                    {statusNodes.length ? <Search size={23} /> : <Network size={23} />}
-                  </span>
-                  <h3 className="text-base font-semibold text-ink-900">
-                    {statusNodes.length ? 'No matching knowledge' : 'No knowledge items in this view'}
-                  </h3>
-                  <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-500">
-                    {statusNodes.length
-                      ? 'Try a different search or explore another category.'
-                      : 'Add or approve knowledge to see how your business connects.'}
-                  </p>
-                  {statusNodes.length > 0 && (
-                    <button type="button" onClick={clearFilters} className="btn-secondary mt-4 text-xs">
-                      Clear filters
-                    </button>
-                  )}
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {selected && <aside className="brain-map-inspector" aria-label="Knowledge details">
-          <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
-            <span className="text-xs font-semibold text-ink-500">KNOWLEDGE DETAILS</span>
-            <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close knowledge details"><X size={16} /></button>
-          </div>
-          <div key={selected.id} className="min-h-0 flex-1 overflow-y-auto p-5">
-            {selected.status === 'candidate' && (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
-                  <AlertCircle size={15} className="text-amber-600" />
-                  <span>Pending Review</span>
+        {/* 1. Knowledge Item Inspector */}
+        {selectedNode && (
+          <aside className="brain-map-inspector" aria-label="Knowledge details">
+            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
+              <span className="text-xs font-semibold text-ink-500">KNOWLEDGE DETAILS</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close knowledge details"><X size={16} /></button>
+            </div>
+            <div key={selectedNode.id} className="min-h-0 flex-1 overflow-y-auto p-5">
+              {selectedNode.status === 'candidate' && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
+                    <AlertCircle size={15} className="text-amber-600" />
+                    <span>Pending Review</span>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-700 leading-relaxed">
+                    This item is proposed knowledge extracted from your website. Approve it to confirm it as business truth.
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={async () => {
+                        setActionBusy(true)
+                        try {
+                          if (matchingProposal && onDecideProposal) {
+                            await onDecideProposal(matchingProposal, 'approved')
+                          } else if (onDecideNode) {
+                            await onDecideNode(selectedNode, 'approved')
+                          }
+                          setSelectedId(null)
+                        } finally {
+                          setActionBusy(false)
+                        }
+                      }}
+                      className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs inline-flex items-center gap-1 shadow-xs"
+                    >
+                      <CheckCircle2 size={12} />
+                      <span>Approve</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={async () => {
+                        setActionBusy(true)
+                        try {
+                          if (matchingProposal && onDecideProposal) {
+                            await onDecideProposal(matchingProposal, 'rejected')
+                          } else if (onDecideNode) {
+                            await onDecideNode(selectedNode, 'rejected')
+                          }
+                          setSelectedId(null)
+                        } finally {
+                          setActionBusy(false)
+                        }
+                      }}
+                      className="btn-secondary px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 border-red-200 inline-flex items-center gap-1"
+                    >
+                      <X size={12} />
+                      <span>Reject</span>
+                    </button>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-amber-700 leading-relaxed">
-                  This item is proposed knowledge extracted from your website. Approve it to confirm it as business truth.
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={async () => {
-                      setActionBusy(true)
-                      try {
-                        if (matchingProposal && onDecideProposal) {
-                          await onDecideProposal(matchingProposal, 'approved')
-                        } else if (onDecideNode) {
-                          await onDecideNode(selected, 'approved')
-                        }
-                        setSelectedId(null)
-                      } finally {
-                        setActionBusy(false)
-                      }
-                    }}
-                    className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs inline-flex items-center gap-1 shadow-xs"
-                  >
-                    <CheckCircle2 size={12} />
-                    <span>Approve</span>
+              )}
+
+              <span className="brain-map-node-category" style={{ color: CATEGORY_CONFIG[selectedNode.category].color, background: CATEGORY_CONFIG[selectedNode.category].bg }}>{t(`cat_${selectedNode.category}` as never)}</span>
+              <h3 className="mt-4 text-lg font-semibold leading-snug text-ink-900" dir="auto">{selectedNode.title}</h3>
+              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600" dir="auto">{selectedNode.summary}</p>
+              <KnowledgeLabels node={selectedNode}/>
+              {onEvidence && <button className="mt-3 text-sm text-primary-700 underline" onClick={() => onEvidence(selectedNode)}>View evidence and versions</button>}
+              <div className="mt-5 rounded-xl bg-ink-50/70 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">Source</p>
+                <p className="mt-1 break-words text-xs leading-relaxed text-ink-600" dir="auto">{selectedNode.source_detail || selectedNode.source}</p>
+              </div>
+              <div className="mb-3 mt-6 flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-ink-900">Connections</h4><span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700">{connections.length}</span>
+              </div>
+              <div className="space-y-2">
+                {connections.map((edge) => {
+                  const other = statusNodes.find((node) => node.id === (edge.source === selectedNode.id ? edge.target : edge.source))
+                  if (!other) return null
+                  return <button type="button" key={edge.id} className="brain-map-connection" onClick={() => { setCategory('all'); setQuery(''); setSelectedId(other.id) }}>
+                    <span className="min-w-0 flex-1"><span className="block text-[10px] text-primary-700">{edge.label}{edge.inferred ? ' · Suggested' : ''}</span><span className="mt-1 block text-xs font-medium leading-relaxed text-ink-800" dir="auto">{other.title}</span></span><ArrowUpRight size={14} className="shrink-0 text-ink-400" />
                   </button>
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={async () => {
-                      setActionBusy(true)
-                      try {
-                        if (matchingProposal && onDecideProposal) {
-                          await onDecideProposal(matchingProposal, 'rejected')
-                        } else if (onDecideNode) {
-                          await onDecideNode(selected, 'rejected')
-                        }
-                        setSelectedId(null)
-                      } finally {
-                        setActionBusy(false)
-                      }
-                    }}
-                    className="btn-secondary px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 border-red-200 inline-flex items-center gap-1"
-                  >
-                    <X size={12} />
-                    <span>Reject</span>
-                  </button>
+                })}
+                {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">No connections for this item yet.</p>}
+              </div>
+            </div>
+            {onEditNode && <div className="border-t border-ink-100 p-4"><button type="button" className="btn-primary w-full text-xs" onClick={() => { setSelectedId(null); onEditNode(selectedNode) }}><Pencil size={14} />{t('edit')} knowledge</button></div>}
+          </aside>
+        )}
+
+        {/* 2. Category Node Inspector */}
+        {!selectedNode && selectedCategory && (
+          <aside className="brain-map-inspector" aria-label="Category details">
+            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
+              <span className="text-xs font-semibold text-ink-500">CATEGORY OVERVIEW</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close category details"><X size={16} /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: CATEGORY_CONFIG[selectedCategory].bg, color: CATEGORY_CONFIG[selectedCategory].color }}
+                >
+                  {(() => { const CatIcon = CATEGORY_CONFIG[selectedCategory].icon; return <CatIcon size={20} /> })()}
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">{t(`cat_${selectedCategory}` as never)}</h3>
+                  <p className="text-xs text-ink-500">{filteredNodes.filter((n) => n.category === selectedCategory).length} items in map</p>
                 </div>
               </div>
-            )}
 
-            <span className="brain-map-node-category" style={{ color: CATEGORY_CONFIG[selected.category].color, background: CATEGORY_CONFIG[selected.category].bg }}>{t(`cat_${selected.category}` as never)}</span>
-            <h3 className="mt-4 text-lg font-semibold leading-snug text-ink-900" dir="auto">{selected.title}</h3>
-            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600" dir="auto">{selected.summary}</p>
-            <KnowledgeLabels node={selected}/>
-            {onEvidence&&<button className="mt-3 text-sm text-primary-700 underline" onClick={()=>onEvidence(selected)}>View evidence and versions</button>}
-            <div className="mt-5 rounded-xl bg-ink-50/70 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">Source</p>
-              <p className="mt-1 break-words text-xs leading-relaxed text-ink-600" dir="auto">{selected.source_detail || selected.source}</p>
-            </div>
-            <div className="mb-3 mt-6 flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-ink-900">Connections</h4><span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700">{connections.length}</span>
-            </div>
-            <div className="space-y-2">
-              {connections.map((edge) => {
-                const other = statusNodes.find((node) => node.id === (edge.source === selected.id ? edge.target : edge.source))
-                if (!other) return null
-                return <button type="button" key={edge.id} className="brain-map-connection" onClick={() => { setCategory('all'); setQuery(''); setSelectedId(other.id) }}>
-                  <span className="min-w-0 flex-1"><span className="block text-[10px] text-primary-700">{edge.label}{edge.inferred ? ' · Suggested' : ''}</span><span className="mt-1 block text-xs font-medium leading-relaxed text-ink-800" dir="auto">{other.title}</span></span><ArrowUpRight size={14} className="shrink-0 text-ink-400" />
+              <div className="mt-6 space-y-2">
+                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">Knowledge in this branch</h4>
+                {filteredNodes.filter((n) => n.category === selectedCategory).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedId(item.id)}
+                    className="w-full text-start p-2.5 rounded-xl border border-ink-100 hover:border-primary-300 hover:bg-primary-50/30 transition-all flex items-center justify-between gap-2"
+                  >
+                    <span className="text-xs font-medium text-ink-900 truncate" dir="auto">{item.title}</span>
+                    {item.status === 'candidate' && (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-1.5 py-0.2 rounded-full shrink-0">Pending</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => { setCategory(selectedCategory); setSelectedId(null) }}
+                  className="btn-secondary w-full text-xs"
+                >
+                  Filter map to {t(`cat_${selectedCategory}` as never)}
                 </button>
-              })}
-              {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">No connections for this item yet.</p>}
+              </div>
             </div>
-          </div>
-          {onEditNode && <div className="border-t border-ink-100 p-4"><button type="button" className="btn-primary w-full text-xs" onClick={() => { setSelectedId(null); onEditNode(selected) }}><Pencil size={14} />{t('edit')} knowledge</button></div>}
-        </aside>}
+          </aside>
+        )}
+
+        {/* 3. Business Hub Inspector */}
+        {!selectedNode && !selectedCategory && selectedHub && (
+          <aside className="brain-map-inspector" aria-label="Brain details">
+            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
+              <span className="text-xs font-semibold text-ink-500">BUSINESS BRAIN</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close brain details"><X size={16} /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
+                  <Building2 size={20} />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">Knowledge Map Hub</h3>
+                  <p className="text-xs text-ink-500">{statusNodes.length} confirmed knowledge cards</p>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-ink-600 leading-relaxed">
+                This mind-map visually connects your business profile, offerings, audience, and goals into a unified knowledge graph.
+              </p>
+              <div className="mt-6 space-y-2">
+                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">Categories</h4>
+                {BRAIN_CATEGORY_ORDER.filter((cat) => categoryCounts.has(cat)).map((cat) => {
+                  const config = CATEGORY_CONFIG[cat]
+                  const CatIcon = config.icon
+                  return (
+                    <div key={cat} className="flex items-center justify-between p-2 rounded-lg bg-ink-50/70 text-xs">
+                      <div className="flex items-center gap-2">
+                        <CatIcon size={14} style={{ color: config.color }} />
+                        <span className="font-medium text-ink-800">{t(`cat_${cat}` as never)}</span>
+                      </div>
+                      <span className="font-semibold text-ink-600">{categoryCounts.get(cat)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
+
       <footer className="brain-map-footer">
-        <span className="flex items-center gap-1.5"><MousePointer2 size={12} />{selected ? 'Connected knowledge is highlighted' : 'Select a card to explore its connections'}</span>
+        <span className="flex items-center gap-1.5"><MousePointer2 size={12} />{selectedId ? 'Click any card to inspect details' : 'Select a card to explore its connections'}</span>
         <span className="hidden sm:inline">Drag to arrange · Scroll to zoom</span>
       </footer>
     </section>

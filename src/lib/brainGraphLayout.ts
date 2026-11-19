@@ -1,7 +1,11 @@
 import type { BrainCategory, BrainNode } from './types'
 
-export const BRAIN_CARD_WIDTH = 220
-export const BRAIN_CARD_HEIGHT = 46
+export const BRAIN_CARD_WIDTH = 260
+export const BRAIN_CARD_HEIGHT = 44
+export const BRAIN_HUB_WIDTH = 230
+export const BRAIN_HUB_HEIGHT = 50
+export const BRAIN_CAT_WIDTH = 140
+export const BRAIN_CAT_HEIGHT = 36
 
 export const BRAIN_CATEGORY_ORDER: BrainCategory[] = [
   'company_profile',
@@ -15,92 +19,157 @@ export const BRAIN_CATEGORY_ORDER: BrainCategory[] = [
   'competitor',
 ]
 
-/**
- * Bilateral mind-map tree layout:
- * Business hub node in the center (if company_profile exists),
- * with categories and leaf nodes radiating out to left and right in elegant branches.
- */
-export function calculateBrainPositions(nodes: BrainNode[]): Map<string, { x: number; y: number }> {
-  const positions = new Map<string, { x: number; y: number }>()
-  if (!nodes.length) return positions
+export interface BrainLayoutResult {
+  positions: Map<string, { x: number; y: number }>
+  hubId: string
+  hubNode: BrainNode | null
+  rightCategories: BrainCategory[]
+  leftCategories: BrainCategory[]
+}
 
-  // Single or pair: place centered
-  if (nodes.length <= 2) {
-    nodes.forEach((n, i) => {
-      positions.set(n.id, { x: (i - 0.5) * (BRAIN_CARD_WIDTH + 60), y: 0 })
-    })
-    return positions
+/**
+ * Bilateral mind-map layout radiating out from a central business hub.
+ * Hub in center (x=0, y=0), categories branching to left and right with generous spacing,
+ * and leaf knowledge item nodes stacked beside their respective category pills.
+ */
+export function calculateBrainPositions(nodes: BrainNode[]): BrainLayoutResult {
+  const positions = new Map<string, { x: number; y: number }>()
+
+  if (!nodes.length) {
+    return {
+      positions,
+      hubId: '__business_hub__',
+      hubNode: null,
+      rightCategories: [],
+      leftCategories: [],
+    }
   }
 
-  // Find center node (company profile if present)
+  // Identify hub node (company profile if present)
   const hubNode = nodes.find((n) => n.category === 'company_profile') ?? null
+  const hubId = hubNode ? hubNode.id : '__business_hub__'
   const remainingNodes = nodes.filter((n) => n.id !== hubNode?.id)
 
-  if (hubNode) {
-    positions.set(hubNode.id, { x: 0, y: 0 })
-  }
-
-  // Group remaining nodes by category
-  const categoriesPresent = BRAIN_CATEGORY_ORDER.filter((cat) =>
-    remainingNodes.some((n) => n.category === cat)
-  )
-
-  // Split categories bilaterally: right side vs left side
-  const rightCategories: BrainCategory[] = []
-  const leftCategories: BrainCategory[] = []
-
-  categoriesPresent.forEach((cat, idx) => {
-    if (idx % 2 === 0) {
-      rightCategories.push(cat)
-    } else {
-      leftCategories.push(cat)
-    }
+  // Center hub position
+  positions.set(hubId, {
+    x: -BRAIN_HUB_WIDTH / 2,
+    y: -BRAIN_HUB_HEIGHT / 2,
   })
 
-  const ITEM_Y_GAP = 58
-  const CAT_GAP = 32
+  // Get active categories with at least 1 remaining node
+  const categoriesPresent = BRAIN_CATEGORY_ORDER.filter(
+    (cat) => cat !== 'company_profile' && remainingNodes.some((n) => n.category === cat)
+  )
 
-  // Calculate total height for right side
-  let rightTotalHeight = 0
+  const ITEM_PITCH = 60
+  const CAT_GAP = 44
+  const MIN_CAT_BLOCK = 76
+
+  // Distribute categories evenly between right and left sides
+  // We sort by count descending and balance both item count and category count
+  const sortedCategories = [...categoriesPresent].sort((a, b) => {
+    const countA = remainingNodes.filter((n) => n.category === a).length
+    const countB = remainingNodes.filter((n) => n.category === b).length
+    return countB - countA
+  })
+
+  const rightCategories: BrainCategory[] = []
+  const leftCategories: BrainCategory[] = []
+  let rightHeight = 0
+  let leftHeight = 0
+
+  for (const cat of sortedCategories) {
+    const count = remainingNodes.filter((n) => n.category === cat).length
+    const blockH = Math.max(MIN_CAT_BLOCK, Math.max(0, count - 1) * ITEM_PITCH + BRAIN_CARD_HEIGHT) + CAT_GAP
+
+    // Keep category count balanced (no side gets > 2 more categories than the other)
+    if (rightCategories.length - leftCategories.length >= 2) {
+      leftCategories.push(cat)
+      leftHeight += blockH
+    } else if (leftCategories.length - rightCategories.length >= 2) {
+      rightCategories.push(cat)
+      rightHeight += blockH
+    } else if (rightHeight <= leftHeight) {
+      rightCategories.push(cat)
+      rightHeight += blockH
+    } else {
+      leftCategories.push(cat)
+      leftHeight += blockH
+    }
+  }
+
+  // Calculate total heights
+  const computeSideHeight = (cats: BrainCategory[]) => {
+    if (!cats.length) return 0
+    return cats.reduce((sum, cat) => {
+      const count = remainingNodes.filter((n) => n.category === cat).length
+      const blockH = Math.max(MIN_CAT_BLOCK, Math.max(0, count - 1) * ITEM_PITCH + BRAIN_CARD_HEIGHT)
+      return sum + blockH + CAT_GAP
+    }, 0) - CAT_GAP
+  }
+
+  // Position Right Side
+  const rightTotalHeight = computeSideHeight(rightCategories)
+  let currentRightY = -rightTotalHeight / 2
+
   for (const cat of rightCategories) {
     const items = remainingNodes.filter((n) => n.category === cat)
-    rightTotalHeight += items.length * ITEM_Y_GAP + CAT_GAP
+    const blockHeight = Math.max(MIN_CAT_BLOCK, Math.max(0, items.length - 1) * ITEM_PITCH + BRAIN_CARD_HEIGHT)
+
+    // Center single item or place multiple items
+    if (items.length === 1) {
+      const itemY = currentRightY + (blockHeight - BRAIN_CARD_HEIGHT) / 2
+      positions.set(items[0].id, { x: 420, y: itemY })
+      positions.set(`cat-${cat}`, { x: 190, y: currentRightY + (blockHeight - BRAIN_CAT_HEIGHT) / 2 })
+    } else {
+      items.forEach((node, i) => {
+        positions.set(node.id, {
+          x: 420,
+          y: currentRightY + i * ITEM_PITCH,
+        })
+      })
+      const firstItemY = currentRightY
+      const lastItemY = currentRightY + (items.length - 1) * ITEM_PITCH
+      const catY = (firstItemY + lastItemY + BRAIN_CARD_HEIGHT) / 2 - BRAIN_CAT_HEIGHT / 2
+      positions.set(`cat-${cat}`, { x: 190, y: catY })
+    }
+
+    currentRightY += blockHeight + CAT_GAP
   }
 
-  // Calculate total height for left side
-  let leftTotalHeight = 0
+  // Position Left Side
+  const leftTotalHeight = computeSideHeight(leftCategories)
+  let currentLeftY = -leftTotalHeight / 2
+
   for (const cat of leftCategories) {
     const items = remainingNodes.filter((n) => n.category === cat)
-    leftTotalHeight += items.length * ITEM_Y_GAP + CAT_GAP
-  }
+    const blockHeight = Math.max(MIN_CAT_BLOCK, Math.max(0, items.length - 1) * ITEM_PITCH + BRAIN_CARD_HEIGHT)
 
-  // Place right side nodes
-  let rightY = -rightTotalHeight / 2
-  for (const cat of rightCategories) {
-    const items = remainingNodes.filter((n) => n.category === cat)
-    for (let i = 0; i < items.length; i++) {
-      const node = items[i]
-      positions.set(node.id, {
-        x: hubNode ? 260 : 130,
-        y: rightY + i * ITEM_Y_GAP,
+    if (items.length === 1) {
+      const itemY = currentLeftY + (blockHeight - BRAIN_CARD_HEIGHT) / 2
+      positions.set(items[0].id, { x: -420 - BRAIN_CARD_WIDTH, y: itemY })
+      positions.set(`cat-${cat}`, { x: -190 - BRAIN_CAT_WIDTH, y: currentLeftY + (blockHeight - BRAIN_CAT_HEIGHT) / 2 })
+    } else {
+      items.forEach((node, i) => {
+        positions.set(node.id, {
+          x: -420 - BRAIN_CARD_WIDTH,
+          y: currentLeftY + i * ITEM_PITCH,
+        })
       })
+      const firstItemY = currentLeftY
+      const lastItemY = currentLeftY + (items.length - 1) * ITEM_PITCH
+      const catY = (firstItemY + lastItemY + BRAIN_CARD_HEIGHT) / 2 - BRAIN_CAT_HEIGHT / 2
+      positions.set(`cat-${cat}`, { x: -190 - BRAIN_CAT_WIDTH, y: catY })
     }
-    rightY += items.length * ITEM_Y_GAP + CAT_GAP
+
+    currentLeftY += blockHeight + CAT_GAP
   }
 
-  // Place left side nodes
-  let leftY = -leftTotalHeight / 2
-  for (const cat of leftCategories) {
-    const items = remainingNodes.filter((n) => n.category === cat)
-    for (let i = 0; i < items.length; i++) {
-      const node = items[i]
-      positions.set(node.id, {
-        x: hubNode ? -260 - BRAIN_CARD_WIDTH : -130 - BRAIN_CARD_WIDTH,
-        y: leftY + i * ITEM_Y_GAP,
-      })
-    }
-    leftY += items.length * ITEM_Y_GAP + CAT_GAP
+  return {
+    positions,
+    hubId,
+    hubNode,
+    rightCategories,
+    leftCategories,
   }
-
-  return positions
 }

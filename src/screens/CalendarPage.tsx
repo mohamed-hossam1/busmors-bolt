@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, CheckCheck, Copy, XCircle } from 'lucide-react'
 import { loadPosts, recoverPosts, updatePosts } from '../server/calendar-actions'
 import { useCopy } from '../hooks/useCopy'
+import { useAuth } from '../context/AuthContext'
+import { formatWorkspaceTime } from '../lib/region'
 import type { PlannedPost } from '../lib/types'
 
 export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
@@ -189,6 +191,8 @@ function PostCard({
   onMarkPublished?: () => void
 }) {
   const { t } = useCopy()
+  const { settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   return (
     <div className="card animate-fade-up overflow-hidden p-4 sm:p-5 flex flex-col justify-between hover:shadow-xs transition-shadow" dir="auto">
       <div>
@@ -210,7 +214,7 @@ function PostCard({
             {t(`status_${post.status}` as never)}
           </span>
           <span className="ms-auto text-xs text-ink-400 font-normal">
-            {new Date(post.scheduled_for).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+            {formatWorkspaceTime(post.scheduled_for, tz)}
           </span>
         </div>
 

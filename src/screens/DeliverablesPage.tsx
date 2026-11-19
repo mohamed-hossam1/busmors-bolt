@@ -8,6 +8,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { FolderOpen, X, Download, FileText, ArrowUpRight, Search, Copy, Pencil, Trash2, Send, History, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
+import { useAuth } from '../context/AuthContext'
+import { formatWorkspaceTime } from '../lib/region'
 import type { Deliverable, DeliverableVersion } from '../lib/types'
 import MarkdownContent from '../components/chat/MarkdownContent'
 
@@ -28,6 +30,8 @@ function slug(title: string) {
 
 export default function DeliverablesPage() {
   const { t } = useCopy()
+  const { settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   const router = useRouter()
   const searchParams = useSearchParams()
   const [items, setItems] = useState<Deliverable[]>([])
@@ -345,7 +349,7 @@ export default function DeliverablesPage() {
                   </div>
                   <p className="mt-1.5 line-clamp-3 whitespace-pre-line text-sm text-ink-600">{item.content}</p>
                   <div className="mt-6 flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-ink-100/60">
-                    <span className="text-xs text-ink-400">{new Date(item.created_at).toLocaleDateString()} · version {item.version}</span>
+                    <span className="text-xs text-ink-400">{formatWorkspaceTime(item.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })} · version {item.version}</span>
                     <div className="flex gap-2">
                       <button onClick={() => { setViewing(item); setNotice(''); setActionError('') }} className="btn-secondary px-3 py-1.5 text-xs">
                         {t('viewDeliverable')} <ArrowUpRight size={14} />
@@ -379,7 +383,7 @@ export default function DeliverablesPage() {
                   <span className="badge bg-primary-50 text-primary-700">{t(`type_${shown.type}` as never)}</span>
                   <span className="badge bg-ink-100 text-ink-700">version {displayed.version}</span>
                 </div>
-                <p className="mt-1 text-xs text-ink-500">{originLabel(shown.origin)} · saved {new Date(shown.created_at).toLocaleDateString()} · updated {new Date(shown.updated_at ?? shown.created_at).toLocaleDateString()}</p>
+                <p className="mt-1 text-xs text-ink-500">{originLabel(shown.origin)} · saved {formatWorkspaceTime(shown.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })} · updated {formatWorkspaceTime(shown.updated_at ?? shown.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })}</p>
                 {shown.stale_reason && <p className="mt-1 text-xs text-amber-700">{shown.stale_reason}</p>}
               </div>
               <button aria-label="Close report" onClick={closeViewing} className="text-ink-400 hover:text-ink-700 p-1">

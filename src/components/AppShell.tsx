@@ -9,6 +9,7 @@ import { useCopy } from '../hooks/useCopy'
 import { supabase } from '../lib/supabase'
 import { useDialog } from '../hooks/useDialog'
 import Brand from './Brand'
+import NotificationCenter from '../features/notifications/NotificationCenter'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useCopy()
@@ -83,7 +84,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main id="workspace-content" className="dashboard-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
           <header className="dashboard-topbar hidden shrink-0 items-center justify-between gap-4 px-7 md:flex">
             <div className="flex items-center gap-2 text-xs text-ink-600"><span>{t('workspace')}</span><ChevronRight size={13} /><span className="font-medium text-ink-900">{current?.label}</span></div>
-            
+            <div className="flex items-center gap-2">
+              <NotificationCenter />
+            </div>
           </header>
           <div className="dashboard-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
         </main>

@@ -1,4 +1,6 @@
 import { useCopy } from '../../hooks/useCopy'
+import { useAuth } from '../../context/AuthContext'
+import { formatWorkspaceTime } from '../../lib/region'
 
 export interface PostPreviewData {
   platform: string
@@ -10,6 +12,8 @@ export interface PostPreviewData {
 
 export function PostPreviewCard({ post, compact }: { post: PostPreviewData; compact?: boolean }) {
   const { t } = useCopy()
+  const { settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   return (
     <div className="overflow-hidden rounded-xl border border-ink-200 bg-white p-3.5 shadow-sm hover:shadow-card transition-shadow" dir="auto">
       <div className="mb-2 flex items-center justify-between gap-2 border-b border-ink-100 pb-2">
@@ -18,7 +22,7 @@ export function PostPreviewCard({ post, compact }: { post: PostPreviewData; comp
         </span>
         {post.scheduled_for && (
           <span className="text-[11px] text-ink-400 font-normal">
-            {new Date(post.scheduled_for).toLocaleDateString()}
+            {formatWorkspaceTime(post.scheduled_for, tz, { dateStyle: 'medium', timeStyle: undefined })}
           </span>
         )}
       </div>

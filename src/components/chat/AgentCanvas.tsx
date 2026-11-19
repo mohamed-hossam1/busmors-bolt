@@ -37,6 +37,8 @@ import {
 import type { AgentEvent } from '../../lib/types'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
 import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
+import { useAuth } from '../../context/AuthContext'
+import { formatWorkspaceTime } from '../../lib/region'
 
 export type CanvasPreviewPost = PostPreviewData
 const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
@@ -180,6 +182,8 @@ export default function AgentCanvas({
   taskStatus?: string
   previewPosts?: CanvasPreviewPost[]
 }) {
+  const { settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   const [flowNodes, setFlowNodes] = useState<Node[]>([])
   const [showSteps, setShowSteps] = useState(false)
   const [savedLayout] = useState(() => readCanvasLayout(conversationId))
@@ -412,7 +416,7 @@ export default function AgentCanvas({
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="truncate font-medium text-ink-800">{label}</span>
                           <time className="shrink-0 text-[10px] text-ink-400" dateTime={at}>
-                            {new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatWorkspaceTime(at, tz, { hour: '2-digit', minute: '2-digit', dateStyle: undefined, timeStyle: undefined })}
                           </time>
                         </div>
                         <p className={`truncate text-[11px] ${failed ? 'text-red-600' : 'text-ink-500'}`}>

@@ -22,6 +22,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
+import { formatWorkspaceTime } from '../lib/region'
 import DeleteKnowledgeDialog from '../components/brain/DeleteKnowledgeDialog'
 import type { AuditEntry, BrainCategory, BrainEdge, BrainNode, BrainProposal } from '../lib/types'
 import BrainGraph from '../components/brain/BrainGraph'
@@ -58,7 +59,8 @@ const CATEGORY_STYLES: Record<string, string> = {
 
 export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; edges: BrainEdge[]; audit: AuditEntry[]; proposals: BrainProposal[] } }) {
   const { t } = useCopy()
-  const { session } = useAuth()
+  const { session, settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   const deletePreferenceKey = `busmora:skip-knowledge-delete-confirmation:${session?.user.id ?? 'anonymous'}`
   const skippedDeletePrompts = useRef(new Set<string>())
   const [pendingDelete, setPendingDelete] = useState<BrainNode | null>(null)
@@ -370,7 +372,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                 <div key={entry.id} className="flex justify-between rounded-md bg-ink-50 px-3 py-1.5">
                   <span className="text-ink-700">{entry.action.replace(/_/g, ' ')}</span>
                   <span className="text-xs text-ink-400">
-                    {new Date(entry.created_at).toLocaleString()}
+                    {formatWorkspaceTime(entry.created_at, tz)}
                   </span>
                 </div>
               ))}

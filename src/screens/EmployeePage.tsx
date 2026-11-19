@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
+import { useAuth } from '../context/AuthContext'
+import { formatWorkspaceTime } from '../lib/region'
 import type { AgentEvent, ChatMessage, Conversation, FormField } from '../lib/types'
 import type { TaskOrigin } from '../lib/contracts'
 import { useTaskRunner } from '../features/tasks/TaskRunnerProvider'
@@ -35,6 +37,8 @@ import { forgetCanvasLayout, readActiveConversation, saveActiveConversation } fr
 
 export default function EmployeePage() {
   const { t } = useCopy()
+  const { settings } = useAuth()
+  const tz = settings?.timezone ?? 'UTC'
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -622,7 +626,7 @@ export default function EmployeePage() {
                       <div className="truncate">
                         <p className="truncate">{c.title || 'Conversation'}</p>
                         <p className="text-[10px] text-ink-400 font-normal">
-                          {new Date(c.created_at).toLocaleDateString()}
+                          {formatWorkspaceTime(c.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })}
                         </p>
                       </div>
                     </div>
