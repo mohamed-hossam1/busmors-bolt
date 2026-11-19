@@ -21,9 +21,21 @@ export default function ProposalReview({proposals,nodes,onChanged}:{proposals:Br
  {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
  <div className="mt-4 grid gap-3 md:grid-cols-2">{proposals.map(proposal=>{
   const current=nodes.find(node=>node.id===proposal.node_id)
-  return <article key={proposal.id} className="card p-4"><h3 className="font-semibold">{proposal.diff.title}</h3>{current?.approval_state==='approved'&&<p className="mt-2 text-xs text-ink-500">Current: {current.summary}</p>}<p className="mt-2 text-sm leading-6 text-ink-700">{proposal.diff.summary}</p>
-   {typeof proposal.diff.properties.evidence_quote==='string'&&<details className="mt-3 text-xs text-ink-600"><summary className="cursor-pointer">Source excerpt</summary><blockquote className="mt-2 leading-6">{proposal.diff.properties.evidence_quote}</blockquote><p className="mt-2 break-all">{proposal.diff.source_detail}</p></details>}
-   <p className="mt-3 text-xs text-ink-500">Based on version {proposal.base_version}</p><div className="mt-4 flex flex-wrap gap-2"><button disabled={!!busy} className="btn-primary text-xs" onClick={()=>void decide(proposal,'approved')}>Approve for use</button><button disabled={!!busy} className="btn-secondary text-xs" onClick={()=>setEditing(proposal)}>Edit and approve</button><button disabled={!!busy} className="btn-secondary text-xs" onClick={()=>void decide(proposal,'rejected')}>Reject</button></div>
+  return <article key={proposal.id} className="card p-4 flex flex-col justify-between h-full">
+    <div className="flex-1 min-w-0">
+      <h3 className="font-semibold text-ink-900 line-clamp-2 min-h-[44px] leading-snug" title={proposal.diff.title}>{proposal.diff.title}</h3>
+      {current?.approval_state==='approved'&&<p className="mt-1.5 text-xs text-ink-500 line-clamp-1 truncate">Current: {current.summary}</p>}
+      <p className="mt-2 text-sm leading-5 text-ink-700 line-clamp-2 min-h-[40px]" title={proposal.diff.summary}>{proposal.diff.summary}</p>
+      {typeof proposal.diff.properties.evidence_quote==='string'&&<details className="mt-2.5 text-xs text-ink-600"><summary className="cursor-pointer select-none">Source excerpt</summary><blockquote className="mt-2 max-h-24 overflow-y-auto leading-5 text-ink-600 italic border-l-2 border-amber-400 pl-2">{proposal.diff.properties.evidence_quote}</blockquote><p className="mt-1.5 truncate text-[11px] text-ink-400 font-mono" dir="ltr">{proposal.diff.source_detail}</p></details>}
+    </div>
+    <div className="mt-auto pt-3 border-t border-ink-100/60">
+      <p className="text-xs text-ink-500">Based on version {proposal.base_version}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button disabled={!!busy} className="btn-primary text-xs" onClick={()=>void decide(proposal,'approved')}>Approve for use</button>
+        <button disabled={!!busy} className="btn-secondary text-xs" onClick={()=>setEditing(proposal)}>Edit and approve</button>
+        <button disabled={!!busy} className="btn-secondary text-xs" onClick={()=>void decide(proposal,'rejected')}>Reject</button>
+      </div>
+    </div>
   </article>
  })}</div>
  {editing&&<NodeEditor node={{...nodes.find(n=>n.id===editing.node_id)!,...editing.diff}} onCancel={()=>setEditing(null)} onSave={(title,summary,category,properties)=>decide(editing,'approved',{title,summary,category,properties})}/>}

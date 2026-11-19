@@ -14,7 +14,18 @@ export const requireWorkspace = cache(async (setup = true) => {
  if (!identity) redirect('/signin')
  const { data: settings, error } = await identity.supabase.rpc('bootstrap_workspace')
  if (error || settings?.workspace_id !== identity.user.id) throw new Error('Workspace could not be loaded.')
- if (setup && settings.onboarding_state !== 'complete') redirect('/onboarding')
+ if (setup && settings.onboarding_state !== 'complete') {
+  if (settings.crawl_status?.finished || settings.company_url) {
+   await identity.supabase.rpc('set_onboarding_state', { p_state: 'complete' })
+  } else {
+   const { count } = await identity.supabase.from('brain_nodes').select('id', { count: 'exact', head: true }).eq('workspace_id', identity.user.id)
+   if (count && count > 0) {
+    await identity.supabase.rpc('set_onboarding_state', { p_state: 'complete' })
+   } else {
+    redirect('/onboarding')
+   }
+  }
+ }
  const { data } = await identity.supabase.auth.getSession()
  const session = data.session ?? ({ user: identity.user, access_token: '', refresh_token: '', expires_at: 0, expires_in: 0, token_type: 'bearer' } as unknown as import('@supabase/supabase-js').Session)
  return { session, settings: settings as WorkspaceSettings }

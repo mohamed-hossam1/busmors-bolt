@@ -37,16 +37,22 @@ BEGIN
   IF (SELECT onboarding_state FROM workspace_settings WHERE workspace_id = auth.uid()) <> 'complete' THEN RAISE EXCEPTION 'Wrong completion state'; END IF;
   SELECT id INTO v_first FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Ledger Pro';
   SELECT id INTO v_second FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Small businesses';
-  IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid() AND status = 'approved') <> 2 THEN RAISE EXCEPTION 'Verified AI candidates should be approved'; END IF;
-  IF (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid() AND status = 'approved') <> 1 THEN RAISE EXCEPTION 'Supported relationship was not approved'; END IF;
-  RAISE NOTICE 'PASS: nodes, evidence, edges and complete state persist together; www is canonicalized';
+  -- C09 governance: AI/crawl candidates are persisted as candidate/pending, never auto-approved.
+  IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid() AND status = 'candidate' AND approval_state = 'pending') <> 2 THEN RAISE EXCEPTION 'AI candidates must stay pending for owner review'; END IF;
+  IF (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid() AND status = 'candidate') <> 1 THEN RAISE EXCEPTION 'Crawl relationship must stay pending for owner review'; END IF;
+  RAISE NOTICE 'PASS: nodes, evidence, edges and complete state persist together as review candidates; www is canonicalized';
+  -- Owner explicitly approves the two candidates so downstream edit/relationship checks exercise approved facts.
+  PERFORM update_brain_item(v_first, 1, 'Ledger Pro', v_candidates->0->>'summary', 'offering', v_candidates->0->'properties', 'approved');
+  PERFORM update_brain_item(v_second, 1, 'Small businesses', v_candidates->1->>'summary', 'audience', v_candidates->1->'properties', 'approved');
 
   PERFORM save_crawl_brain('https://example.com/', v_candidates, v_edges, 1, false);
   IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid()) <> 2
     OR (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid()) <> 1 THEN RAISE EXCEPTION 'Retry duplicated knowledge'; END IF;
   RAISE NOTICE 'PASS: repeated saves keep stable IDs and do not duplicate nodes/edges';
+  -- Duplicate input on an already-saved graph must not inflate counts (edge already exists).
   v_result := save_crawl_brain('https://example.com/', v_candidates, v_edges || v_edges, 1, false);
-  IF v_result->>'edges_count' <> '1' THEN RAISE EXCEPTION 'Duplicate input inflated saved counts'; END IF;
+  IF v_result->>'edges_count' <> '0' OR v_result->>'nodes_count' <> '0' THEN RAISE EXCEPTION 'Duplicate input inflated saved counts'; END IF;
+  IF (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid()) <> 1 THEN RAISE EXCEPTION 'Duplicate input created a second edge'; END IF;
   RAISE NOTICE 'PASS: duplicate input reports actual distinct persisted relationships';
 
   SELECT count(*) INTO v_audit FROM audit_log WHERE workspace_id = auth.uid();
@@ -77,6 +83,8 @@ BEGIN
   IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid()) <> 2 THEN RAISE EXCEPTION 'Candidate failure changed knowledge'; END IF;
   RAISE NOTICE 'PASS: invalid candidate rolls back the entire save';
 
+  -- C09 governance: crawl saves never rewrite owner edits, manual edges, other-workspace
+  -- data, or silently retire existing facts. A p_replace save is additive-only.
   UPDATE brain_nodes SET summary = 'This business detail was explicitly edited by a user.',
     properties = properties || '{"user_edited":true}'::jsonb WHERE id = v_first;
   INSERT INTO brain_nodes(workspace_id, category, title, summary, source, status)
@@ -90,9 +98,9 @@ BEGIN
   PERFORM save_crawl_brain('https://example.com/', v_candidates, v_edges, 1, true);
   IF (SELECT summary FROM brain_nodes WHERE id = v_first) <> 'This business detail was explicitly edited by a user.'
     OR NOT EXISTS (SELECT 1 FROM brain_edges WHERE source_node_id = v_manual AND target_node_id = v_first)
-    OR (SELECT status FROM brain_nodes WHERE id = v_stale) <> 'retired'
-    OR (SELECT status FROM brain_nodes WHERE id = v_other) <> 'approved' THEN RAISE EXCEPTION 'Reorganization damaged preserved knowledge'; END IF;
-  RAISE NOTICE 'PASS: replacement preserves edits, manual edges and other workspaces; stale facts are retained as history';
+    OR (SELECT status FROM brain_nodes WHERE id = v_stale) <> 'approved'
+    OR (SELECT status FROM brain_nodes WHERE id = v_other) <> 'approved' THEN RAISE EXCEPTION 'Crawl damaged preserved knowledge'; END IF;
+  RAISE NOTICE 'PASS: crawl preserves edits, manual edges, other workspaces, and never auto-retires facts';
 
   PERFORM save_crawl_brain('https://example.com/', jsonb_set(jsonb_set(v_candidates, '{1,properties,extracted_by}', '"heuristic"'), '{1,summary}', to_jsonb('A weaker heuristic summary that must not replace an AI-backed fact.'::text)), '[]', 1, false);
   IF (SELECT summary FROM brain_nodes WHERE id = v_second) <> v_candidates->1->>'summary' THEN RAISE EXCEPTION 'Fallback downgraded an AI fact'; END IF;
@@ -128,7 +136,7 @@ BEGIN
     PERFORM save_crawl_brain('https://example.com/', v_candidates, '[]', 1, true);
     RAISE EXCEPTION 'Expected authorization failure';
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM <> 'Not authorized' THEN RAISE; END IF;
+    IF SQLERRM NOT IN ('Not authorized', 'NOT_AUTHENTICATED') THEN RAISE; END IF;
   END;
   RAISE NOTICE 'PASS: missing identity cannot save knowledge';
 END;

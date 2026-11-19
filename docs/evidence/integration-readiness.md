@@ -44,11 +44,11 @@ This inventory separates **code/config presence** from **verified live behavior*
 | Decision / scope | Reuse existing project; read-only verification only. |
 | Code/config evidence | `src/lib/supabase.ts` reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, uses PKCE and session persistence. |
 | Actual check | `GET /auth/v1/settings` with the configured publishable key, 19 November 2026. |
-| Observed result | Settings **HTTP 200**: `email: true`, `google: false`, `facebook: false`, `disable_signup: false`, `mailer_autoconfirm: true` (email confirmation not forced). |
+| Observed result | Settings **HTTP 200**: `email: true`, `google: true`, `facebook: false`, `disable_signup: false`, `mailer_autoconfirm: true` (email confirmation not forced). |
 | Status | **PASS** (reachability only) |
 | Blocker | None for Auth connectivity. Google/Facebook are disabled providers (below). |
 | Owner action | None for connectivity. Keep the project active through the competition. |
-| Follow-up | C03 real email delivery; C04 Google. |
+| Follow-up | C04 Google. (Email verification removed by owner; no delivery check needed.) |
 
 ### 2. Supabase — application database and Backend API Routes
 
@@ -70,7 +70,7 @@ This inventory separates **code/config presence** from **verified live behavior*
 |---|---|
 | Decision / scope | Preserve the existing dashboard configuration (provider/model/key); optional server-managed fallback remains supported. |
 | Code/config evidence | `src/screens/SettingsPage.tsx` provider/model selection calls `save_ai_key`; `src/server/ai-generate.ts` and `src/app/api/ai/route.ts` read the workspace key server-side and support managed `AI_API_KEY`/`AI_PROVIDER`/`AI_MODEL` fallback. Keys are never returned to the browser. |
-| Actual check | Source review of the full save/use path. `npm run test:ai-gateway` passed 6/6 with typed errors, parameter validation, and safe error masking. A **live Groq `openai/gpt-oss-120b` chat completion returned HTTP 200** using `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-120b` on 19 November 2026. |
+| Actual check | Source review of the full save/use path plus a **live Groq `openai/gpt-oss-20b` chat completion returned HTTP 200** using `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-20b` on 19 November 2026. |
 | Observed result | The Next.js API route compiles, passes unit tests, and a real provider model call succeeded against Groq. Workspace BYOK save/use is backed by the applied `ai_keys` schema. |
 | Status | **LIVE VERIFIED (model call); dashboard end-to-end pending** |
 | Blocker | None for the managed model. Dashboard save-then-use against a logged-in workspace still needs a live session check. |
@@ -96,12 +96,12 @@ This inventory separates **code/config presence** from **verified live behavior*
 |---|---|
 | Decision / scope | Remains in scope; full implementation/testing in C04. |
 | Code/config evidence | `src/components/auth/GoogleButton.tsx` starts Supabase OAuth with a PKCE callback; `src/app/auth/callback/route.ts` handles return/cancel/error and onboarding routing. |
-| Actual check | `GET /auth/v1/settings` on the configured project. |
-| Observed result | `google: false` — the Google provider is disabled. No Google login was attempted. |
-| Status | **BLOCKED** |
-| Blocker | Google provider disabled; no confirmed client ID/secret or authorized redirect URLs for `http://localhost:3000` (and `5173`) plus the intended `https://busmora.com`. |
-| Owner action | Create/confirm the Google OAuth web client, add the Supabase callback as an authorized redirect URI, enable Google in Supabase, and add `https://busmora.com/auth/callback` plus the local callback patterns. Enable the dedicated test identity. |
-| Follow-up | C04 (real login/cancel test); H02 (explicit-linking conformance, post-competition). |
+| Actual check | `GET /auth/v1/settings`; `GET /auth/v1/authorize?provider=google`. |
+| Observed result | `google: true` with real client credentials; authorize returns **HTTP 302** to `accounts.google.com` with a real `client_id`, and `http://localhost:3000/auth/callback` is accepted as `redirect_to`. |
+| Status | **COMPLETE (config + initiation)** |
+| Blocker | None for configuration. A full interactive login (human browser) + AC-32 linking remain H02. |
+| Owner action | None. Add `https://busmora.com/auth/callback` to the allowed redirect list at deploy time (C39). |
+| Follow-up | H02 (full login/linking conformance, post-competition). |
 
 ### 6. Facebook / Meta
 
@@ -122,12 +122,12 @@ This inventory separates **code/config presence** from **verified live behavior*
 |---|---|
 | Decision / scope | Direct email signup without verification (C03); password recovery retained. |
 | Code/config evidence | Signup, reset, new-password, callback pages in `src/app/(auth)` and auth routing exist; email verification page removed. |
-| Actual check | `GET /auth/v1/settings`. |
-| Observed result | Email provider enabled; signups enabled; in-app signup proceeds directly to onboarding. |
+| Actual check | `GET /auth/v1/settings`; live `POST /auth/v1/signup`. |
+| Observed result | Email provider enabled; signups enabled; `mailer_autoconfirm:true`. Live signup returned an immediate `access_token` (no confirmation email) and routed to onboarding. |
 | Status | **COMPLETE** |
 | Blocker | None. Email verification removed per owner decision. |
 | Owner action | None for signup flow. |
-| Follow-up | C03. |
+| Follow-up | None (C03 complete). |
 
 ### 8. Hosting — Vercel and `busmora.com`
 
@@ -146,24 +146,23 @@ This inventory separates **code/config presence** from **verified live behavior*
 
 | Command | Result | Evidence limit |
 |---|---|---|
-| `npm run build` | **PASS** — Next.js 16.4.6 (Turbopack), 19 routes generated | Native Next.js build; hosted Supabase DB migrations not covered. |
-| `npm run lint` | **PASS** — exit 0, **17 warnings**, no errors | Static analysis via oxlint. |
-| `npm run test:crawl` | **PASS — 26/26** | Crawler and evidence tests passed. |
-| `npm run test:ai-gateway` | **PASS — 6/6** | Next.js API route / gateway validation passed with fixture responses. |
-| `npm run test:tasks` | **PASS — 7/7** | Local runner behavior; not live Supabase execution. |
-| `npm run test:db:local` | **N/A** — local PostgreSQL socket not provisioned | Migrations are applied to the hosted Supabase project, so live SQL acceptance runs there instead. |
+| `npm run build` | **PASS** — Next.js 16.4.6, 19 routes generated | Native Next.js build. |
+| `npm run lint` | **PASS** — exit 0, 0 errors | Static analysis via oxlint. |
+| `tsc --noEmit` | **PASS** — exit 0 | Type check. |
+| `node scripts/db-check.cjs <sql>` (8 scripts) | **PASS — 8/8** on hosted Supabase | SQL acceptance: planned-posts, task-execution, competition, deliverable, discovery, brain-governance, intake, crawl. |
+| Live AI (Groq) | **PASS** — `openai/gpt-oss-20b` completion HTTP 200 | Managed model reachable with `AI_API_KEY`. |
+| `npm run test:db:local` | **N/A** — local PostgreSQL socket not provisioned | Migrations are applied to the hosted Supabase project, so SQL acceptance runs there instead. |
 
-Browser UI suites were **not** rerun in C01; earlier passes remain historical evidence. A live Groq model call passed; no live Google, Meta, email-delivery, publication, or deployment check passed.
+Browser UI suites were **not** rerun this session. A live Groq model call and live Google OAuth initiation (302 to accounts.google.com) passed; no live email-delivery, publication, or deployment check passed.
 
 ## Consolidated blockers and owner actions
 
 | Blocker | Owner action | Follow-up |
 |---|---|---|
 | Application migrations (23 files) | **Applied** to the configured Supabase project (core tables return 200) | C02, C39 |
-| AI provider live request | Managed model live-verified (Groq `openai/gpt-oss-120b`); dashboard save-then-use end-to-end still needs a logged-in run | C10 |
+| AI provider live request | Managed model live-verified (Groq `openai/gpt-oss-20b`); dashboard save-then-use end-to-end still needs a logged-in run | C10 |
 | No Firecrawl adapter | Wire the present `FIRECRAWL_API_KEY`; authorize C14 | C14, C15 |
-| Google provider disabled | Enable Google + redirect URLs + test identity | C04 |
-| No email delivery evidence | Configure SMTP/templates and test with a dedicated mailbox | C03 |
+| Google OAuth | **Enabled** with real credentials; initiation verified (302 to Google). Full interactive login + AC-32 linking remain H02 |
 | `busmora.com` not deployed/DNS absent | Authorize Vercel deployment and DNS | C39 |
 | Facebook/Meta deferred | No action now; resume when owner reprioritizes | C25, C26 |
 | Local SQL harness unavailable | Use the hosted Supabase project for SQL acceptance, or provision a disposable PostgreSQL | C02, C37 |

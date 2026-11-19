@@ -9,7 +9,7 @@ import AccountPreferences from '../components/settings/AccountPreferences'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
-  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'allam-2-7b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile'], needsBaseUrl: false },
+  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'allam-2-7b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'], needsBaseUrl: false },
   { id: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'], needsBaseUrl: false },
   { id: 'google', label: 'Google Gemini', models: ['gemini-1.5-flash', 'gemini-2.0-flash'], needsBaseUrl: false },
   { id: 'openrouter', label: 'OpenRouter', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku'], needsBaseUrl: false },
@@ -27,7 +27,7 @@ interface AiKeyInfo {
 function SettingsContent() {
   const [aiKey, setAiKey] = useState<AiKeyInfo | null>(null)
   const [provider, setProvider] = useState<string>('groq')
-  const [model, setModel] = useState<string>('openai/gpt-oss-120b')
+  const [model, setModel] = useState<string>('openai/gpt-oss-20b')
   const [baseUrl, setBaseUrl] = useState('')
   const [rawKey, setRawKey] = useState('')
   const [keyBusy, setKeyBusy] = useState(false)

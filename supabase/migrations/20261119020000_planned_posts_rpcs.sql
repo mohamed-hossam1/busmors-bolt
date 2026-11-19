@@ -53,15 +53,15 @@ CREATE OR REPLACE FUNCTION update_post(
   p_status text DEFAULT NULL
 ) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE w uuid := auth.uid(); id uuid; p planned_posts; pv post_versions; nextrev integer; changed integer := 0;
+DECLARE w uuid := auth.uid(); cur_id uuid; p planned_posts; pv post_versions; nextrev integer; changed integer := 0;
 BEGIN
   IF w IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED'; END IF;
   IF p_ids IS NULL OR array_length(p_ids,1) IS NULL OR array_length(p_ids,1) > 500 THEN RAISE EXCEPTION 'INVALID_IDS'; END IF;
   IF p_status IS NOT NULL AND p_status NOT IN ('approved','rejected','published') THEN RAISE EXCEPTION 'INVALID_STATUS'; END IF;
   IF p_caption IS NOT NULL AND length(p_caption) NOT BETWEEN 1 AND 6000 THEN RAISE EXCEPTION 'INVALID_CAPTION'; END IF;
 
-  FOREACH id IN ARRAY p_ids LOOP
-    SELECT * INTO p FROM planned_posts WHERE id=id AND workspace_id=w FOR UPDATE;
+  FOREACH cur_id IN ARRAY p_ids LOOP
+    SELECT * INTO p FROM planned_posts WHERE id=cur_id AND workspace_id=w FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
     IF p_expected_version IS NOT NULL AND p.version <> p_expected_version THEN RAISE EXCEPTION 'VERSION_CONFLICT'; END IF;
 
@@ -79,15 +79,17 @@ BEGIN
 
     -- Status transition (owner decision). Guard against illegal jumps.
     IF p_status IS NOT NULL AND p_status <> p.status THEN
-      IF p_status='approved' AND p.status NOT IN ('pending_approval','rejected') THEN RAISE EXCEPTION 'INVALID_TRANSITION'; END IF;
-      IF p_status='rejected' AND p.status NOT IN ('pending_approval','approved') THEN RAISE EXCEPTION 'INVALID_TRANSITION'; END IF;
+      IF p_status='approved' AND p.status NOT IN ('draft','pending_approval','rejected') THEN RAISE EXCEPTION 'INVALID_TRANSITION'; END IF;
+      IF p_status='rejected' AND p.status NOT IN ('draft','pending_approval','approved') THEN RAISE EXCEPTION 'INVALID_TRANSITION'; END IF;
       IF p_status='published' AND (p.status <> 'approved' OR p.approval_state <> 'approved') THEN RAISE EXCEPTION 'NOT_APPROVED'; END IF;
       IF p_status='published' THEN
         UPDATE planned_posts SET status='published', execution_state='owner_reported', published_at=now(),
           publish_result=coalesce(publish_result,'{}'::jsonb)||jsonb_build_object('published_by','user','at',now()), version=version+1, updated_at=now()
           WHERE id=p.id;
-      ELSE
-        UPDATE planned_posts SET status=p_status, version=version+1, updated_at=now() WHERE id=p.id;
+      ELSIF p_status='approved' THEN
+        UPDATE planned_posts SET status='approved', approval_state='approved', version=version+1, updated_at=now() WHERE id=p.id;
+      ELSIF p_status='rejected' THEN
+        UPDATE planned_posts SET status='rejected', approval_state='rejected', version=version+1, updated_at=now() WHERE id=p.id;
       END IF;
     END IF;
     changed := changed + 1;
@@ -99,12 +101,12 @@ END $$;
 CREATE OR REPLACE FUNCTION delete_post(p_ids uuid[])
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE w uuid := auth.uid(); id uuid; changed integer := 0;
+DECLARE w uuid := auth.uid(); cur_id uuid; changed integer := 0;
 BEGIN
   IF w IS NULL THEN RAISE EXCEPTION 'UNAUTHORIZED'; END IF;
   IF p_ids IS NULL OR array_length(p_ids,1) IS NULL OR array_length(p_ids,1) > 500 THEN RAISE EXCEPTION 'INVALID_IDS'; END IF;
-  FOREACH id IN ARRAY p_ids LOOP
-    DELETE FROM planned_posts WHERE id=id AND workspace_id=w;
+  FOREACH cur_id IN ARRAY p_ids LOOP
+    DELETE FROM planned_posts WHERE id=cur_id AND workspace_id=w;
     IF FOUND THEN changed := changed + 1; END IF;
   END LOOP;
   RETURN changed;

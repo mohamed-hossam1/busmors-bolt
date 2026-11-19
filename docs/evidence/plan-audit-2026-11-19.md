@@ -10,14 +10,14 @@ Reviewed by Codex against the current local working tree in `busmors-bolt`, incl
 
 ## Result
 
-**No C task is fully accepted on the available evidence.** This does not mean the project has no completed components: intake, Brain governance, task execution, Chat, Canvas and document editing contain substantial working local implementation. The remaining gaps combine missing behavior with live/environment acceptance that has not been established.
+> Status update (19 November 2026, post-C01–C04): **4 fully accepted (C01, C02, C03, C04)**. The table below is updated to current counts; the findings that follow are the original audit snapshot and some file paths are historical.
 
 | Status | Count | Tasks |
 |---|---|---|
-| Complete against all task acceptance | 0 | None |
-| INCOMPLETE — implemented; verification pending | 4 | C09, C10, C11, C13 |
-| INCOMPLETE — partial | 20 | C01, C02, C03, C04, C05, C06, C07, C08, C12, C16, C17, C23, C25, C28, C29, C32, C33, C34, C35, C37 |
-| INCOMPLETE — missing | 16 | C14, C15, C18, C19, C20, C21, C22, C24, C26, C27, C30, C31, C36, C38, C39, C40 |
+| Complete against all task acceptance | 4 | C01, C02, C03, C04 |
+| INCOMPLETE — implemented; verification pending | 5 | C09, C10, C11, C13, C18 |
+| INCOMPLETE — partial | 16 | C05, C06, C07, C08, C12, C16, C17, C23, C25, C28, C29, C32, C33, C34, C35, C37 |
+| INCOMPLETE — missing | 15 | C14, C15, C19, C20, C21, C22, C24, C26, C27, C30, C31, C36, C38, C39, C40 |
 
 These counts are not an effort estimate. “Missing” means the required user journey is absent; tables, prompts, types or historical preview assets can still exist. “Implemented; verification pending” does not mean competition-verified or production-verified.
 

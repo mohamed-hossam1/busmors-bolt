@@ -29,7 +29,7 @@ import NodeEditor from '../components/brain/NodeEditor'
 import KnowledgeEvidence, { KnowledgeLabels } from '../components/brain/KnowledgeEvidence'
 import ProposalReview from '../components/brain/ProposalReview'
 import RelationshipEditor from '../components/brain/RelationshipEditor'
-import { saveBrainItem } from '../lib/brainApi'
+import { brainError, saveBrainItem } from '../lib/brainApi'
 import { organizeBrainWithAi } from '../lib/crawl'
 
 const ALL_CATEGORIES: BrainCategory[] = [
@@ -109,6 +109,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
 
   const candidates = useMemo(() => nodes.filter((n) => n.status === 'candidate' && !proposals.some(p=>p.node_id===n.id)), [nodes,proposals])
   const approved = useMemo(() => nodes.filter((n) => n.status === 'approved'), [nodes])
+  const pendingCount = proposals.length + candidates.length
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((n) => {
@@ -142,14 +143,57 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
     try { await saveBrainItem(node,node.title,node.summary,node.category,node.properties,status);await load() }
     catch(error) { setPageError(error instanceof Error?error.message:'Could not save this decision.') }
   }
-  const decideAll = async (status:'approved'|'rejected') => {
+
+  const approveAllPending = async () => {
     try {
-      for(const node of candidates) await saveBrainItem(node,node.title,node.summary,node.category,node.properties,status)
+      setLoading(true)
+      for (const p of proposals) {
+        const { error: rpcErr } = await supabase.rpc('decide_brain_proposal', {
+          p_proposal_id: p.id,
+          p_expected_version: p.base_version,
+          p_decision: 'approved',
+          p_edit: null,
+        })
+        if (rpcErr) throw brainError(rpcErr)
+      }
+      for (const node of candidates) {
+        await saveBrainItem(node, node.title, node.summary, node.category, node.properties, 'approved')
+      }
       await load()
-    }catch(error){await load();setPageError((error instanceof Error?error.message:'A decision failed.')+' Earlier successful decisions are saved; remaining items still need review.')}
+    } catch (err) {
+      await load()
+      setPageError(err instanceof Error ? err.message : 'Could not approve all pending items.')
+    } finally {
+      setLoading(false)
+    }
   }
-  const approveAllCandidates = ()=>decideAll('approved')
-  const rejectAllCandidates = ()=>{if(confirm('Reject all pending candidates?'))void decideAll('rejected')}
+
+  const rejectAllPending = async () => {
+    if (!confirm('Reject all pending items?')) return
+    try {
+      setLoading(true)
+      for (const p of proposals) {
+        const { error: rpcErr } = await supabase.rpc('decide_brain_proposal', {
+          p_proposal_id: p.id,
+          p_expected_version: p.base_version,
+          p_decision: 'rejected',
+          p_edit: null,
+        })
+        if (rpcErr) throw brainError(rpcErr)
+      }
+      for (const node of candidates) {
+        await saveBrainItem(node, node.title, node.summary, node.category, node.properties, 'rejected')
+      }
+      await load()
+    } catch (err) {
+      await load()
+      setPageError(err instanceof Error ? err.message : 'Could not reject all pending items.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  const approveAllCandidates = approveAllPending
+  const rejectAllCandidates = rejectAllPending
 
   const performDelete = async (node: BrainNode, skipConfirmation = false) => {
     if (deletingId) return
@@ -251,8 +295,6 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
     }
   }
 
-  const pendingCount = candidates.length+proposals.length
-
   return (
     <div className="workspace-page">
       <div className={`mx-auto ${view === 'graph' ? 'brain-graph-page max-w-none' : 'max-w-5xl'}`}>
@@ -274,24 +316,13 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
               <h1 className="workspace-heading">{t('navBrain')}</h1>
               <p className="workspace-description">Your business knowledge, connected.</p>
             </div>
-            {pendingCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilterTab('candidate')}
-                className="badge bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors cursor-pointer flex items-center gap-1.5 px-2.5 py-1"
-                title="Filter to pending items"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-600 animate-pulse" />
-                <span>{pendingCount} {t('candidatesBadge')}</span>
-              </button>
-            )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-lg border border-ink-200 p-0.5 bg-white">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+            <div className="flex rounded-lg border border-ink-200 p-0.5 bg-white shrink-0">
               <button
                 onClick={() => setView('list')}
                 aria-pressed={view === 'list'}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   view === 'list' ? 'bg-primary-50 text-primary-800' : 'text-ink-500 hover:text-ink-900'
                 }`}
               >
@@ -300,30 +331,30 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
               <button
                 onClick={() => setView('graph')}
                 aria-pressed={view === 'graph'}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   view === 'graph' ? 'bg-primary-50 text-primary-800' : 'text-ink-500 hover:text-ink-900'
                 }`}
               >
                 <Network size={15} /> {t('graphView')}
               </button>
             </div>
-            <button className="btn-secondary text-xs sm:text-sm" onClick={()=>setRelationships(true)}><Network size={15}/>Relationships</button>
+            <button className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5" onClick={()=>setRelationships(true)}><Network size={15}/>Relationships</button>
             <button
               onClick={openReorganizeModal}
-              className="btn-secondary px-3 py-1.5 text-xs sm:text-sm flex items-center gap-1.5 text-primary-700 border-primary-200 hover:bg-primary-50"
+              className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 text-primary-700 border-primary-200 hover:bg-primary-50"
               title={t('reorganizeAiDesc')}
             >
               <Sparkles size={15} className="text-primary-600" /> {t('reorganizeAi')}
             </button>
             <button
               onClick={() => setShowAudit(!showAudit)}
-              className="btn-secondary px-3 py-1.5 text-xs sm:text-sm flex-1 sm:flex-initial"
+              className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             >
               <History size={15} /> {t('auditLog')}
             </button>
             <button
               onClick={() => setEditing('new')}
-              className="btn-primary px-3 py-1.5 text-xs sm:text-sm flex-1 sm:flex-initial"
+              className="btn-primary px-3.5 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 shadow-xs"
             >
               <Plus size={15} /> {t('addKnowledge')}
             </button>
@@ -348,7 +379,14 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
         )}
 
         {view === 'graph' ? (
-          <BrainGraph nodes={nodes.filter((node) => !['rejected','retired'].includes(node.status))} edges={edges} onEditNode={(node) => setEditing(node)} onEvidence={setEvidence}/>
+          <BrainGraph
+            nodes={nodes.filter((node) => !['rejected','retired'].includes(node.status))}
+            edges={edges}
+            proposals={proposals}
+            onEditNode={(node) => setEditing(node)}
+            onEvidence={setEvidence}
+            onSwitchToList={() => { setView('list'); setFilterTab('candidate') }}
+          />
         ) : loading ? (
           <LoadingState label="Loading your Business Brain…" />
         ) : (
@@ -394,7 +432,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                   </span>
                 </button>
 
-                {candidates.length > 0 && (
+                {pendingCount > 0 && (
                   <button
                     type="button"
                     onClick={() => setFilterTab('candidate')}
@@ -410,7 +448,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                         filterTab === 'candidate' ? 'bg-amber-800 text-amber-100' : 'bg-amber-200 text-amber-900'
                       }`}
                     >
-                      {candidates.length}
+                      {pendingCount}
                     </span>
                   </button>
                 )}
@@ -519,7 +557,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                       ))}
                     </div>
                   </section>
-                ) : filterTab === 'candidate' ? (
+                ) : filterTab === 'candidate' && proposals.length === 0 ? (
                   <div className="card p-8 text-center text-sm text-ink-500">
                     <p>{t('noCandidates')}</p>
                   </div>
@@ -745,16 +783,18 @@ function CandidateCard({
 }) {
   const { t } = useCopy()
   return (
-    <div className="card animate-fade-up p-4">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold">{node.title}</h3>
-        <span className="badge bg-ink-100 text-ink-600">{Math.round(node.confidence * 100)}%</span>
+    <div className="card animate-fade-up p-4 flex flex-col justify-between h-full">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-ink-900 line-clamp-2 min-h-[44px] leading-snug" title={node.title}>{node.title}</h3>
+          <span className="badge bg-ink-100 text-ink-600 shrink-0">{Math.round(node.confidence * 100)}%</span>
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-600 line-clamp-2 min-h-[40px]" title={node.summary}>{node.summary}</p>
+        <p className="mt-2 truncate text-xs text-ink-400" dir="ltr">
+          {t('source')}: {node.source_detail ?? node.source}
+        </p>
       </div>
-      <p className="mt-1.5 text-sm leading-relaxed text-ink-600">{node.summary}</p>
-      <p className="mt-2 truncate text-xs text-ink-400" dir="ltr">
-        {t('source')}: {node.source_detail ?? node.source}
-      </p>
-      <div className="mt-3 grid grid-cols-3 sm:flex gap-2">
+      <div className="mt-auto pt-3 grid grid-cols-3 sm:flex gap-2">
         <button onClick={onApprove} className="btn-primary px-2.5 py-1.5 text-xs justify-center">
           {t('approve')}
         </button>

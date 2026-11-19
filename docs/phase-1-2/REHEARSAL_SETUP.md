@@ -74,9 +74,9 @@ https://busmora.com/auth/callback?flow=recovery
 
 If using `127.0.0.1` or port 5173 during testing, add those origins too. Use exact deployed URLs rather than a broad wildcard. The app stores the intended internal resource separately and uses PKCE. Email signup proceeds directly to onboarding without email verification. Password recovery links honor the requested redirect URL. See [redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls) and [PKCE](https://supabase.com/docs/guides/auth/sessions/pkce-flow).
 
-For Google, create/configure a Google OAuth web client with the app origins, add the Supabase project's callback URL from its Google provider settings as the authorized redirect URI, and enable Google in Supabase with the client ID and secret. The Google callback is the Supabase callback, while `/auth/callback` is the application's return URL. Add the dedicated identity as a test user if the Google consent app is in testing. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google). Current blocker: `google: false` on the project.
+For Google, the provider is enabled in Supabase with real client credentials; initiation redirects to Google. At deploy time, add the production origins and `https://busmora.com/auth/callback` to the authorized redirect list. The Google callback is the Supabase callback, while `/auth/callback` is the application's return URL. Add the dedicated identity as a test user if the Google consent app is in testing. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google).
 
-Verify: fresh signup and email receipt; expired/cancelled links; verification → setup; password reset and new password; returning login → Director; safe deep link return; logout; Google success/cancel; actual provider and verification labels in Settings. Same-email linking and the wider H02 identity suite remain separate follow-up checks.
+Verify: fresh signup (immediate session, no verification) → setup; password reset and new password; returning login → Director; safe deep link return; logout; Google success/cancel; actual provider and verification labels in Settings. Same-email linking and the wider H02 identity suite remain separate follow-up checks.
 
 ## Server credentials and configuration
 

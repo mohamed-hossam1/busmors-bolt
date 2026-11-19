@@ -7,13 +7,13 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',true);
 SELECT set_config('request.jwt.claim.role','authenticated',true);
 DO $$
-DECLARE n brain_nodes; other_node brain_nodes; proposal brain_proposals; d uuid; p uuid; relation brain_edges; result jsonb;
+DECLARE n brain_nodes; other_node brain_nodes; proposal brain_proposals; d uuid; p uuid; pp planned_posts; relation brain_edges; result jsonb;
 BEGIN
  PERFORM bootstrap_workspace();
  n:=update_brain_item(NULL,0,'Custom repair','Owner price', 'offering','{"pricingModel":"fixed","amount":"100","currency":"EGP"}');
  other_node:=update_brain_item(NULL,0,'Local households','Owner audience','audience','{}');
  INSERT INTO deliverables(workspace_id,title,type,content) VALUES(auth.uid(),'Dependent document','general','Depends on the old price') RETURNING id INTO d;
- INSERT INTO planned_posts(workspace_id,platform,caption,status,execution_state) VALUES(auth.uid(),'facebook','Old price','draft','scheduled') RETURNING id INTO p;
+  pp := create_post('facebook','Old price','',NULL,'{}',''); p := pp.id;
  INSERT INTO context_dependencies(workspace_id,node_id,node_version,consumer_type,consumer_id,consumer_version) VALUES(auth.uid(),n.id,n.version,'document',d,1),(auth.uid(),n.id,n.version,'post',p,1);
  n:=update_brain_item(n.id,1,'Custom repair','Owner corrected price','offering','{"pricingModel":"fixed","amount":"125","currency":"EGP"}');
  IF (SELECT count(*) FROM brain_versions WHERE node_id=n.id)<>2 THEN RAISE EXCEPTION 'Edit history missing'; END IF;

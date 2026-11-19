@@ -200,7 +200,7 @@ async function handleSharedCrawlRequest(
   }
   let envKey = process.env.AI_API_KEY
   let envProvider = process.env.AI_PROVIDER || 'groq'
-  let envModel = process.env.AI_MODEL || 'openai/gpt-oss-120b'
+  let envModel = process.env.AI_MODEL || 'openai/gpt-oss-20b'
 
   if (!envKey) {
     try {
@@ -246,9 +246,9 @@ async function handleSharedCrawlRequest(
     })
   }
 
-  const candidateModels = [envModel, 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b']
+  const candidateModels = [envModel, 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-120b']
   const uniqueModels = [...new Set(candidateModels.filter(Boolean))]
-  const deadline = Date.now() + 14000
+  const deadline = Date.now() + 30000
   let lastError: Error | null = null
 
   for (const model of uniqueModels) {

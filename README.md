@@ -14,18 +14,10 @@ Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your
 ```sh
 npm run build
 npm run lint
-npm run test:ui
+npm run test:e2e
 ```
 
-The browser suite runs against a local Next.js server with an isolated Supabase URL and intercepts its requests. It uses fictional Luma Studio fixtures; it never reads or writes a live workspace. It uses installed Chrome when available; otherwise install Playwright Chromium with `npx playwright install chromium`. Set `CHROME_PATH` to select a browser executable.
-
-To refresh the real product images on the landing page:
-
-```sh
-npm run test:ui -- --capture-products
-```
-
-Screenshot optimization additionally requires Python 3 and Pillow. The test captures the actual React interfaces, then encodes optimized WebP assets in `public/marketing/product/`. Presentation fixtures exist only in `scripts/ui-fixtures.cjs`; the production app does not import them.
+The E2E suite uses real Supabase Auth, Postgres/RLS, application API routes, the configured AI provider, the public website reader, and persisted task/background-job state. It never intercepts or substitutes application responses. Use a disposable Supabase project with all migrations applied. Remote projects require the explicit `E2E_ALLOW_REMOTE=1` safety opt-in. Every generated account is uniquely tagged and deleted through the direct database connection during global teardown. See [e2e/README.md](e2e/README.md).
 
 ## Website knowledge extraction
 
@@ -46,14 +38,7 @@ supabase functions deploy ai-generate
 
 The migration is `supabase/migrations/20261118010000_reliable_crawl_brain.sql`. With it, the authenticated `save_crawl_brain` RPC commits knowledge, relationships, completion status and audit together. Without it (`PGRST202`), the client uses a checked, add-only compatibility path against the existing tables: deterministic IDs and conflict-ignore inserts prevent duplicate retries, existing facts/edits/edges are never overwritten or deleted, and completion is reported only after all required writes succeed. This compatibility path is not a cross-table transaction; partial progress is retained safely for retry. Other storage errors do not trigger compatibility saving. The client never reads the shared API key, and the extraction prompt also matches the previously deployed server's crawl allowlist. Reading and analysis still require the page to remain open; there is no background job service.
 
-Regression checks use fictional sources and intercepted APIs:
-
-```sh
-npm run test:crawl
-npm run test:crawl:ui
-```
-
-`scripts/crawl-db-check.sql` verifies rollback, repeat saves, workspace isolation, manual edits, preserved relationships and secret privileges. Run it with `psql -v ON_ERROR_STOP=1 -f scripts/crawl-db-check.sql` against a **disposable local database** with the migrations and Supabase auth functions installed. Its fixture changes are enclosed in a rolled-back transaction; it requires permission to insert fictional auth users.
+The real crawl journey submits IANA's public reserved-domains documentation, independently retrieves every persisted source, verifies each evidence excerpt against the retrieved content, validates graph ownership, approves knowledge, and confirms that the Director's persisted context references the approved Brain version. The SQL migration checks remain a fast schema/RLS supplement; they are not reported as E2E coverage.
 
 ## Interface
 

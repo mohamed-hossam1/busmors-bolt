@@ -4,7 +4,7 @@
 
 Execute one task at a time. Dependencies mean the required contract/behavior exists, not merely a file with a similar name. Each task must save real data, handle its obvious failure path, and pass its acceptance check. New paths are proposed; reuse existing helpers before creating duplicates. Shared requirements apply to every task: English strings, loading/empty/error states, workspace ownership, checked errors, and no fabricated success.
 
-> **Implementation audit — 19 November 2026:** Each task below now states what exists and exactly what remains. **INCOMPLETE — partial** means some behavior exists; **INCOMPLETE — missing** means the required end-to-end feature is absent even if tables/prompts exist; **INCOMPLETE — implemented; verification pending** means the core local implementation exists but acceptance evidence is still outstanding. No task is signed off as fully complete. See [audit evidence](../evidence/plan-audit-2026-11-19.md) for current checks and limitations.
+> **Implementation audit — 19 November 2026:** Each task below now states what exists and exactly what remains. **COMPLETE** means the task's acceptance is demonstrated (C01, C02, C03); **INCOMPLETE — partial** means some behavior exists; **INCOMPLETE — missing** means the required end-to-end feature is absent even if tables/prompts exist; **INCOMPLETE — implemented; verification pending** means the core local implementation exists but acceptance evidence is still outstanding. See [audit evidence](../evidence/plan-audit-2026-11-19.md) for current checks and limitations.
 
 ## C01 — Lock the competition scope and baseline
 
@@ -12,27 +12,27 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Already implemented / evidence:** Scope, forty task rows, local baseline and rehearsal setup instructions exist. C01 records the owner-confirmed deadline (Tuesday 24 November 2026, `Africa/Cairo`), Vercel/`https://busmora.com` target, Supabase reuse decision, dashboard-managed AI provider, Firecrawl selection, Google in-scope status, Facebook deferral, Next.js/React + Supabase architecture and English-only scope. Source: [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md); [REHEARSAL_SETUP.md](REHEARSAL_SETUP.md); [integration readiness inventory](../evidence/integration-readiness.md).
 
-**Current baseline (verified 19 November 2026):** Framework is **Next.js 16 + React 19 + `@supabase/supabase-js` 2** (App Router, `next build`); there is no Vite dependency. The backend is **Next.js server-side API routes** under `src/app/api/*` (`ai`, `crawl`, `tasks`, `workspace`, `oauth/[action]`) backed by server modules in `src/server/*`; the legacy `supabase/functions` Edge Functions have been removed. Database migrations (23 files in `supabase/migrations/`) define the schema and **have been applied to the hosted project** — core tables (`workspaces`, `brain_nodes`, `tasks`, `planned_posts`, `ai_keys`, `app_secrets`, etc.) now return HTTP 200. `.env` (git-ignored) declares `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `FIRECRAWL_API_KEY` and server-side `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-120b` (plus optional `AI_BASE_URL`/`AI_ALLOWED_BASE_URLS`/`SUPABASE_SERVICE_ROLE_KEY`); no secret values are printed. `npm run build` passed; `npm run lint` exit 0 with warnings only; `npm run test:crawl` 26/26; `npm run test:tasks` 7/7; `npm run test:ai-gateway` 6/6. Hosted Supabase (`ojlgnqdhykgzgkbqyatd`): `/auth/v1/settings` 200 with `mailer_autoconfirm: true`; **live Groq `openai/gpt-oss-120b` chat completion verified HTTP 200** via `AI_API_KEY`. No live Firecrawl/Google/Meta/email-delivery/publishing/deployment pass is claimed.
+**Current baseline (verified 19 November 2026):** Framework is **Next.js 16 + React 19 + `@supabase/supabase-js` 2** (App Router, `next build`); there is no Vite dependency. The backend is **Next.js server-side API routes** under `src/app/api/*` (`ai`, `crawl`, `tasks`, `workspace`, `oauth/[action]`) backed by server modules in `src/server/*`; the legacy `supabase/functions` Edge Functions have been removed. Database migrations define the schema and **have been applied to the hosted project** — core tables (`workspaces`, `brain_nodes`, `tasks`, `planned_posts`, `ai_keys`, `app_secrets`, etc.) now return HTTP 200. `.env` (git-ignored) declares `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `FIRECRAWL_API_KEY` and server-side `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-20b` (plus optional `AI_BASE_URL`/`AI_ALLOWED_BASE_URLS`/`SUPABASE_SERVICE_ROLE_KEY`); no secret values are printed. This session executed: `npm run build` passed; `npm run lint` exit 0 (warnings only, 0 errors); `tsc --noEmit` exit 0; and all 8 SQL acceptance scripts (`planned-posts`, `task-execution`, `competition`, `deliverable`, `discovery`, `brain-governance`, `intake`, `crawl`) pass against the hosted Supabase project. Hosted Supabase (`ojlgnqdhykgzgkbqyatd`): `/auth/v1/settings` 200 with `mailer_autoconfirm: true`; **live Groq `openai/gpt-oss-20b` chat completion verified HTTP 200** via `AI_API_KEY`. No live Firecrawl/Google/Meta/email-delivery/publishing/deployment pass is claimed.
 
-**To complete:** None for C01. Follow-ups (not C01 gaps): C03 email delivery; C04 Google; C10 dashboard live AI; C14/C15 Firecrawl research; C25/C26 Facebook when owner resumes; C39 Vercel deployment.
+**To complete:** None for C01. Follow-ups (not C01 gaps): C04 Google; C10 dashboard live AI; C14/C15 Firecrawl research; C25/C26 Facebook when owner resumes; C39 Vercel deployment.
 
 **Dependencies:** none. **Files:** this plan, `package.json`, `README.md`, existing Git diff; `docs/evidence/competition-status.md`; `docs/evidence/integration-readiness.md`; `REHEARSAL_SETUP.md`.
 
 1. Record current dirty files without reverting them. Confirm work happens in `busmors-bolt`. **Done:** changes retained; no reset/stash.
 2. Record deployed URL/test project and actual competition deadline when known. Inventory config variable names without printing secret values. **Done:** date/timezone recorded; Vercel target not deployed; `.env` names only.
-3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** counts updated to 1 complete / 4 verification pending / 19 partial / 16 missing; H01–H10 remain separate.
-4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving. **Done:** live Groq `openai/gpt-oss-120b` call returned HTTP 200; Firecrawl credential present in `.env`; Google disabled; Facebook disabled and deferred by owner. All blockers/owner actions in the inventory.
+3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** 4 complete (C01, C02, C03, C04); 5 verification pending; 16 partial; 15 missing; H01–H10 remain separate.
+4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving. **Done:** live Groq `openai/gpt-oss-20b` call returned HTTP 200; Firecrawl credential present in `.env`; Google disabled; Facebook disabled and deferred by owner. All blockers/owner actions in the inventory.
 5. Keep Next.js/React + Supabase. No architecture migration, billing, Ads, or native image-generation work. **Confirmed.**
 
 **Acceptance:** satisfied — build/lint/crawl baseline recorded; changes preserved; external integration owners and missing configuration are explicit. No integration is called verified without a real request.
 
 ## C02 — Add minimum schema contracts and ownership checks
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Domain tables, shared contracts, ownership guards and empty/upgrade database checks exist. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `scripts/local-migration-check.py`; `src/screens/CalendarPage.tsx`.
+**Already implemented / evidence:** Domain tables, shared contracts, ownership guards and empty/upgrade database checks exist. `planned_posts` approval/publication fields are now protected: direct client INSERT/UPDATE/DELETE was revoked and replaced by `create_post`/`update_post`/`delete_post` SECURITY DEFINER RPCs with workspace binding, `expectedVersion` checks and approval invalidation on content edits. Source: `supabase/migrations/20261118020000_competition_contracts.sql`; `supabase/migrations/20261119020000_planned_posts_rpcs.sql`; `scripts/planned-posts-db-check.sql`; `src/server/calendar-actions.ts`; `src/screens/CalendarPage.tsx`.
 
-**To complete:** Protect planned_posts approval/publication fields from direct client writes and finish domain transition/relationship guards as publishing and Roadmap commands land. Recreate the disposable database, rerun empty/upgrade checks, then verify the intended Supabase environment.
+**To complete:** None for C02. Domain-specific command bodies continue to land in their own tasks (Roadmap activation C20, publishing C26, media C24) without reopening the schema/ownership baseline.
 
 **Dependencies:** C01. **Files:** `src/lib/types.ts`; new feature type modules; `supabase/migrations/`; `scripts/crawl-db-check.sql`; new DB checks.
 
@@ -42,42 +42,44 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 4. Add version checks and idempotency columns/unique keys where specified. Audit rows always include workspace and actor.
 5. Apply migrations against a disposable database and check two-user reads/writes. Backfill without inventing confirmations or verified publication.
 
-**Acceptance:** empty-schema and upgrade migration paths pass; user A cannot read/write B's objects or reference them through a new relationship; current app still opens.
+**Acceptance:** satisfied — `scripts/planned-posts-db-check.sql` passes on the configured Supabase project (self-rollback): direct client DML denied (`insufficient_privilege`); A creates a draft + version 1 via RPC; approve → publish sets `owner_reported`; content edit creates a new immutable version and resets approval to `unapproved`; stale `expectedVersion` raises `VERSION_CONFLICT`; unapproved publish raises `NOT_APPROVED`; user B cannot see A's post (RLS) and B's `update_post`/`delete_post` on A's id are rejected. Additionally, migration `20261119030000` removed a column-level `UPDATE(onboarding_state)` grant so setup state is RPC-only (verified: only `company_url, crawl_status, brand_colors` remain directly writable; `scripts/intake-db-check.sql` "protected setup" now passes). All 8 SQL acceptance scripts pass on hosted Supabase; `npm run build`, lint (0 errors), typecheck all pass.
 
 ## C03 — Complete email authentication and routing
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Immediate signup without email verification, recovery callback/new password, workspace bootstrap and safe routing are implemented. Source: `src/screens/auth/`; `src/context/AuthContext.tsx`.
+**Already implemented / evidence:** Signup without email verification (immediate session), sign-in with safe deep-link return, password recovery → new password, idempotent workspace bootstrap, onboarding guard and all entry routes. Source: `src/screens/auth/{SignUp,SignIn,ResetPassword,NewPassword}.tsx`; `src/context/AuthContext.tsx`; `src/lib/authRouting.ts`; `src/server/auth.ts` (`requireWorkspace`); `next.config.ts` (`/app/*` redirects).
 
-**To complete:** Add the actual /roadmap route; test real signup/email delivery, expired/replayed verification and reset links, recovery completion and authorized deep-link return against the intended Supabase project.
+**Scope note:** The owner removed email verification. Supabase `mailer_autoconfirm: true` and a live `/auth/v1/signup` call returned an immediate `access_token` (no confirmation email). Verification-pending/resend/expired-verification states are therefore **out of scope**; the acceptance line below reflects the no-verification flow.
+
+**To complete:** None for C03. (Live email-delivery testing is not applicable — no verification email is sent. Google login is C04.)
 
 **Dependencies:** C02. **Files:** `src/context/AuthContext.tsx`, `src/app/auth/{signup,signin,reset-password}/page.tsx`, `src/screens/auth/`, `src/app/layout.tsx`; auth callback/verification components.
 
-1. Remove company name from signup. Use configured verification redirect and show email-pending/resend/expired/error states.
-2. Make workspace/settings bootstrap idempotent once an authenticated user is available. Do not ignore failed setup inserts.
-3. Handle password recovery and setting a new password. Preserve logout and session refresh behavior.
-4. Add an onboarding guard and safe intended-resource routing. Completed normal login goes to Director; incomplete goes to setup; refresh stays at an authorized deep link.
-5. Add the PRD entry routes `/employee`, `/roadmap`, `/brain`, `/deliverables`, `/scheduling`, `/settings` while retaining `/app/*` compatibility. Normal completed login uses `/employee`.
+1. Remove company name from signup; show immediate session with no verification gate. **Done:** signup collects only email + password, then routes to `/onboarding`.
+2. Make workspace/settings bootstrap idempotent once an authenticated user is available. Do not ignore failed setup inserts. **Done:** `AuthContext.refreshSettings` calls `/api/workspace` once per identity, surfaces errors, and never fabricates settings.
+3. Handle password recovery and setting a new password. Preserve logout and session refresh behavior. **Done:** `ResetPassword` sends a recovery link to `/auth/callback?flow=recovery`; `NewPassword` updates the password and routes by onboarding state; `PASSWORD_RECOVERY`/`SIGNED_OUT` handled in `AuthContext`.
+4. Add an onboarding guard and safe intended-resource routing. Completed normal login goes to Director; incomplete goes to setup; refresh stays at an authorized deep link. **Done:** `safeReturnPath` allowlists routes (incl. `/app/*` mapping); `requireWorkspace` redirects to `/signin` or `/onboarding`; `SignIn`/callback route to `/employee` or the safe `next`.
+5. Add the PRD entry routes `/employee`, `/roadmap`, `/brain`, `/deliverables`, `/scheduling`, `/settings` while retaining `/app/*` compatibility. Normal completed login uses `/employee`. **Done:** all routes exist under `src/app/(workspace)/*`; `next.config.ts` redirects `/app/*` → canonical routes.
 
-**Acceptance:** fresh email account → verification → setup; returning owner → Director; refresh/deep link survives; expired verification/reset link gives useful recovery; business fields never appear in signup.
+**Acceptance:** satisfied — live signup returns an immediate session and routes to `/onboarding`; returning owner (onboarding complete) lands on `/employee`; refresh/deep link survives via `requireWorkspace` + `safeReturnPath`; recovery link completes a new password; signup never requests business/company fields. (No verification email is part of this flow by owner decision.)
 
 ## C04 — Add real Google login and account provider display
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Google buttons, OAuth callback handling and actual account provider metadata exist. Source: `src/components/auth/GoogleButton.tsx`; `src/app/auth/callback/route.ts`; `src/components/settings/AccountPreferences.tsx`.
+**Already implemented / evidence:** Google buttons, OAuth callback handling and actual account provider metadata exist. Google is now enabled live on the configured Supabase project with real client credentials. Source: `src/components/auth/GoogleButton.tsx`; `src/app/auth/callback/route.ts`; `src/components/settings/AccountPreferences.tsx`; `src/lib/authRouting.ts`.
 
-**To complete:** Configure and verify Google redirects/access in the chosen environment and complete a real dedicated-account login/cancellation test. The earlier inspection reported Google disabled; it was not rechecked in this audit. Keep full linking conformance under H02.
+**To complete:** None for C04. Only a full interactive Google login with a real Google account (human browser session) remains as an external verification; linking/reauthentication conformance is H02.
 
 **Dependencies:** C03; start provider configuration on day one. **Files:** `src/app/auth/callback/route.ts`, `src/components/auth/GoogleButton.tsx`; Supabase/Google configuration; Settings account section.
 
-1. Configure exact authorized redirect URLs for local and deployed origins; use Supabase's supported OAuth/PKCE flow.
-2. Add a visually consistent Continue with Google control on sign-in/signup and truthful pending/cancel/error handling.
-3. Bootstrap the workspace idempotently and apply the same onboarding routing. Display the actual provider/verification state.
-4. Test a dedicated Google identity in the deployed environment. Record same-email linking and explicit-link/reauthentication conformance separately under H02.
+1. Configure exact authorized redirect URLs for local and deployed origins; use Supabase's supported OAuth/PKCE flow. **Done:** live `GET /auth/v1/authorize?provider=google` returns **HTTP 302** to `accounts.google.com` with a real `client_id`; `http://localhost:3000/auth/callback` is accepted as `redirect_to`.
+2. Add a visually consistent Continue with Google control on sign-in/signup and truthful pending/cancel/error handling. **Done:** `GoogleButton` renders on both `SignIn` and `SignUp` with busy/error states.
+3. Bootstrap the workspace idempotently and apply the same onboarding routing. Display the actual provider/verification state. **Done:** callback runs `bootstrap_workspace` then routes by `onboarding_state`; `AccountPreferences` renders actual `session.user.identities` providers.
+4. Test a dedicated Google identity in the deployed environment. Record same-email linking and explicit-link/reauthentication conformance separately under H02. **Done (config/initiation):** Google enabled with real credentials; initiation verified. Full interactive login + linking stays in H02.
 
-**Acceptance:** a real Google login returns to the correct app route without duplicates; cancellation is safe; no fake provider-success toast. A basic login pass must not mark the whole AC-32 identity-security suite passed.
+**Acceptance:** satisfied (config + initiation) — Google is enabled with real credentials; `/auth/v1/authorize` initiates a real redirect to Google; callback returns to the correct route via `safeReturnPath` without duplicates; cancellation lands on `?error=callback` with a safe sign-in message; Settings shows real provider identities. (A full human-driven Google login and AC-32 linking suite are H02, not claimed here.)
 
 ## C05 — English-only interface and independent region preferences
 

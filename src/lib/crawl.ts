@@ -47,7 +47,14 @@ export async function crawlRequest<T>(
     body: JSON.stringify(body),
     signal,
   })
-  if (!response.ok || !response.body) throw new Error('Website reading could not start. Sign in and retry.')
+  if (!response.ok || !response.body) {
+    let errMessage = 'Website reading could not start. Sign in and retry.'
+    try {
+      const errData = await response.json()
+      if (errData?.error) errMessage = errData.error
+    } catch {}
+    throw new Error(errMessage)
+  }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let pending = ''

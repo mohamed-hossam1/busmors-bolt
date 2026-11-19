@@ -64,11 +64,16 @@ export default function Onboarding() {
       return
     }
 
+    if (raw.includes('@')) {
+      setError('Please enter your website URL (e.g. busmora.com), not an email address.')
+      return
+    }
+
     const normalized = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
 
     try {
       const parsed = new URL(normalized)
-      if (!parsed.hostname || !parsed.hostname.includes('.')) {
+      if (!parsed.hostname || !parsed.hostname.includes('.') || parsed.username || parsed.password) {
         setError('Please enter a valid website address (e.g. wesam.ai or company.com)')
         return
       }
@@ -96,10 +101,7 @@ export default function Onboarding() {
     }
 
     try {
-      await supabase
-        .from('workspace_settings')
-        .update({ company_url: normalized, onboarding_state: 'crawling' })
-        .eq('workspace_id', userId)
+      await supabase.rpc('set_onboarding_state', { p_state: 'crawling', p_company_url: normalized })
 
       const result = await organizeBrainWithAi(normalized, userId, (event: CrawlProgressEvent) => {
         if (event.currentUrl) setCurrentUrl(event.currentUrl)
@@ -141,18 +143,13 @@ export default function Onboarding() {
         setQualityNotice(result.warning)
       }
 
-      await supabase
-        .from('workspace_settings')
-        .update({ onboarding_state: 'complete' })
-        .eq('workspace_id', userId)
+      await supabase.rpc('set_onboarding_state', { p_state: 'complete' })
 
       await refreshSettings()
       setCrawlStep('done')
       setDone(true)
     } catch (err) {
-      await supabase
-        .from('workspace_settings')
-        .update({ onboarding_state: 'awaiting_url', crawl_status: { finished: false } })
+      await supabase.rpc('set_onboarding_state', { p_state: 'awaiting_url', p_crawl_status: { finished: false } })
         .eq('workspace_id', userId)
       setError(err instanceof Error ? err.message : 'The website could not be fully read or saved. Your current fields are kept; continue manually or retry.')
       setCrawlStep('idle')

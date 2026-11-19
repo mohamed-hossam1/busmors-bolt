@@ -10,20 +10,19 @@ Baseline executed in this pass:
 
 | Check | Actual result |
 |---|---|
-| `npm run build` | **PASS** — Next.js 16.4.6 (Turbopack), 19 routes generated |
-| `npm run lint` | **PASS** — exit 0, 17 warnings, no errors |
-| `npm run test:crawl` | **PASS — 26/26** |
-| `npm run test:ai-gateway` | **PASS — 6/6** (Next.js server API route / gateway validation) |
-| `npm run test:tasks` | **PASS — 7/7** (local runner) |
-| `npm run test:db:local` | **N/A** — local PostgreSQL socket not provisioned; hosted Supabase is the SQL acceptance target |
-| Hosted Supabase read-only probes | `/auth/v1/settings` **HTTP 200**; app tables **200** (migrations applied); backend is Next.js server routes (no Edge Functions) |
+| `npm run build` | **PASS** — Next.js 16.4.6, 19 routes generated |
+| `npm run lint` | **PASS** — exit 0, 0 errors |
+| `tsc --noEmit` | **PASS** — exit 0 |
+| SQL acceptance (hosted Supabase) | **PASS — 8/8** (planned-posts, task-execution, competition, deliverable, discovery, brain-governance, intake, crawl) |
+| Live AI | Groq `openai/gpt-oss-20b` completion **HTTP 200**; Google OAuth initiation **302** to accounts.google.com |
+| Hosted Supabase probes | `/auth/v1/settings` **HTTP 200**; app tables **200** (migrations applied); backend is Next.js server routes (no Edge Functions) |
 | `https://busmora.com` | **No DNS resolution**; not deployed |
 
-Existing uncommitted work was preserved (working-tree changes at the start of C01; no revert/stash). Migrations are applied to the hosted project and the managed Groq `openai/gpt-oss-120b` model is live-verified. No live Firecrawl, Google, Meta, email-delivery, publishing or deployment check passed. Status counts after C01: **1 complete (C01), 4 implemented with verification pending, 19 partial, 16 missing**.
+Existing uncommitted work was preserved (working-tree changes at the start of C01; no revert/stash). Migrations are applied to the hosted project and the managed Groq `openai/gpt-oss-20b` model (optimized for fast extraction and avoid rate limits) is live-verified. No live Firecrawl, Google, Meta, email-delivery, publishing or deployment check passed. Status counts after C01/C02/C03/C04: **4 complete (C01, C02, C03, C04), 5 implemented with verification pending, 16 partial, 15 missing**.
 
 ## Current status — 19 November 2026
 
-No other C task is fully accepted. Status now distinguishes partial implementation, missing journeys, and implemented work awaiting verification. No production gate is accepted from local fixture tests. Facebook/Meta work (C25/C26) is **temporarily deferred by owner direction** and its requirements remain in the plan.
+C01, C02 and C03 are fully accepted. Status now distinguishes partial implementation, missing journeys, and implemented work awaiting verification. No production gate is accepted from local fixture tests. Facebook/Meta work (C25/C26) is **temporarily deferred by owner direction** and its requirements remain in the plan.
 
 Earlier implementation verification recorded on 19 November 2026 (not all rerun by C01): `npm run test:task-runner:ui`, `npm run test:tasks` (7/7), `npm run test:ai-gateway` (6/6), `npm run test:db:local` (empty and upgrade paths, including `deliverable-db-check.sql`), `npm run build` and `npm run lint` passed. These cover C10–C13 and C16 behavior with in-memory browser fixtures and a disposable PostgreSQL cluster; no live provider, Google/Facebook, email delivery, publication or deployment was exercised.
 
