@@ -47,12 +47,14 @@ const CustomHubNode = memo(function CustomHubNode({ data, selected }: NodeProps<
       <Handle type="target" id="in-left" position={Position.Left} />
       <Handle type="target" id="in-right" position={Position.Right} />
       <div className="flex items-center gap-2.5 w-full">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
-          <Building2 size={16} />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white shadow-xs">
+          <Building2 size={17} />
         </span>
         <div className="min-w-0 flex-1 text-start">
-          <h3 className="truncate text-xs font-bold text-white tracking-wide" dir="auto">{data.title}</h3>
-          <p className="text-[10px] text-white/80 leading-tight">{data.subtitle}</p>
+          <h3 className="truncate text-xs font-bold text-white tracking-wide" dir="auto" title={data.title}>
+            {data.title}
+          </h3>
+          <p className="text-[10px] text-white/80 leading-tight mt-0.5">{data.subtitle}</p>
         </div>
       </div>
     </div>
@@ -79,7 +81,7 @@ const CustomCategoryNode = memo(function CustomCategoryNode({ data, selected }: 
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style={{ color: config.color }}>
         <Icon size={13} />
       </span>
-      <span className="text-xs font-bold tracking-tight whitespace-nowrap">{data.label}</span>
+      <span className="text-xs font-bold tracking-tight truncate max-w-[76px]" title={data.label}>{data.label}</span>
       <span
         className="ml-auto px-1.5 py-0.2 rounded-full text-[10px] font-bold"
         style={{ backgroundColor: `${config.color}25`, color: config.color }}
@@ -101,7 +103,7 @@ const CustomBrainNode = memo(function CustomBrainNode({ data, selected }: NodePr
     <div
       className={`brain-map-node ${selected ? 'is-selected' : ''} ${isPending ? 'is-pending' : ''}`}
       style={{
-        borderColor: selected ? '#7c3aed' : isPending ? '#f59e0b' : `${config.color}45`,
+        borderColor: selected ? '#7c3aed' : isPending ? '#f59e0b' : `${config.color}50`,
       }}
     >
       <Handle type="target" id="in-left" position={Position.Left} />
@@ -112,20 +114,20 @@ const CustomBrainNode = memo(function CustomBrainNode({ data, selected }: NodePr
       <Handle type="source" id="out-bottom" position={Position.Bottom} />
 
       <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
         style={{ backgroundColor: config.bg, color: config.color }}
         title={categoryLabel}
       >
-        <Icon size={13} />
+        <Icon size={14} />
       </span>
 
-      <div className="min-w-0 flex-1 px-2 text-start">
+      <div className="min-w-0 flex-1 px-2.5 text-start">
         <h3 className="truncate text-xs font-semibold text-ink-900 leading-snug" dir="auto" title={node.title}>
           {node.title}
         </h3>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         {isPending && (
           <span
             className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"
@@ -210,19 +212,6 @@ function BrainGraphView({
     return counts
   }, [statusNodes])
 
-  // Counts and lines reflect persisted connections, including review suggestions.
-  const completeEdges = useMemo(() => {
-    const nodeIds = new Set(statusNodes.map((node) => node.id))
-    return edges.filter((edge) => edge.status !== 'rejected' && nodeIds.has(edge.source_node_id) && nodeIds.has(edge.target_node_id))
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.source_node_id,
-        target: edge.target_node_id,
-        label: edge.relation_type.replace(/_/g, ' ').toLowerCase(),
-        inferred: edge.status === 'candidate',
-      }))
-  }, [statusNodes, edges])
-
   const filteredNodes = useMemo(() => statusNodes.filter((node) =>
     (category === 'all' || node.category === category)
     && `${node.title} ${node.summary}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
@@ -231,17 +220,39 @@ function BrainGraphView({
   const visibleIds = useMemo(() => new Set(filteredNodes.map((node) => node.id)), [filteredNodes])
   const visibleSignature = [...visibleIds].sort().join('|')
 
+  // Calculate mind-map layout
+  const layout = useMemo(() => calculateBrainPositions(filteredNodes), [filteredNodes])
+
+  // Cross edges: Exclude connections to the hub (already connected via tree branches)
+  const crossEdges = useMemo(() => {
+    const nodeIds = new Set(filteredNodes.map((node) => node.id))
+    return edges
+      .filter((edge) =>
+        edge.status !== 'rejected' &&
+        nodeIds.has(edge.source_node_id) &&
+        nodeIds.has(edge.target_node_id) &&
+        edge.source_node_id !== layout.hubId &&
+        edge.target_node_id !== layout.hubId &&
+        edge.source_node_id !== layout.hubNode?.id &&
+        edge.target_node_id !== layout.hubNode?.id
+      )
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source_node_id,
+        target: edge.target_node_id,
+        label: edge.relation_type.replace(/_/g, ' ').toLowerCase(),
+        inferred: edge.status === 'candidate',
+      }))
+  }, [filteredNodes, edges, layout.hubId, layout.hubNode])
+
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const edge of completeEdges) {
+    for (const edge of crossEdges) {
       counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1)
       counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1)
     }
     return counts
-  }, [completeEdges])
-
-  // Layout positions calculated bilaterally
-  const layout = useMemo(() => calculateBrainPositions(filteredNodes), [filteredNodes])
+  }, [crossEdges])
 
   // Selected state: can be a knowledge node, category node, or hub
   const selectedNode = statusNodes.find((node) => node.id === selectedId) ?? null
@@ -317,11 +328,7 @@ function BrainGraphView({
     return result
   }, [filteredNodes, positions, layout, selectedId, t, nodeData])
 
-  const visibleEdges = useMemo(() => completeEdges.filter((edge) =>
-    visibleIds.has(edge.source) && visibleIds.has(edge.target)
-  ), [completeEdges, visibleIds])
-
-  // Construct ReactFlow edges: Tree branches (Hub -> Cat -> Item) + Cross connections
+  // Construct ReactFlow edges: Tree branches (Hub -> Cat -> Item) + Clean Cross connections
   const flowEdges: Edge[] = useMemo(() => {
     if (filteredNodes.length === 0) return []
     const edgesList: Edge[] = []
@@ -336,7 +343,7 @@ function BrainGraphView({
         sourceHandle: 'out-right',
         targetHandle: 'in-left',
         type: 'default',
-        style: { stroke: config.color, strokeWidth: 2, opacity: 0.8 },
+        style: { stroke: config.color, strokeWidth: 2.2, opacity: 0.85 },
       })
     }
 
@@ -350,11 +357,11 @@ function BrainGraphView({
         sourceHandle: 'out-left',
         targetHandle: 'in-right',
         type: 'default',
-        style: { stroke: config.color, strokeWidth: 2, opacity: 0.8 },
+        style: { stroke: config.color, strokeWidth: 2.2, opacity: 0.85 },
       })
     }
 
-    // 3. Category -> Leaf Items
+    // 3. Category -> Leaf Items (Right)
     for (const cat of layout.rightCategories) {
       const config = CATEGORY_CONFIG[cat]
       const items = filteredNodes.filter((n) => n.category === cat && n.id !== layout.hubNode?.id)
@@ -366,11 +373,12 @@ function BrainGraphView({
           sourceHandle: 'out-right',
           targetHandle: 'in-left',
           type: 'default',
-          style: { stroke: config.color, strokeWidth: 1.5, opacity: 0.65 },
+          style: { stroke: config.color, strokeWidth: 1.6, opacity: 0.7 },
         })
       }
     }
 
+    // 3. Category -> Leaf Items (Left)
     for (const cat of layout.leftCategories) {
       const config = CATEGORY_CONFIG[cat]
       const items = filteredNodes.filter((n) => n.category === cat && n.id !== layout.hubNode?.id)
@@ -382,14 +390,14 @@ function BrainGraphView({
           sourceHandle: 'out-left',
           targetHandle: 'in-right',
           type: 'default',
-          style: { stroke: config.color, strokeWidth: 1.5, opacity: 0.65 },
+          style: { stroke: config.color, strokeWidth: 1.6, opacity: 0.7 },
         })
       }
     }
 
-    // 4. Cross-knowledge connections from completeEdges
+    // 4. Subtle Cross-connections between leaf items
     if (showConnections) {
-      for (const edge of visibleEdges) {
+      for (const edge of crossEdges) {
         const active = selectedId === edge.source || selectedId === edge.target
         const sourcePos = positions[edge.source] ?? layout.positions.get(edge.source)
         const targetPos = positions[edge.target] ?? layout.positions.get(edge.target)
@@ -405,23 +413,24 @@ function BrainGraphView({
           sourceHandle: horizontal ? (forward ? 'out-right' : 'out-left') : (forward ? 'out-bottom' : 'out-top'),
           targetHandle: horizontal ? (forward ? 'in-left' : 'in-right') : (forward ? 'in-top' : 'in-bottom'),
           type: 'default',
-          label: edge.label,
+          // Show label only when this edge is active (connected to selected node)
+          label: active ? edge.label : undefined,
           style: {
-            stroke: active ? '#7c3aed' : '#e11d48',
-            strokeWidth: active ? 2.2 : 1.2,
-            strokeDasharray: '5 4',
-            opacity: selectedId && !active ? 0.15 : active ? 1 : 0.6,
+            stroke: active ? '#7c3aed' : '#cbd5e1',
+            strokeWidth: active ? 2 : 1,
+            strokeDasharray: '4 4',
+            opacity: selectedId ? (active ? 1 : 0.08) : 0.35,
           },
-          labelStyle: { fontSize: 10, fill: active ? '#6d28d9' : '#be123c', fontWeight: 600 },
-          labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9, rx: 4, ry: 4 },
+          labelStyle: { fontSize: 10, fill: '#6d28d9', fontWeight: 600 },
+          labelBgStyle: { fill: '#ffffff', fillOpacity: 0.95, rx: 4, ry: 4 },
           labelBgPadding: [4, 2],
-          zIndex: active ? 10 : 2,
+          zIndex: active ? 10 : 1,
         })
       }
     }
 
     return edgesList
-  }, [filteredNodes, layout, showConnections, visibleEdges, selectedId, positions])
+  }, [filteredNodes, layout, showConnections, crossEdges, selectedId, positions])
 
   // Zoom to fit on initial load and reset
   useEffect(() => {
@@ -429,8 +438,8 @@ function BrainGraphView({
     const frame = requestAnimationFrame(() => {
       const bounds = getNodesBounds(getNodes())
       const zoom = Math.min(1, Math.max(0.65, Math.min(
-        (canvasWidth - 60) / (bounds.width || 800),
-        (canvasHeight - 60) / (bounds.height || 600),
+        (canvasWidth - 80) / (bounds.width || 800),
+        (canvasHeight - 80) / (bounds.height || 600),
       )))
       setViewport({
         x: Math.max(24, (canvasWidth - bounds.width * zoom) / 2) - bounds.x * zoom,
@@ -475,7 +484,7 @@ function BrainGraphView({
   }, [])
 
   const clearFilters = () => { setCategory('all'); setQuery(''); setSelectedId(null) }
-  const connections = selectedNode ? completeEdges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id) : []
+  const connections = selectedNode ? crossEdges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id) : []
   const matchingProposal = selectedNode ? proposals?.find((p) => p.node_id === selectedNode.id) : null
 
   return (
@@ -485,7 +494,7 @@ function BrainGraphView({
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Network size={18} /></span>
           <div>
             <h2 className="text-sm font-semibold text-ink-900">Knowledge map</h2>
-            <p className="mt-0.5 text-[11px] text-ink-500">{statusNodes.length} visible · {completeEdges.length} connections</p>
+            <p className="mt-0.5 text-[11px] text-ink-500">{statusNodes.length} visible · {crossEdges.length} connections</p>
           </div>
         </div>
 
@@ -546,10 +555,10 @@ function BrainGraphView({
             <input aria-label="Search knowledge" value={query} placeholder="Search knowledge…" onChange={(event) => { setQuery(event.target.value); setSelectedId(null) }} />
             {query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button>}
           </label>
-          <button type="button" className={`brain-map-tool ${showConnections ? 'is-active' : ''}`} aria-pressed={showConnections} onClick={() => setShowConnections(!showConnections)} title="Show or hide connections">
+          <button type="button" className={`brain-map-tool ${showConnections ? 'is-active' : ''}`} aria-pressed={showConnections} onClick={() => setShowConnections(!showConnections)} title="Show or hide cross-connections">
             <GitBranch size={15} /><span className="hidden sm:inline">Connections</span>
           </button>
-          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.2, duration: 250, maxZoom: 1 })} title="Fit all visible cards" aria-label="Fit map to view"><Scan size={16} /></button>
+          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.18, duration: 250, maxZoom: 1 })} title="Fit all visible cards" aria-label="Fit map to view"><Scan size={16} /></button>
           <button type="button" className="brain-map-tool" onClick={() => { setPositions({}); setSelectedId(null); setLayoutVersion((version) => version + 1) }} title="Reset card positions" aria-label="Reset map layout"><RotateCcw size={15} /></button>
         </div>
       </div>
@@ -594,7 +603,7 @@ function BrainGraphView({
             nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange}
             nodesConnectable={false} edgesFocusable={false} minZoom={0.3} maxZoom={1.6}
             selectNodesOnDrag={false} nodeDragThreshold={4}
-            fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            fitView fitViewOptions={{ padding: 0.18, maxZoom: 1 }}
             onNodeClick={(_, node) => setSelectedId(node.id)} onPaneClick={() => setSelectedId(null)}
             proOptions={{ hideAttribution: true }}
           >
@@ -769,7 +778,7 @@ function BrainGraphView({
                     <span className="min-w-0 flex-1"><span className="block text-[10px] text-primary-700">{edge.label}{edge.inferred ? ' · Suggested' : ''}</span><span className="mt-1 block text-xs font-medium leading-relaxed text-ink-800" dir="auto">{other.title}</span></span><ArrowUpRight size={14} className="shrink-0 text-ink-400" />
                   </button>
                 })}
-                {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">No connections for this item yet.</p>}
+                {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">No cross-connections for this item yet.</p>}
               </div>
             </div>
             {onEditNode && <div className="border-t border-ink-100 p-4"><button type="button" className="btn-primary w-full text-xs" onClick={() => { setSelectedId(null); onEditNode(selectedNode) }}><Pencil size={14} />{t('edit')} knowledge</button></div>}
