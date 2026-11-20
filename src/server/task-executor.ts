@@ -20,12 +20,24 @@ export function parseRoute(text:string):RouteDecision {
   ||(value.mode==='clarify'&&(!value.question||typeof value.question.label!=='string'||!value.question.label.trim()||value.question.label.length>500||!Array.isArray(value.question.options)||value.question.options.length>8||value.question.options.some(option=>typeof option!=='string'||!option.trim()||option.length>200))))throw new TaskFailure('invalid_output','The Director returned an incomplete response. Retry this task.')
  return value
 }
-export function parsePosts(text:string,quantity:number):{title?:string;content?:string;posts:TaskOutput['posts']} {
+export function parsePosts(text:string,quantity:number):{title?:string;content?:string;posts:TaskOutput['posts'];partial:boolean} {
  let value:Record<string,unknown>
  try{value=JSON.parse(text)}catch{throw new TaskFailure('invalid_output','The drafts could not be read. Retry to generate complete drafts.')}
- const posts=value.posts
- if(!Array.isArray(posts)||posts.length!==quantity||posts.some(post=>!post||typeof post.caption!=='string'||!post.caption.trim()||post.caption.length>6000||typeof post.hashtags!=='string'||post.hashtags.length>1000))throw new TaskFailure('invalid_output','The response did not contain the requested number of complete drafts. Nothing has been saved as a Post.')
- return {title:typeof value.title==='string'?value.title:undefined,content:typeof value.content==='string'?value.content:undefined,posts:posts.map(post=>({caption:post.caption,hashtags:post.hashtags,visualBrief:typeof post.visualBrief==='string'?post.visualBrief:'',platform:post.platform==='instagram'?'instagram':'facebook'}))}
+ const raw=value.posts
+ const posts:TaskOutput['posts']=[]
+ let dropped=0
+ if(Array.isArray(raw)){
+  for(const post of raw){
+   if(post&&typeof post.caption==='string'&&post.caption.trim()&&post.caption.length<=6000&&typeof post.hashtags==='string'&&post.hashtags.length<=1000)posts.push({caption:post.caption,hashtags:post.hashtags,visualBrief:typeof post.visualBrief==='string'?post.visualBrief:'',platform:post.platform==='instagram'?'instagram':'facebook'})
+   else dropped++
+  }
+ }
+ // Keep the valid subset instead of discarding everything. No usable draft at all
+ // is still a hard failure; some valid drafts but fewer than requested is a partial
+ // result the caller persists with checkpoint.partial set.
+ if(!posts.length)throw new TaskFailure('invalid_output','The response did not contain any complete drafts. Nothing has been saved as a Post.')
+ const partial=dropped>0||posts.length!==quantity
+ return {title:typeof value.title==='string'?value.title:undefined,content:typeof value.content==='string'?value.content:undefined,posts,partial}
 }
 export function aiFailure(result:AiCallResult):TaskFailure {
  const code=result.reason??result.error??'provider_error'
@@ -78,26 +90,39 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
    if(task.checkpoint.phase==='generate'){
     const route=task.checkpoint.route!
     let output:TaskOutput
+    let partial=false
     if(['market_research','competitor_analysis'].includes(route.intent))throw new TaskFailure('research_unavailable','Public research is not configured yet. No sources have been retrieved. Your question is saved for retry after setup.')
     if(route.intent==='content_creation'||route.intent==='campaign_planning'){
      const campaign=route.intent==='campaign_planning'
      const draft=await step(campaign?'campaign_planner':'content_writer',campaign?'Create the campaign brief and drafts':'Write the requested Post drafts',async()=>parsePosts(await call(campaign?'campaign':'copy',prompt()),route.quantity)) as ReturnType<typeof parsePosts>
-     if(campaign&&(!draft.title||!draft.content))throw new TaskFailure('invalid_output','The campaign brief was incomplete. Retry this task; no canned drafts were substituted.')
-     output={reply:`${draft.posts.length} draft ${draft.posts.length===1?'Post is':'Posts are'} ready for your review in Scheduling. No publication or schedule has been approved.`,posts:draft.posts,...(campaign?{document:{title:draft.title!,content:draft.content!,type:'general' as const}}:{})}
+     // A complete brief is required only to persist a document. A missing brief or
+     // a short draft set is a partial result: keep the valid drafts and mark it,
+     // rather than discarding the work and recording a hard failure.
+     const hasBrief=!!(draft.title&&draft.content)
+     partial=draft.partial||(campaign&&!hasBrief)
+     const document=campaign&&hasBrief?{document:{title:draft.title!,content:draft.content!,type:'general' as const}}:{}
+     output={reply:`${draft.posts.length} draft ${draft.posts.length===1?'Post is':'Posts are'} ready for your review in Scheduling. No publication or schedule has been approved.`,posts:draft.posts,...document}
     }else{
      const diagnosis=route.intent==='performance_diagnosis'
      const text=await step(diagnosis?'performance':'orchestrator',diagnosis?'Prepare a business diagnosis':'Answer the request',()=>call(diagnosis?'diagnose':'chat',prompt())) as string
      output={reply:diagnosis?'Your diagnosis is saved in Documents for review.':text,posts:[],...(diagnosis?{document:{title:task.user_request.slice(0,150),content:text,type:'performance_diagnosis' as const}}:{})}
     }
-    await checkpoint({...task.checkpoint,phase:'persist',output})
+    await checkpoint({...task.checkpoint,phase:'persist',output,...(partial?{partial:true}:{})})
    }
-   if(task.checkpoint.phase==='persist'){
-    check()
-    await backend.rpc('save_task_result',{p_task_id:task.id,p_run_id:task.run_id,p_result:task.checkpoint.output,p_partial:!!task.checkpoint.partial})
+    if(task.checkpoint.phase==='persist'){
+     check()
+     const saved=await backend.rpc<{taskId:string;documentId:string|null;postIds:string[];messageIds:string[]}>('save_task_result',{p_task_id:task.id,p_run_id:task.run_id,p_result:task.checkpoint.output,p_partial:!!task.checkpoint.partial})
+     if(saved)task.checkpoint={...task.checkpoint,outputRefs:saved}
+    }
+   }catch(error){
+    if(signal.aborted){
+     // Abort must release the lease now; otherwise the task looks "running" until
+     // recover_tasks reaps it ~120s later. Persist the same interrupted state the
+     // non-abort path uses so the owner can resume from saved progress.
+     try{await backend.rpc('stop_task',{p_task_id:task.id,p_run_id:task.run_id,p_status:'interrupted',p_message:'Execution was interrupted. Saved progress is available; resume to continue.'})}catch{/* Persisted leases allow recovery on the next visit. */}
+     return
+    }
+    const message=error instanceof TaskFailure?error.message:task.checkpoint.phase==='persist'?'Generated work is checkpointed, but saving the final result failed. Resume to save it without generating again.':'Execution stopped. Saved progress is available; resume to try again.'
+    try{await backend.rpc('stop_task',{p_task_id:task.id,p_run_id:task.run_id,p_status:task.checkpoint.phase==='persist'?'interrupted':'failed',p_message:message})}catch{/* Persisted leases allow recovery on the next visit. */}
    }
-  }catch(error){
-   if(signal.aborted)return
-   const message=error instanceof TaskFailure?error.message:task.checkpoint.phase==='persist'?'Generated work is checkpointed, but saving the final result failed. Resume to save it without generating again.':'Execution stopped. Saved progress is available; resume to try again.'
-   try{await backend.rpc('stop_task',{p_task_id:task.id,p_run_id:task.run_id,p_status:task.checkpoint.phase==='persist'?'interrupted':'failed',p_message:message})}catch{/* Persisted leases allow recovery on the next visit. */}
-  }
  }

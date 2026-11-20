@@ -24,6 +24,7 @@ export async function callAi(input: {
   jsonMode?: boolean
   useSharedCrawlKey?: boolean
   crawlOperation?: 'extract' | 'relate'
+  reasoningEffort?: 'low' | 'medium' | 'high'
   signal?: AbortSignal
 }): Promise<AiCallResult> {
   const { data: sessionData } = await supabase.auth.getSession()

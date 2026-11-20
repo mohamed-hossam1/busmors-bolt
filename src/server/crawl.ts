@@ -43,13 +43,12 @@ export interface SiteAnalysis {
   warnings: string[]
 }
 
-/** Two bounded requests cover all ten pages; one failure keeps the other result. */
+/** One bounded request covers all pages within the provider TPM budget; a failure keeps the fallback. */
 export async function analyzeSiteKnowledge(pages: CrawledPage[]): Promise<SiteAnalysis> {
-  const groups = [pages.slice(0, 5), pages.slice(5)].filter((group) => group.length)
-  const batches = await Promise.all(groups.map(async (group) => {
-    try { return await analyzeBatch(group) }
-    catch { return { candidates: [], relations: [], warnings: ['AI connection failed.'] } }
-  }))
+  // A single request (not parallel batches) keeps the site inside the provider's
+  // tokens-per-minute limit. Parallel batches exceeded it and returned HTTP 429,
+  // so half the site was silently dropped to the heuristic fallback.
+  const batches = [await analyzeBatch(pages)]
   const candidates = dedupeCandidates(batches.flatMap((batch) => batch.candidates))
   const relations = batches.flatMap((batch) => batch.relations.map((edge) => ({ ...edge,
     source_index: candidates.indexOf(batch.candidates[edge.source_index]),
@@ -61,16 +60,27 @@ export async function analyzeSiteKnowledge(pages: CrawledPage[]): Promise<SiteAn
 async function analyzeBatch(pages: CrawledPage[]): Promise<SiteAnalysis> {
   const empty: SiteAnalysis = { candidates: [], relations: [], warnings: [] }
   if (!pages.length) return empty
-  const { text, excerpts } = buildPageBlocks(pages, 16000)
-  const ai = await callAi({ systemPrompt: CRAWL_PROMPTS.extract, userPrompt: text,
-    maxTokens: 3500, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'extract' })
-  if (!ai.ok || !ai.text) return { ...empty, warnings: [`AI analysis unavailable (${ai.reason || ai.error || 'empty response'}).`] }
+  const { text, excerpts } = buildPageBlocks(pages, 14000)
+  // One bounded request keeps the whole site inside the provider's tokens-per-minute
+  // budget. Parallel batches would exceed it and fail with HTTP 429, silently
+  // dropping half the site to the heuristic fallback.
+  let ai: Awaited<ReturnType<typeof callAi>> | null = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    ai = await callAi({ systemPrompt: CRAWL_PROMPTS.extract, userPrompt: text,
+      maxTokens: 4000, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'extract',
+      reasoningEffort: 'low' })
+    if (ai.ok && ai.text) break
+    // Only back off for transient failures (rate limits, provider outages).
+    if (!ai.retryable || attempt === 2) break
+    await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)))
+  }
+  if (!ai?.ok || !ai.text) return { ...empty, warnings: [`AI analysis unavailable (${ai?.reason || ai?.error || 'empty response'}).`] }
   try {
     const parsed = parseJson(ai.text)
     if (!Array.isArray(parsed.candidates)) return { ...empty, warnings: ['AI returned an invalid extraction format.'] }
     const output: ExtractedCandidate[] = []
     const byOriginalIndex = new Map<number, ExtractedCandidate>()
-    for (const [originalIndex, value] of parsed.candidates.slice(0, 40).entries()) {
+    for (const [originalIndex, value] of parsed.candidates.slice(0, 60).entries()) {
       if (!value || typeof value !== 'object') continue
       const c = value as Record<string, unknown>
       if (!CRAWL_CATEGORIES.includes(c.category as BrainCategory) || typeof c.title !== 'string' || typeof c.summary !== 'string' || typeof c.page_id !== 'string' || typeof c.evidence_quote !== 'string') continue
@@ -80,7 +90,7 @@ async function analyzeBatch(pages: CrawledPage[]): Promise<SiteAnalysis> {
       const evidence = normalizedEvidence(quote)
       if (!page || evidence.length < 25 || quote.length > 500 || !normalizedEvidence(excerpts.get(c.page_id) || '').includes(evidence)) continue
       const confidence = typeof c.confidence === 'number' && Number.isFinite(c.confidence) ? Math.max(0, Math.min(0.95, c.confidence)) : 0.65
-      output.push({ category: c.category as BrainCategory, title: cleanTitle(c.title), summary: truncateWords(c.summary, 280),
+      output.push({ category: c.category as BrainCategory, title: cleanTitle(c.title), summary: truncateWords(c.summary, 300),
         source_url: page.url, confidence, properties: { extracted_by: 'ai', evidence_quote: quote } })
       byOriginalIndex.set(originalIndex, output[output.length - 1])
     }

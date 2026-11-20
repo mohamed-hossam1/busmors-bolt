@@ -3,6 +3,7 @@
 
 import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
 
@@ -28,6 +29,7 @@ interface GenerateRequest {
    * own submitted site) — the shared key is the business's, not the user's. */
   useSharedCrawlKey?: boolean
   crawlOperation?: CrawlOperation
+  reasoningEffort?: 'low' | 'medium' | 'high'
   providerTimeoutMs?: number
 }
 
@@ -68,9 +70,24 @@ export async function generateAi(req: Request) {
     const authHeader = req.headers.get('Authorization') ?? ''
     const token = authHeader.replace('Bearer ', '')
 
-    const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)!
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''
-    const admin = createClient(supabaseUrl, serviceKey)
+    const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) ?? ''
+    // Two distinct admin clients are deliberately separated:
+    //  - The shared-crawl path only needs to verify the caller's JWT and, when
+    //    AI_API_KEY is present, never touches a service_role-only credential. An
+    //    anon/publishable key can verify the JWT via admin.auth.getUser(token),
+    //    so it is enough there.
+    //  - The task path (reserve_task_call, read_ai_key, tasks/ai_keys tables) is
+    //    granted to service_role only and fails closed below.
+    const serviceKey = getServiceRoleKey()
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+    const adminKey = serviceKey || anonKey
+    if (!supabaseUrl || !adminKey) {
+      return new Response(JSON.stringify({ error: 'server_misconfigured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const admin = createClient(supabaseUrl, adminKey)
 
     // verify the caller's JWT and identify their workspace
     const { data: userData, error: userError } = await admin.auth.getUser(token)
@@ -93,6 +110,18 @@ export async function generateAi(req: Request) {
 
     if (body.useSharedCrawlKey === true) {
       return await handleSharedCrawlRequest(admin, body, workspaceId)
+    }
+
+    // Everything below is the task path. It needs service_role-only RPCs
+    // (reserve_task_call, finish_task_call, read_ai_key) and direct tasks/ai_keys
+    // table access, so it must fail closed when only the anon key is available.
+    // The shared-crawl path above is the only path that benefits from an
+    // anon-key admin client.
+    if (!hasServiceRoleKey()) {
+      return new Response(JSON.stringify({ error: 'server_misconfigured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     if (!body.operation || !Object.hasOwn(OPERATIONS, body.operation)) {
@@ -118,26 +147,8 @@ export async function generateAi(req: Request) {
     let managedKey: string | null = null
     if (!key || key.status !== 'active') {
       managedKey = process.env.AI_API_KEY ?? null
-      let provider = process.env.AI_PROVIDER, model = process.env.AI_MODEL
-      if (!managedKey) {
-        try {
-          const fs = require('fs')
-          const path = require('path')
-          const envPath = path.resolve(process.cwd(), '.env')
-          if (fs.existsSync(envPath)) {
-            const content = fs.readFileSync(envPath, 'utf8')
-            for (const line of content.split('\n')) {
-              const m = line.match(/^\s*(AI_API_KEY|AI_PROVIDER|AI_MODEL)\s*=\s*(.+?)\s*$/)
-              if (m) {
-                const val = m[2].replace(/^["']|["']$/g, '').trim()
-                if (m[1] === 'AI_API_KEY') managedKey = val
-                if (m[1] === 'AI_PROVIDER') provider = val
-                if (m[1] === 'AI_MODEL') model = val
-              }
-            }
-          }
-        } catch {}
-      }
+      const provider = process.env.AI_PROVIDER
+      const model = process.env.AI_MODEL
       if (managedKey && provider && model) key = { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
     }
 
@@ -158,7 +169,9 @@ export async function generateAi(req: Request) {
 
     const callId=crypto.randomUUID()
     // Byte count is deliberately conservative when a tokenizer/usage is unavailable.
-    const tokenLimit=new TextEncoder().encode(body.systemPrompt+body.userPrompt).length+body.maxTokens+256
+    // reserve_task_call rejects a limit outside 1..50000 (INVALID_CALL); clamp so an
+    // oversized prompt surfaces as a real budget/validation error, not run_not_active.
+    const tokenLimit=Math.min(50000,new TextEncoder().encode(body.systemPrompt+body.userPrompt).length+body.maxTokens+256)
     const {error:reservationError}=await admin.rpc('reserve_task_call',{p_task_id:task.id,p_run_id:body.runId,p_call_id:callId,p_operation:body.operation,p_token_limit:tokenLimit})
     if(reservationError)return new Response(JSON.stringify({error:reservationError.message.includes('BUDGET_EXHAUSTED')?'budget_exhausted':'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     let succeeded=false
@@ -193,34 +206,21 @@ async function handleSharedCrawlRequest(
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
+  // Shared crawl is a bounded onboarding path (extract/relate the caller's own
+  // submitted site). It intentionally does NOT go through reserve_task_call: there
+  // is no task/allowance here, the spend is bounded by the fixed prompts, maxTokens,
+  // and providerTimeout clamps below, and it only runs during first-run onboarding.
   const request: GenerateRequest = {
     systemPrompt: CRAWL_PROMPTS[operation], userPrompt: body.userPrompt, signal: body.signal,
-    jsonMode: true, temperature: 0.1, maxTokens: operation === 'extract' ? 3500 : 1800,
+    jsonMode: true, temperature: 0.1, maxTokens: operation === 'extract' ? 4000 : 1800,
     providerTimeoutMs: 12000,
+    // gpt-oss is a reasoning model: without a low effort it spends the whole
+    // token budget on internal reasoning and returns an empty JSON body.
+    reasoningEffort: 'low',
   }
-  let envKey = process.env.AI_API_KEY
-  let envProvider = process.env.AI_PROVIDER || 'groq'
-  let envModel = process.env.AI_MODEL || 'openai/gpt-oss-20b'
-
-  if (!envKey) {
-    try {
-      const fs = require('fs')
-      const path = require('path')
-      const envPath = path.resolve(process.cwd(), '.env')
-      if (fs.existsSync(envPath)) {
-        const content = fs.readFileSync(envPath, 'utf8')
-        for (const line of content.split('\n')) {
-          const m = line.match(/^\s*(AI_API_KEY|AI_PROVIDER|AI_MODEL)\s*=\s*(.+?)\s*$/)
-          if (m) {
-            const val = m[2].replace(/^["']|["']$/g, '').trim()
-            if (m[1] === 'AI_API_KEY') envKey = val
-            if (m[1] === 'AI_PROVIDER') envProvider = val
-            if (m[1] === 'AI_MODEL') envModel = val
-          }
-        }
-      }
-    } catch {}
-  }
+  const envKey = process.env.AI_API_KEY
+  const envProvider = process.env.AI_PROVIDER || 'groq'
+  const envModel = process.env.AI_MODEL || 'openai/gpt-oss-20b'
 
   let secretRow = envKey ?? null
   if (!secretRow) {
@@ -246,7 +246,7 @@ async function handleSharedCrawlRequest(
     })
   }
 
-  const candidateModels = [envModel, 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-120b']
+  const candidateModels = [envModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']
   const uniqueModels = [...new Set(candidateModels.filter(Boolean))]
   const deadline = Date.now() + 30000
   let lastError: Error | null = null
@@ -273,7 +273,9 @@ async function handleSharedCrawlRequest(
     }
   }
 
-  const message = lastError ? lastError.message : 'generation failed'
+  // Never leak raw provider text. Reuse the same whitelist as the task path above.
+  const rawMessage = lastError ? lastError.message : 'generation failed'
+  const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
   return new Response(JSON.stringify({ error: message }), {
     status: 500,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -351,6 +353,7 @@ async function callProvider(
         { role: 'user', content: body.userPrompt },
       ],
       ...(body.jsonMode ? { response_format: { type: 'json_object' } } : {}),
+      ...(body.reasoningEffort ? { reasoning_effort: body.reasoningEffort } : {}),
     }),
   })
   if (res.status === 401 || res.status === 403) throw new Error('invalid_key')

@@ -16,7 +16,7 @@ import {
   Save,
   Sparkles,
 } from 'lucide-react'
-import LoadingState from '../../components/LoadingState'
+import { RoadmapSkeleton } from '../../components/skeletons'
 import { useAuth } from '../../context/AuthContext'
 import type { AnswerStatus } from '../../lib/contracts'
 import type { BrainNode } from '../../lib/types'
@@ -702,7 +702,7 @@ export default function DiscoveryWizard() {
   const visibleFacts = facts.slice(0, 6)
   const localCount = Object.keys(local).length
 
-  if (loading) return <LoadingState label="Loading your Discovery…" />
+  if (loading) return <RoadmapSkeleton />
   if (loadError && !draft) {
     return (
       <div className="card mx-auto max-w-xl p-6">

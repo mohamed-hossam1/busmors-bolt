@@ -1,6 +1,6 @@
 'use client'
 
-import LoadingState from '../components/LoadingState'
+import { BrainSkeleton } from '../components/skeletons'
 import { useDialog } from '../hooks/useDialog'
 import { useMemo, useRef, useState } from 'react'
 import {
@@ -146,6 +146,21 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
     catch(error) { setPageError(error instanceof Error?error.message:'Could not save this decision.') }
   }
 
+  const decideProposal = async (proposal: BrainProposal, decision: 'approved' | 'rejected') => {
+    try {
+      const { error: rpcErr } = await supabase.rpc('decide_brain_proposal', {
+        p_proposal_id: proposal.id,
+        p_expected_version: proposal.base_version,
+        p_decision: decision,
+        p_edit: null,
+      })
+      if (rpcErr) throw brainError(rpcErr)
+      await load()
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Could not save this decision.')
+    }
+  }
+
   const approveAllPending = async () => {
     try {
       setLoading(true)
@@ -231,7 +246,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
   }
 
   const saveEdit = async (node: BrainNode, title: string, summary: string, category: BrainCategory, properties: Record<string,unknown>) => {
-    await saveBrainItem(node,title,summary,category,properties)
+    await saveBrainItem(node,title,summary,category,properties,node.status)
     setEditing(null);await load()
   }
   const addManual = async (title: string, summary: string, category: BrainCategory, properties: Record<string,unknown>) => {
@@ -380,7 +395,9 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
           </div>
         )}
 
-        {view === 'graph' ? (
+        {loading ? (
+          <BrainSkeleton />
+        ) : view === 'graph' ? (
           <BrainGraph
             nodes={nodes.filter((node) => !['rejected','retired'].includes(node.status))}
             edges={edges}
@@ -388,9 +405,10 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
             onEditNode={(node) => setEditing(node)}
             onEvidence={setEvidence}
             onSwitchToList={() => { setView('list'); setFilterTab('candidate') }}
+            onDecideProposal={decideProposal}
+            onDecideNode={setStatus}
+            onApproveAllProposals={approveAllPending}
           />
-        ) : loading ? (
-          <LoadingState label="Loading your Business Brain…" />
         ) : (
           <div className="space-y-6">
             {/* Filter and Search Toolbar */}
@@ -555,6 +573,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                           onApprove={() => setStatus(node, 'approved')}
                           onReject={() => setStatus(node, 'rejected')}
                           onEdit={() => setEditing(node)}
+                          onEvidence={() => setEvidence(node)}
                         />
                       ))}
                     </div>
@@ -777,11 +796,13 @@ function CandidateCard({
   onApprove,
   onReject,
   onEdit,
+  onEvidence,
 }: {
   node: BrainNode
   onApprove: () => void
   onReject: () => void
   onEdit: () => void
+  onEvidence: () => void
 }) {
   const { t } = useCopy()
   return (
@@ -792,9 +813,19 @@ function CandidateCard({
           <span className="badge bg-ink-100 text-ink-600 shrink-0">{Math.round(node.confidence * 100)}%</span>
         </div>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-600 line-clamp-2 min-h-[40px]" title={node.summary}>{node.summary}</p>
-        <p className="mt-2 truncate text-xs text-ink-400" dir="ltr">
-          {t('source')}: {node.source_detail ?? node.source}
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="truncate text-xs text-ink-400" dir="ltr">
+            {t('source')}: {node.source_detail ?? node.source}
+          </p>
+          <button
+            type="button"
+            onClick={onEvidence}
+            className="shrink-0 rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50"
+            aria-label={`Evidence for ${node.title}`}
+          >
+            Evidence
+          </button>
+        </div>
       </div>
       <div className="mt-auto pt-3 grid grid-cols-3 sm:flex gap-2">
         <button onClick={onApprove} className="btn-primary px-2.5 py-1.5 text-xs justify-center">

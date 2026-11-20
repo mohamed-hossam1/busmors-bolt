@@ -6,12 +6,13 @@ import { removeAiKey as removeKey, saveAiKey as saveKey } from '../server/key-ac
 import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
 import AccountPreferences from '../components/settings/AccountPreferences'
+import { SettingsSkeleton } from '../components/skeletons'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
-  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'allam-2-7b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'], needsBaseUrl: false },
+  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'], needsBaseUrl: false },
   { id: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'], needsBaseUrl: false },
-  { id: 'google', label: 'Google Gemini', models: ['gemini-1.5-flash', 'gemini-2.0-flash'], needsBaseUrl: false },
+  { id: 'google', label: 'Google Gemini', models: ['gemini-2.0-flash'], needsBaseUrl: false },
   { id: 'openrouter', label: 'OpenRouter', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku'], needsBaseUrl: false },
   { id: 'custom', label: 'Custom (OpenAI-compatible)', models: [], needsBaseUrl: true },
 ] as const
@@ -34,6 +35,7 @@ function SettingsContent() {
   const [keyError, setKeyError] = useState<string | null>(null)
   const [keySaved, setKeySaved] = useState(false)
   const [loadingInitial, setLoadingInitial] = useState(true)
+  const [managedModel, setManagedModel] = useState<boolean | null>(null)
 
   const load = async () => {
     try {
@@ -68,6 +70,17 @@ function SettingsContent() {
 
   useEffect(() => {
     void load()
+  }, [])
+
+  // The browser cannot read server env, so ask the workspace endpoint whether a
+  // managed model is configured to show the active-model indicator.
+  useEffect(() => {
+    let alive = true
+    void fetch('/api/workspace', { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (alive && data && typeof data.managedModel === 'boolean') setManagedModel(data.managedModel) })
+      .catch(() => {})
+    return () => { alive = false }
   }, [])
 
   const removeAiKey = async () => {
@@ -106,6 +119,10 @@ function SettingsContent() {
 
   const selectedProvider = PROVIDERS.find((p) => p.id === provider) || PROVIDERS[0]
 
+  if (loadingInitial) {
+    return <SettingsSkeleton />
+  }
+
   return (
     <div className="workspace-page">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -122,6 +139,20 @@ function SettingsContent() {
               Server-side Encrypted
             </span>
           </div>
+
+          {managedModel !== null && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/60 px-3 py-2 text-xs">
+              <Sparkles size={14} className="shrink-0 text-primary-600" />
+              {managedModel ? (
+                <>
+                  <span className="badge bg-emerald-100 text-emerald-800">Managed model active</span>
+                  <span className="text-ink-600">This workspace uses the managed model by default. Adding your own key below is optional (BYOK).</span>
+                </>
+              ) : (
+                <span className="text-ink-600">No managed model is configured on the server. Add your own API key below to enable AI.</span>
+              )}
+            </div>
+          )}
 
           <p className="mb-5 text-sm text-ink-600 leading-relaxed">
             Paste your own API key (Groq, OpenAI, Anthropic, Gemini, etc.). It is encrypted server-side and never leaves the backend — the browser never sees it again.
@@ -197,27 +228,21 @@ function SettingsContent() {
                   <span className="mb-1.5 block text-sm font-medium text-ink-700">
                     Model
                   </span>
-                  {selectedProvider.models.length > 0 ? (
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      className="input-field"
-                    >
-                      {selectedProvider.models.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      placeholder="e.g. your-model-name"
-                      className="input-field"
-                      dir="ltr"
-                    />
-                  )}
+                  <input
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={selectedProvider.models[0] ?? 'e.g. your-model-name'}
+                    className="input-field"
+                    dir="ltr"
+                    list="model-suggestions"
+                  />
+                  {/* Suggestions are hints, not a guarantee — any model id your
+                      provider supports can be typed here. */}
+                  <datalist id="model-suggestions">
+                    {selectedProvider.models.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
                 </label>
 
                 {selectedProvider.needsBaseUrl && (

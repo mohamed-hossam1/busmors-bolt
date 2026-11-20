@@ -1,6 +1,6 @@
 'use client'
 
-import LoadingState from '../components/LoadingState'
+import { DeliverablesSkeleton } from '../components/skeletons'
 import EmptyState from '../components/EmptyState'
 import { useDialog } from '../hooks/useDialog'
 import { useEffect, useRef, useState } from 'react'
@@ -333,7 +333,7 @@ export default function DeliverablesPage() {
         {listError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{listError}</p>}
 
         {loading ? (
-          <LoadingState />
+          <DeliverablesSkeleton />
         ) : items.length === 0 ? (
           <EmptyState icon={FolderOpen} title={loadedAll ? 'Make room for useful work.' : 'No documents match these filters.'} description={loadedAll ? 'Research, strategy, and documents from your conversations will appear here.' : 'Change the search, dates or type to find another saved document.'} action={loadedAll ? { to: '/employee', label: 'Talk to your Director' } : undefined} />
         ) : (

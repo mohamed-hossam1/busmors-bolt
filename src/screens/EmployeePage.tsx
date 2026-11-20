@@ -43,6 +43,7 @@ export default function EmployeePage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const { runner, tasks, error: runnerError } = useTaskRunner()
   const searchParams = useSearchParams()
@@ -85,8 +86,24 @@ export default function EmployeePage() {
     const greetingMsg = currentMessages.find(isGreeting)
     const otherMsgs = currentMessages.filter((m) => !isGreeting(m))
 
+    const pendingOptimistic = optimisticMessages.filter((om) => {
+      if (om.conversation_id !== conversationId) return false
+      const existsInServer = otherMsgs.some(
+        (m) =>
+          m.id === om.id ||
+          (m.role === 'user' &&
+            m.content === om.content &&
+            new Date(m.created_at).getTime() >= new Date(om.created_at).getTime() - 3000)
+      )
+      return !existsInServer
+    })
+
+    const combined = [...otherMsgs, ...pendingOptimistic].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+
     if (greetingMsg) {
-      return [greetingMsg, ...otherMsgs]
+      return [greetingMsg, ...combined]
     }
 
     const virtualGreeting: ChatMessage = {
@@ -98,8 +115,8 @@ export default function EmployeePage() {
       payload: null,
       created_at: new Date(0).toISOString(),
     }
-    return [virtualGreeting, ...otherMsgs]
-  }, [messages, conversationId, t])
+    return [virtualGreeting, ...combined]
+  }, [messages, optimisticMessages, conversationId, t])
 
   const canvasPreviews: CanvasPreviewPost[] = useMemo(() => {
     const lastCard = [...displayedMessages]
@@ -178,7 +195,7 @@ export default function EmployeePage() {
   useEffect(()=>{
     if(!conversationId)return
     let cancelled=false,polling=false
-    setLoadedConversationId(null);setMessages([]);setEvents([]);setCanvasLoadError(null)
+    setLoadedConversationId(null);setMessages([]);setOptimisticMessages([]);setEvents([]);setCanvasLoadError(null)
     if(prevConversationId.current && prevConversationId.current !== conversationId && !composedRef.current) setInput('')
     prevConversationId.current = conversationId
     const refresh=async()=>{
@@ -243,6 +260,7 @@ export default function EmployeePage() {
 
     selectConversation(created.id)
     setMessages([])
+    setOptimisticMessages([])
     setEvents([])
     setActiveTask(null)
     setShowHistory(false)
@@ -283,13 +301,27 @@ export default function EmployeePage() {
   }
 
   const send = async (text: string) => {
-    if(!text.trim()||!conversationId||conversationLoading||running||!runner)return
-    setSending(true);setActionError('')
-    if(requestKey.current?.conversation!==conversationId||requestKey.current?.text!==text)requestKey.current={conversation:conversationId,text,key:crypto.randomUUID()}
+    const textToSend = text.trim()
+    if(!textToSend||!conversationId||conversationLoading||running||!runner)return
+    setInput('')
+    setActionError('')
+    setSending(true)
+    const tempId = `optimistic-${crypto.randomUUID()}`
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      conversation_id: conversationId,
+      role: 'user',
+      type: 'text',
+      content: textToSend,
+      payload: null,
+      created_at: new Date().toISOString(),
+    }
+    setOptimisticMessages(prev => [...prev, optimisticMsg])
+    if(requestKey.current?.conversation!==conversationId||requestKey.current?.text!==textToSend)requestKey.current={conversation:conversationId,text:textToSend,key:crypto.randomUUID()}
     const pending=continuationOrigin.current
     const origin:TaskOrigin|undefined=pending?{kind:'document',conversationId,deliverableId:pending.deliverableId,version:pending.version}:undefined
     try{
-      const task=await runner.submit(conversationId,text,requestKey.current.key,origin)
+      const task=await runner.submit(conversationId,textToSend,requestKey.current.key,origin)
       requestKey.current=null
       continuationOrigin.current=null
       composedRef.current=null
@@ -298,14 +330,19 @@ export default function EmployeePage() {
         for(const key of ['compose','document','version','conversation'])next.delete(key)
         router.replace('?' + next.toString(), { scroll: false })
       }
-      if(viewedConversationRef.current===conversationId){setInput('');setActiveTask(task.id)}
+      if(viewedConversationRef.current===conversationId){setActiveTask(task.id)}
       const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
       if(viewedConversationRef.current===conversationId){
         if(error)setActionError('Your request is saved. Messages could not be refreshed yet; they will retry automatically.')
         else setMessages((data??[]) as ChatMessage[])
       }
+      setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
       if(workspaceIdRef.current)await loadConversationsList(workspaceIdRef.current)
-    }catch{setActionError('Your request could not be confirmed saved. Keep your text and retry; the same request will not be duplicated.')}
+    }catch{
+      setInput(textToSend)
+      setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
+      setActionError('Your request could not be confirmed saved. Keep your text and retry; the same request will not be duplicated.')
+    }
     finally{setSending(false)}
   }
   const submitForm = async (msg: ChatMessage, values: Record<string,string|string[]>) => {
@@ -441,15 +478,7 @@ export default function EmployeePage() {
           </button>
         </div>
 
-        {(actionError||runnerError)&&<p role="alert" className="m-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{actionError||runnerError}</p>}
-        {conversationTasks.length>0&&<div className="border-b border-ink-200 px-4 py-3 text-xs">
-          <label className="flex items-center gap-2">Task history<select className="input-field min-w-0 flex-1 text-xs" aria-label="Selected task" value={activeTask??''} onChange={e=>setActiveTask(e.target.value)}>{conversationTasks.map(task=><option key={task.id} value={task.id}>{task.user_request?.slice(0,45)||'Saved task'} · {task.status}</option>)}</select></label>
-          {selectedTask&&<div className="mt-2 flex flex-wrap items-center gap-2"><span className="badge capitalize">{selectedTask.status.replaceAll('_',' ')}</span><span>{selectedTask.consumption?.calls??0} / {selectedTask.allowance?.calls??8} model calls · {Math.max(0,(selectedTask.allowance?.calls??8)-(selectedTask.consumption?.calls??0))} remaining</span>
-            {['failed','interrupted'].includes(selectedTask.status)&&<button className="btn-secondary text-xs" onClick={()=>void runner?.resume(selectedTask).catch(()=>setActionError('This task could not be resumed. Reload its latest state.'))}>Resume task</button>}
-            {['running','queued','awaiting_input','awaiting_approval'].includes(selectedTask.status)&&<button className="btn-secondary text-xs" onClick={()=>void runner?.cancel(selectedTask).catch(()=>setActionError('Cancellation could not be saved. Check the task status before retrying.'))}>Cancel task</button>}
-          </div>}
-          <p className="mt-2 text-ink-500">Tasks continue while you navigate this app. Keep this browser open; interrupted work can be resumed.</p>
-        </div>}
+{(actionError||runnerError)&&<p role="alert" className="m-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{actionError||runnerError}</p>}
         {/* Message Stream */}
         <div className="flex-1 space-y-4 overflow-y-auto p-3.5 sm:p-6">
           {displayedMessages.map((msg) => (
@@ -822,7 +851,9 @@ function MessageBubble({
             <Bot size={16} />
           </div>
           <div className="card max-w-[95%] sm:max-w-[85%] p-3.5 sm:p-4">
-            <MarkdownContent content={msg.content} className="text-sm font-medium text-ink-800" />
+            {/* structured_form messages carry the question as their content and
+                again as the first field label; render it once via the form. */}
+            {msg.type === 'form' && <MarkdownContent content={msg.content} className="text-sm font-medium text-ink-800" />}
             {!submitted && resumable && <FormFields fields={fields} onSubmit={(v) => onSubmitForm(msg, v)} />}
             {!submitted && !resumable && <p className="mt-2 text-xs text-ink-500">This earlier form is kept for history and cannot be answered here.</p>}
             {submitted && <p className="mt-2 text-xs text-primary-700">✓ {t('submitForm')}</p>}

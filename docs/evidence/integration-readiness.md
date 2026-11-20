@@ -68,10 +68,10 @@ This inventory separates **code/config presence** from **verified live behavior*
 
 | Field | Value |
 |---|---|
-| Decision / scope | Preserve the existing dashboard configuration (provider/model/key); optional server-managed fallback remains supported. |
-| Code/config evidence | `src/screens/SettingsPage.tsx` provider/model selection calls `save_ai_key`; `src/server/ai-generate.ts` and `src/app/api/ai/route.ts` read the workspace key server-side and support managed `AI_API_KEY`/`AI_PROVIDER`/`AI_MODEL` fallback. Keys are never returned to the browser. |
+| Decision / scope | Preserve the existing dashboard configuration (provider/model/key); optional server-managed fallback remains supported. Shared-crawl generations use the server `AI_API_KEY`; per-workspace task generations use `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) to read the workspace BYOK key. |
+| Code/config evidence | `src/screens/SettingsPage.tsx` provider/model selection calls `save_ai_key`; `src/server/ai-generate.ts` and `src/app/api/ai/route.ts` read the workspace key server-side and support managed `AI_API_KEY`/`AI_PROVIDER`/`AI_MODEL` fallback. Keys are never returned to the browser. AI Gateway architecture: shared-crawl requests authenticate with `AI_API_KEY`; task-path requests use `SUPABASE_SECRET_KEY` (preferred) or legacy `SUPABASE_SERVICE_ROLE_KEY` (privileged, server-only). |
 | Actual check | Source review of the full save/use path plus a **live Groq `openai/gpt-oss-20b` chat completion returned HTTP 200** using `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-20b` on 19 November 2026. |
-| Observed result | The Next.js API route compiles, passes unit tests, and a real provider model call succeeded against Groq. Workspace BYOK save/use is backed by the applied `ai_keys` schema. |
+| Observed result | The Next.js API route compiles, passes unit tests, and a real provider model call succeeded against Groq. Workspace BYOK save/use is backed by the applied `ai_keys` schema. Extracted website data is persisted to the Business Brain automatically as approved records (no client approval step), and the post-crawl onboarding screen shows Contact the Director (`/employee`) and Select a Plan (`/settings`) instead of the extracted data. |
 | Status | **LIVE VERIFIED (model call); dashboard end-to-end pending** |
 | Blocker | None for the managed model. Dashboard save-then-use against a logged-in workspace still needs a live session check. |
 | Owner action | Set `AI_PROVIDER`/`AI_MODEL`/`AI_API_KEY` in server env (done locally) or save a provider/model/key in Settings, then run one real generation from the app. Do not treat the dashboard’s “Active” badge as verification. |
@@ -160,7 +160,7 @@ Browser UI suites were **not** rerun this session. A live Groq model call and li
 | Blocker | Owner action | Follow-up |
 |---|---|---|
 | Application migrations (23 files) | **Applied** to the configured Supabase project (core tables return 200) | C02, C39 |
-| AI provider live request | Managed model live-verified (Groq `openai/gpt-oss-20b`); dashboard save-then-use end-to-end still needs a logged-in run | C10 |
+| AI provider live request | Managed model live-verified (Groq `openai/gpt-oss-20b`). Shared-crawl works with `AI_API_KEY` alone (anon key verifies the JWT). The **task path** still requires `SUPABASE_SECRET_KEY` (preferred) or legacy `SUPABASE_SERVICE_ROLE_KEY` (credential RPCs are service_role-only) and fails closed with `server_misconfigured` without it — add it to `.env`/Vercel (C39). Crawl extraction uses `reasoning_effort: 'low'` and a single request per site because `gpt-oss` is a reasoning model and the free tier is capped at 8000 tokens/minute; parallel batches returned HTTP 429 and fell back to heuristic text. Dashboard save-then-use end-to-end still needs a logged-in run | C10 |
 | No Firecrawl adapter | Wire the present `FIRECRAWL_API_KEY`; authorize C14 | C14, C15 |
 | Google OAuth | **Enabled** with real credentials; initiation verified (302 to Google). Full interactive login + AC-32 linking remain H02 |
 | `busmora.com` not deployed/DNS absent | Authorize Vercel deployment and DNS | C39 |

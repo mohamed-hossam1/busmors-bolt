@@ -18,7 +18,7 @@ Baseline executed in this pass:
 | Hosted Supabase probes | `/auth/v1/settings` **HTTP 200**; app tables **200** (migrations applied); backend is Next.js server routes (no Edge Functions) |
 | `https://busmora.com` | **No DNS resolution**; not deployed |
 
-Existing uncommitted work was preserved (working-tree changes at the start of C01; no revert/stash). Migrations are applied to the hosted project and the managed Groq `openai/gpt-oss-20b` model (optimized for fast extraction and avoid rate limits) is live-verified. No live Firecrawl, Google, Meta, email-delivery, publishing or deployment check passed. Status counts after C01–C08: **8 complete (C01–C08), 5 implemented with verification pending, 12 partial, 15 missing**.
+Existing uncommitted work was preserved (working-tree changes at the start of C01; no revert/stash). Migrations are applied to the hosted project and the managed Groq `openai/gpt-oss-20b` model (optimized for fast extraction and avoid rate limits) is live-verified. No live Firecrawl, Google, Meta, email-delivery, publishing or deployment check passed. Status counts after C01–C11: **11 complete (C01–C11), 2 implemented with verification pending, 12 partial, 15 missing**.
 
 ## Current status — 19 November 2026
 

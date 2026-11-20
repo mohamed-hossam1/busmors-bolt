@@ -2,7 +2,7 @@
 // verify_jwt = false
 
 import 'server-only'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from './supabase-admin'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,10 +26,7 @@ function callbackUriFor(req: Request): string {
 }
 
 function adminClient() {
-  return createClient(
-    (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  return createAdminClient()
 }
 
 async function getSecret(name: string): Promise<string | null> {

@@ -57,6 +57,49 @@ BEGIN
  PERFORM set_config('test.meter_run_id',a.run_id::text,true);
  RAISE NOTICE 'PASS: idempotent enqueue, two-slot admission, input wait/release/resume, atomic result persistence, standalone unscheduled Posts, cancellation and checkpoint recovery';
 END $$;
+-- C11 guards: publishing is kept out of the generic runner, a capped task can no
+-- longer be resumed forever, and a saved result returns the real message ids.
+-- These run as the owner so a queued publishing row can be inserted directly.
+RESET ROLE;
+INSERT INTO tasks(workspace_id,conversation_id,type,status,user_request)
+ VALUES('66666666-6666-4666-8666-666666666666',
+  (SELECT id FROM conversations WHERE workspace_id='66666666-6666-4666-8666-666666666666' ORDER BY created_at LIMIT 1),
+  'publishing','queued','Publish this now');
+DO $$
+DECLARE c uuid; runner uuid:=gen_random_uuid(); pub tasks; probe tasks; capped tasks; saved jsonb; i integer;
+BEGIN
+ SELECT id INTO c FROM conversations WHERE workspace_id='66666666-6666-4666-8666-666666666666' ORDER BY created_at LIMIT 1;
+ SELECT * INTO pub FROM tasks WHERE workspace_id='66666666-6666-4666-8666-666666666666' AND type='publishing' AND status='queued';
+ IF admit_task(pub.id,runner) IS NOT NULL THEN RAISE EXCEPTION 'Publishing admitted to the generic runner'; END IF;
+
+ probe:=enqueue_task(c,'Attempts probe',jsonb_build_object('kind','direct','conversationId',c),gen_random_uuid());
+ probe:=admit_task(probe.id,runner);
+ IF probe.attempts<>1 THEN RAISE EXCEPTION 'Run start did not count an attempt'; END IF;
+ probe:=stop_task(probe.id,probe.run_id,'failed','Transient failure');
+ probe:=resume_task(probe.id,probe.version);
+ IF probe.attempts<>2 OR probe.status<>'queued' THEN RAISE EXCEPTION 'Resume did not count an attempt'; END IF;
+
+ capped:=enqueue_task(c,'Capped probe',jsonb_build_object('kind','direct','conversationId',c),gen_random_uuid());
+ capped:=admit_task(capped.id,runner);
+ capped:=stop_task(capped.id,capped.run_id,'failed','Permanent failure');
+ FOR i IN 1..2 LOOP
+  capped:=resume_task(capped.id,capped.version);
+  capped:=admit_task(capped.id,runner);
+  capped:=stop_task(capped.id,capped.run_id,'failed','Permanent failure');
+ END LOOP;
+ IF capped.attempts<>5 THEN RAISE EXCEPTION 'Attempts did not reach the cap'; END IF;
+ BEGIN
+  PERFORM resume_task(capped.id,capped.version);
+  RAISE EXCEPTION 'Capped task was resumed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'MAX_ATTEMPTS' THEN RAISE; END IF; END;
+
+ probe:=enqueue_task(c,'Message id probe',jsonb_build_object('kind','direct','conversationId',c),gen_random_uuid());
+ probe:=admit_task(probe.id,runner);
+ saved:=save_task_result(probe.id,probe.run_id,'{"reply":"Done.","document":{"title":"Report","type":"general","content":"Body text"},"posts":[{"caption":"A post","hashtags":"#x","platform":"facebook"}]}');
+ IF jsonb_typeof(saved->'messageIds')<>'array' OR jsonb_array_length(saved->'messageIds')<>3 THEN RAISE EXCEPTION 'Result did not return three message ids'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(saved->'messageIds') e WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.id=(e#>>'{}')::uuid AND m.conversation_id=c)) THEN RAISE EXCEPTION 'Returned message id missing from the conversation'; END IF;
+ RAISE NOTICE 'PASS: publishing excluded from admission, attempts counted on run and resume, MAX_ATTEMPTS cap enforced, save_task_result returns message ids';
+END $$;
 RESET ROLE;
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claim.role','service_role',true);

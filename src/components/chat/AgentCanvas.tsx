@@ -380,17 +380,24 @@ export default function AgentCanvas({
         <div className="absolute bottom-3 right-3 z-10 w-[min(22rem,calc(100%-1.5rem))]">
           <div className="overflow-hidden rounded-xl border border-ink-200 bg-white/95 shadow-card backdrop-blur">
             <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2">
-              <button
-                type="button"
-                onClick={() => setShowSteps((value) => !value)}
-                aria-expanded={showSteps}
-                className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-800"
-              >
-                <Clock size={13} className="shrink-0 text-primary-600" />
-                <span>Recorded steps</span>
-                <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold text-ink-600">{recorded.length}</span>
-                {showSteps ? <ChevronDown size={13} className="shrink-0 text-ink-400" /> : <ChevronUp size={13} className="shrink-0 text-ink-400" />}
-              </button>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSteps((value) => !value)}
+                  aria-expanded={showSteps}
+                  className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-800"
+                >
+                  <Clock size={13} className="shrink-0 text-primary-600" />
+                  <span>Recorded steps</span>
+                  <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold text-ink-600">{recorded.length}</span>
+                  {showSteps ? <ChevronDown size={13} className="shrink-0 text-ink-400" /> : <ChevronUp size={13} className="shrink-0 text-ink-400" />}
+                </button>
+                {/* A partial run finished with usable output: keep the graph, but
+                    flag that only some of the requested work was produced. */}
+                {taskStatus === 'partial' && (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Partial result</span>
+                )}
+              </div>
               {taskId && (
                 <Link
                   href={`/employee?task=${encodeURIComponent(taskId)}`}

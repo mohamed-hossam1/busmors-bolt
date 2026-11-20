@@ -7,8 +7,9 @@ import {
   Brain,
   Check,
   CheckCircle2,
-  FileText,
+  CreditCard,
   Globe,
+  MessageCircle,
   Network,
   PenLine,
   Share2,
@@ -16,6 +17,7 @@ import {
   Sparkles,
   Users,
   BriefcaseBusiness,
+  FileText,
 } from 'lucide-react'
 import AuthLayout from '../components/auth/AuthLayout'
 import { supabase } from '../lib/supabase'
@@ -34,20 +36,12 @@ import {
   validateBusiness,
   type BusinessDraftRow,
   type BusinessFormData,
-  type Offering,
 } from '../features/onboarding/types'
 
-type Phase = 'choose' | 'website' | 'manual' | 'summary' | 'done'
+type Phase = 'choose' | 'website' | 'manual' | 'done'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type CrawlStep = 'idle' | 'crawling' | 'ai_analysis' | 'linking' | 'done'
 type DraftPath = 'manual' | 'website'
-
-const PRICING_LABEL: Record<Offering['pricingModel'], string> = {
-  unknown: 'Not set',
-  fixed: 'Fixed price',
-  starting_from: 'Starting from',
-  quote_required: 'Quote required',
-}
 
 /**
  * C08: project source-backed crawl candidates onto the editable business draft.
@@ -108,8 +102,8 @@ export default function Onboarding() {
   const [crawlStep, setCrawlStep] = useState<CrawlStep>('idle')
   const [progressStatus, setProgressStatus] = useState('')
   const [qualityNotice, setQualityNotice] = useState('')
-  const [discoveredCategories, setDiscoveredCategories] = useState<string[]>([])
-  const [summaryStats, setSummaryStats] = useState({ pages: 0, nodes: 0, edges: 0 })
+  // Aggregate counts only (never the extracted content) shown on completion.
+  const [summary, setSummary] = useState({ pages: 0, items: 0 })
 
   const [version, setVersion] = useState(0)
   const [form, setForm] = useState<BusinessFormData>(() => ({
@@ -238,16 +232,6 @@ export default function Onboarding() {
     await persistDraft({ path, form, fieldSources })
   }
 
-  const reviewManual = () => {
-    const problems = validateBusiness(form)
-    if (problems.length) {
-      setError('Please complete the required fields (business name, description, country, service area, and at least one offering).')
-      return
-    }
-    setError(null)
-    setPhase('summary')
-  }
-
   const startCrawl = async (e: FormEvent) => {
     e.preventDefault()
     if (busy) return
@@ -283,7 +267,6 @@ export default function Onboarding() {
     setPagesRead(0)
     setCurrentUrl('')
     setQualityNotice('')
-    setDiscoveredCategories([])
     setConflict(false)
     setCrawlStep('crawling')
     setProgressStatus('Connecting to website and discovering pages...')
@@ -323,9 +306,6 @@ export default function Onboarding() {
       // 3) Organize the Business Brain (reuses cache). Candidates stay unreviewed.
       const result = await organizeBrainWithAi(normalized, userId, (event: CrawlProgressEvent) => {
         if (event.currentUrl) setCurrentUrl(event.currentUrl)
-        if (event.categories && event.categories.length > 0) {
-          setDiscoveredCategories((prev) => Array.from(new Set([...prev, ...event.categories!])))
-        }
         if (event.total) setTotalPages(event.total)
         if (event.stage === 'extract') {
           setCrawlStep('ai_analysis')
@@ -342,20 +322,18 @@ export default function Onboarding() {
         throw new Error(result.error || 'The website could not be fully read or saved.')
       }
 
-      setSummaryStats({
-        pages: result.pagesRead ?? pagesRead,
-        nodes: result.nodesCount,
-        edges: result.edgesCount,
-      })
-      if (result.categories && result.categories.length > 0) {
-        setDiscoveredCategories((prev) => Array.from(new Set([...prev, ...result.categories!])))
-      }
       if (result.warning) {
         setQualityNotice(result.warning)
       }
+      setSummary({ pages: result.pagesRead ?? pagesRead, items: result.nodesCount })
 
+      // The extracted knowledge is saved internally (Brain records + draft).
+      // It is intentionally NOT shown to the client; onboarding completes and the
+      // owner chooses what to do next.
+      await supabase.rpc('set_onboarding_state', { p_state: 'complete' })
+      await refreshSettings()
       setCrawlStep('done')
-      setPhase('summary')
+      setPhase('done')
     } catch (err) {
       await supabase.rpc('set_onboarding_state', { p_state: 'awaiting_url', p_crawl_status: { finished: false } })
       setError(err instanceof Error ? err.message : 'The website could not be fully read or saved. Your current fields are kept; continue manually or retry.')
@@ -366,7 +344,6 @@ export default function Onboarding() {
   }
 
   const progressPercent = crawlStep === 'done' ? 100 : totalPages > 0 ? Math.min(100, Math.round((pagesRead / totalPages) * 100)) : 0
-  const hasKnowledge = summaryStats.nodes > 0
   const activeStep = crawlStep === 'crawling' ? 0 : crawlStep === 'ai_analysis' ? 1 : 2
 
   const title =
@@ -378,11 +355,7 @@ export default function Onboarding() {
           : 'Add your website'
         : phase === 'manual'
           ? 'Tell us about your business'
-          : phase === 'summary'
-            ? 'Review your business details'
-            : hasKnowledge
-              ? 'Your Business Brain is ready.'
-              : 'Your business is ready.'
+          : 'Your business is ready.'
   const subtitle =
     phase === 'choose'
       ? 'Choose how to set up your business. Your Marketing Director starts with this context.'
@@ -392,11 +365,7 @@ export default function Onboarding() {
           : 'Add your website so your Marketing Director starts with context about your company.'
         : phase === 'manual'
           ? 'Add your details yourself. You can save a draft and finish later.'
-          : phase === 'summary'
-            ? 'Check the details below, then confirm to make this your business context.'
-            : hasKnowledge
-              ? 'Website knowledge and review suggestions are saved. Review them in your Business Brain.'
-              : 'Your setup is saved. You can keep building your Business Brain anytime.'
+          : 'Your setup is saved. Choose how you’d like to continue.'
 
   return (
     <AuthLayout
@@ -409,6 +378,7 @@ export default function Onboarding() {
         </div>
       }
       panel={<BusinessContextPanel />}
+      
     >
       {phase === 'done' && qualityNotice && (
         <p role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
@@ -495,15 +465,6 @@ export default function Onboarding() {
             </ol>
             {currentUrl && <p className="mt-5 truncate border-t border-ink-100 pt-4 text-xs text-ink-500" dir="ltr" title={currentUrl}>{currentUrl}</p>}
           </div>
-          {discoveredCategories.length > 0 && (
-            <div className="flex flex-wrap gap-2" aria-label="Discovered knowledge categories">
-              {discoveredCategories.map((cat) => (
-                <span key={cat} className="rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs text-primary-700 capitalize">
-                  {cat.replace(/_/g, ' ')}
-                </span>
-              ))}
-            </div>
-          )}
           <p className="text-center text-xs leading-5 text-ink-500">Keep this page open while we gather your business context.</p>
         </div>
       ) : (
@@ -555,7 +516,7 @@ export default function Onboarding() {
 
       {phase === 'manual' && (
         <form
-          onSubmit={(e) => { e.preventDefault(); reviewManual() }}
+          onSubmit={(e) => { e.preventDefault(); void confirmDraft() }}
           className="space-y-6"
         >
           <BusinessForm value={form} onChange={setForm} />
@@ -565,7 +526,7 @@ export default function Onboarding() {
             <button type="button" onClick={() => { setPhase('choose'); setError(null) }} className="font-medium text-ink-500 hover:text-primary-600">Back</button>
           </div>
           <div className="space-y-3">
-            <button type="submit" className="btn-primary w-full">Review details<ArrowRight size={16} /></button>
+            <button type="submit" className="btn-primary w-full">Finish setup<ArrowRight size={16} /></button>
             <button type="button" onClick={() => void saveManualDraft()} disabled={saveState === 'saving'} className="btn-secondary w-full">
               {saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : t('save')}
             </button>
@@ -573,47 +534,13 @@ export default function Onboarding() {
         </form>
       )}
 
-      {phase === 'summary' && (
-        <div className="space-y-6">
-          {summaryStats.pages > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {[
-                { label: 'Pages read', value: summaryStats.pages, icon: FileText },
-                { label: 'Knowledge items', value: summaryStats.nodes, icon: Brain },
-                { label: 'Connections', value: summaryStats.edges, icon: Network },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
-                  <Icon size={18} className="mx-auto text-primary-500" />
-                  <p className="mt-3 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
-                  <p className="mt-1 text-[11px] leading-4 text-ink-500 sm:text-xs">{label}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <DraftSummary form={form} />
-          {fieldSources && Object.keys(fieldSources).length > 0 && (
-            <p className="text-xs leading-5 text-ink-500">Some fields were prefilled from your website. You can edit any of them before confirming.</p>
-          )}
-          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
-          <div className="space-y-3">
-            <button type="button" onClick={() => void confirmDraft()} disabled={saveState === 'saving'} className="btn-primary w-full">
-              {saveState === 'saving' ? t('saving') : 'Confirm & finish'}<Check size={16} />
-            </button>
-            <button type="button" onClick={() => { setPhase('manual'); setError(null) }} className="btn-secondary w-full">
-              {t('edit')}
-            </button>
-          </div>
-        </div>
-      )}
-
       {phase === 'done' && (
         <div className="space-y-6">
-          {summaryStats.pages > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {summary.pages > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {[
-                { label: 'Pages read', value: summaryStats.pages, icon: FileText },
-                { label: 'Knowledge items', value: summaryStats.nodes, icon: Brain },
-                { label: 'Connections', value: summaryStats.edges, icon: Network },
+                { label: 'Pages read', value: summary.pages, icon: FileText },
+                { label: 'Facts collected', value: summary.items, icon: Brain },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
                   <Icon size={18} className="mx-auto text-primary-500" />
@@ -623,24 +550,15 @@ export default function Onboarding() {
               ))}
             </div>
           )}
-          {hasKnowledge && (
-            <p className="flex items-start gap-2 text-xs leading-6 text-ink-600">
-              <CheckCircle2 size={16} className="mt-1 shrink-0 text-primary-600" />
-              Review suggestions in your Business Brain. Approved knowledge is available to your Marketing Director.
-            </p>
-          )}
           <div className="space-y-3">
-            <button type="button" onClick={() => router.push('/roadmap')} className="btn-primary w-full">
-              Create my Roadmap
+            <button type="button" onClick={() => router.push('/employee')} className="btn-primary w-full">
+              <MessageCircle size={18} />
+              Contact the Director
               <ArrowRight size={16} />
             </button>
-            <button type="button" onClick={() => router.push('/brain')} className="btn-secondary w-full">
-              {hasKnowledge ? 'Explore my Business Brain' : 'Add business knowledge'}
-              <Brain size={16} />
-            </button>
-            <button type="button" onClick={() => router.push('/employee')} className="btn-secondary w-full">
-              Talk to my Director
-              <Sparkles size={16} />
+            <button type="button" onClick={() => router.push('/settings')} className="btn-secondary w-full">
+              <CreditCard size={18} />
+              Select a Plan
             </button>
           </div>
         </div>
@@ -649,57 +567,10 @@ export default function Onboarding() {
   )
 }
 
-function DraftSummary({ form }: { form: BusinessFormData }) {
-  const contact =
-    form.conversionRoute.state === 'ready'
-      ? `${form.conversionRoute.type ?? ''} ${form.conversionRoute.value ?? ''}`.trim() || 'Ready'
-      : 'Not ready yet'
-  return (
-    <div className="space-y-5 rounded-2xl border border-ink-200 bg-white p-5">
-      <section>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Business</p>
-        <p className="mt-1 text-lg font-semibold text-ink-900">{form.name || '—'}</p>
-        {form.description && <p className="mt-2 text-sm leading-6 text-ink-600">{form.description}</p>}
-      </section>
-      {form.offerings.length > 0 && (
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Offerings</p>
-          <ul className="mt-2 space-y-3">
-            {form.offerings.map((o) => (
-              <li key={o.id} className="rounded-xl border border-ink-100 p-3">
-                <p className="text-sm font-medium text-ink-900">{o.name || '—'}</p>
-                {o.description && <p className="mt-1 text-xs leading-5 text-ink-500">{o.description}</p>}
-                <p className="mt-1 text-xs text-ink-500">
-                  {PRICING_LABEL[o.pricingModel]}
-                  {o.amount ? ` · ${o.amount}${o.currency ? ` ${o.currency}` : ''}` : ''}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Country</p>
-          <p className="mt-1 text-sm text-ink-700">{form.country || '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Service area</p>
-          <p className="mt-1 text-sm text-ink-700">{form.serviceArea || '—'}</p>
-        </div>
-      </section>
-      <section>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Contact route</p>
-        <p className="mt-1 text-sm text-ink-700">{contact}</p>
-      </section>
-    </div>
-  )
-}
-
 function BusinessContextPanel() {
   return (
     <>
-      <div className="relative z-10">
+      <div className="relative z-10 ">
         <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-cosmic-raised px-4 py-2 text-xs text-stage-muted">
           <Brain size={14} className="text-primary-300" />
           Your Business Brain
