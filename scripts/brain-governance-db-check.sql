@@ -7,7 +7,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',true);
 SELECT set_config('request.jwt.claim.role','authenticated',true);
 DO $$
-DECLARE n brain_nodes; other_node brain_nodes; proposal brain_proposals; d uuid; p uuid; pp planned_posts; relation brain_edges; result jsonb;
+DECLARE n brain_nodes; other_node brain_nodes; proposal brain_proposals; cand brain_nodes; d uuid; p uuid; pp planned_posts; relation brain_edges; result jsonb;
 BEGIN
  PERFORM bootstrap_workspace();
  n:=update_brain_item(NULL,0,'Custom repair','Owner price', 'offering','{"pricingModel":"fixed","amount":"100","currency":"EGP"}');
@@ -36,8 +36,13 @@ BEGIN
  n:=decide_brain_proposal(proposal.id,n.version,'approved');
  IF n.approval_state<>'approved' OR n.verification_state<>'unverified' THEN RAISE EXCEPTION 'Approval invented verification'; END IF;
  result:=save_crawl_brain('https://example.com','[{"category":"company_fact","title":"New website claim","summary":"A proposed statement","properties":{"evidence_quote":"This statement comes from a public website page."},"source_url":"https://example.com","confidence":0.95}]','[]',1,true);
- IF EXISTS(SELECT 1 FROM brain_nodes WHERE title='New website claim' AND approval_state='approved') THEN RAISE EXCEPTION 'Confidence became approval'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM brain_nodes WHERE title='New website claim' AND status='approved' AND approval_state='approved') THEN RAISE EXCEPTION 'Website claim was not auto-approved'; END IF;
  IF (SELECT onboarding_state FROM workspace_settings)<>'awaiting_url' THEN RAISE EXCEPTION 'Reimport bypassed business confirmation'; END IF;
+  cand:=update_brain_item(NULL,0,'Candidate fact','A candidate claim pending review','company_fact','{"confidence_reason":"Initial extraction"}','candidate');
+  IF cand.status<>'candidate' OR cand.approval_state<>'pending' THEN RAISE EXCEPTION 'New candidate not pending'; END IF;
+  cand:=update_brain_item(cand.id,cand.version,'Candidate fact edited','Edited while still pending review','company_fact',cand.properties,'candidate');
+  IF cand.status<>'candidate' OR cand.approval_state<>'pending' THEN RAISE EXCEPTION 'Candidate edit silently approved'; END IF;
+  IF (SELECT count(*) FROM brain_versions WHERE node_id=cand.id)<>2 THEN RAISE EXCEPTION 'Candidate edit history missing'; END IF;
  relation:=save_brain_relationship(n.id,other_node.id,'TARGETS','Owner confirms this audience');
  IF relation.status<>'approved' THEN RAISE EXCEPTION 'Owner relationship not saved'; END IF;
  BEGIN

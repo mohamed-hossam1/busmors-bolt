@@ -136,6 +136,7 @@ export const translations = {
   disconnect: 'Disconnect',
   platform_facebook: 'Facebook Page',
   platform_instagram: 'Instagram Business',
+  status_draft: 'Draft',
   status_pending_approval: 'Pending approval',
   status_approved: 'Approved',
   status_rejected: 'Rejected',
@@ -151,6 +152,22 @@ export const translations = {
   postPreviewTitle: 'Post previews',
   postPreviewHint: 'Here is how your posts will look — publish them from Calendar & Publishing when ready.',
   noPosts: 'No planned posts yet. Ask the Employee for a content calendar.',
+
+  // calendar grid
+  calendarMonthView: 'Month',
+  calendarWeekView: 'Week',
+  calendarViewLabel: 'Calendar view',
+  calendarToday: 'Today',
+  calendarPrevious: 'Previous',
+  calendarNext: 'Next',
+  calendarTimezone: 'Times in {zone}',
+  calendarMore: '+{count} more',
+  calendarDayPlan: 'Day plan',
+  calendarDayEmpty: 'Nothing planned for this day yet.',
+  calendarUnscheduledTitle: 'Drafts without a date',
+  calendarUnscheduledHint: 'These drafts have no time yet. Approve or edit them here, then schedule them in chat.',
+  calendarNoTime: 'No date set',
+  calendarWeekStarts: 'Week starts Sunday',
 
   // settings
   connectedPlatforms: 'Connected platforms',

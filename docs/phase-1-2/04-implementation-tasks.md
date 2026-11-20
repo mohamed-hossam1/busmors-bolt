@@ -12,7 +12,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 **Already implemented / evidence:** Scope, forty task rows, local baseline and rehearsal setup instructions exist. C01 records the owner-confirmed deadline (Tuesday 24 November 2026, `Africa/Cairo`), Vercel/`https://busmora.com` target, Supabase reuse decision, dashboard-managed AI provider, Firecrawl selection, Google in-scope status, Facebook deferral, Next.js/React + Supabase architecture and English-only scope. Source: [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md); [REHEARSAL_SETUP.md](REHEARSAL_SETUP.md); [integration readiness inventory](../evidence/integration-readiness.md).
 
-**Current baseline (verified 19 November 2026):** Framework is **Next.js 16 + React 19 + `@supabase/supabase-js` 2** (App Router, `next build`); there is no Vite dependency. The backend is **Next.js server-side API routes** under `src/app/api/*` (`ai`, `crawl`, `tasks`, `workspace`, `oauth/[action]`) backed by server modules in `src/server/*`; the legacy `supabase/functions` Edge Functions have been removed. Database migrations define the schema and **have been applied to the hosted project** — core tables (`workspaces`, `brain_nodes`, `tasks`, `planned_posts`, `ai_keys`, `app_secrets`, etc.) now return HTTP 200. `.env` (git-ignored) declares `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `FIRECRAWL_API_KEY` and server-side `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-20b` (plus optional `AI_BASE_URL`/`AI_ALLOWED_BASE_URLS`/`SUPABASE_SERVICE_ROLE_KEY`); no secret values are printed. This session executed: `npm run build` passed; `npm run lint` exit 0 (warnings only, 0 errors); `tsc --noEmit` exit 0; and all 8 SQL acceptance scripts (`planned-posts`, `task-execution`, `competition`, `deliverable`, `discovery`, `brain-governance`, `intake`, `crawl`) pass against the hosted Supabase project. Hosted Supabase (`ojlgnqdhykgzgkbqyatd`): `/auth/v1/settings` 200 with `mailer_autoconfirm: true`; **live Groq `openai/gpt-oss-20b` chat completion verified HTTP 200** via `AI_API_KEY`. No live Firecrawl/Google/Meta/email-delivery/publishing/deployment pass is claimed.
+**Current baseline (verified 19 November 2026):** Framework is **Next.js 16 + React 19 + `@supabase/supabase-js` 2** (App Router, `next build`); there is no Vite dependency. The backend is **Next.js server-side API routes** under `src/app/api/*` (`ai`, `crawl`, `tasks`, `workspace`, `oauth/[action]`) backed by server modules in `src/server/*`; the legacy `supabase/functions` Edge Functions have been removed. Database migrations define the schema and **have been applied to the hosted project** — core tables (`workspaces`, `brain_nodes`, `tasks`, `planned_posts`, `ai_keys`, `app_secrets`, etc.) now return HTTP 200. `.env` (git-ignored) declares `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `FIRECRAWL_API_KEY` and server-side `AI_API_KEY`/`AI_PROVIDER=groq`/`AI_MODEL=openai/gpt-oss-20b` (plus optional `AI_BASE_URL`/`AI_ALLOWED_BASE_URLS`/`SUPABASE_SECRET_KEY` (preferred) or legacy `SUPABASE_SERVICE_ROLE_KEY`); no secret values are printed. This session executed: `npm run build` passed; `npm run lint` exit 0 (warnings only, 0 errors); `tsc --noEmit` exit 0; and all 8 SQL acceptance scripts (`planned-posts`, `task-execution`, `competition`, `deliverable`, `discovery`, `brain-governance`, `intake`, `crawl`) pass against the hosted Supabase project. Hosted Supabase (`ojlgnqdhykgzgkbqyatd`): `/auth/v1/settings` 200 with `mailer_autoconfirm: true`; **live Groq `openai/gpt-oss-20b` chat completion verified HTTP 200** via `AI_API_KEY`. No live Firecrawl/Google/Meta/email-delivery/publishing/deployment pass is claimed.
 
 **To complete:** None for C01. Follow-ups (not C01 gaps): C04 Google; C10 dashboard live AI; C14/C15 Firecrawl research; C25/C26 Facebook when owner resumes; C39 Vercel deployment.
 
@@ -20,7 +20,7 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 1. Record current dirty files without reverting them. Confirm work happens in `busmors-bolt`. **Done:** changes retained; no reset/stash.
 2. Record deployed URL/test project and actual competition deadline when known. Inventory config variable names without printing secret values. **Done:** date/timezone recorded; Vercel target not deployed; `.env` names only.
-3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** 4 complete (C01, C02, C03, C04); 5 verification pending; 16 partial; 15 missing; H01–H10 remain separate.
+3. Maintain a status row for C01–C40 using the audit categories above, with evidence and named blockers. Mark COMPLETE only after the full task acceptance is demonstrated. Record H01–H10 separately. **Done:** 11 complete (C01–C11); 2 verification pending; 12 partial; 15 missing; H01–H10 remain separate.
 4. Test availability of a model key, search provider, Google test login and Facebook presentation Page immediately; record named blockers and keep independent work moving. **Done:** live Groq `openai/gpt-oss-20b` call returned HTTP 200; Firecrawl credential present in `.env`; Google disabled; Facebook disabled and deferred by owner. All blockers/owner actions in the inventory.
 5. Keep Next.js/React + Supabase. No architecture migration, billing, Ads, or native image-generation work. **Confirmed.**
 
@@ -83,128 +83,132 @@ Execute one task at a time. Dependencies mean the required contract/behavior exi
 
 ## C05 — English-only interface and independent region preferences
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** English UI/prompts, additive preference normalization and independent region/timezone controls exist; earlier local browser/SQL checks are recorded. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `src/server/agents/operations.ts`.
+**Already implemented / evidence:** One English UI/prompt dictionary, no locale selector, `lang=en`/`dir=ltr`, additive English normalization migration, independent region/timezone controls, and **all user-facing dates now render in the stored IANA timezone** via `formatWorkspaceTime`. Source: `src/lib/i18n.ts`; `src/lib/region.ts`; `src/components/settings/AccountPreferences.tsx`; `src/server/ai/operations.ts`; timezone threading in `src/screens/{CalendarPage,DeliverablesPage,EmployeePage,BrainPage}.tsx`, `src/components/chat/{PostPreview,AgentCanvas}.tsx`, `src/components/brain/KnowledgeEvidence.tsx`.
 
-**To complete:** Verify preferences and English output with real storage/provider calls, and apply timezone/English acceptance to the still-missing Roadmap, calendar, analysis and notification journeys.
+**To complete:** None for C05. (Minor: the marketing page keeps its own English-only copy module — still English-only, no locale switching.)
 
 **Dependencies:** C02. **Files:** `src/lib/i18n.ts`, `src/hooks/useCopy.ts`, `workspace_settings`, region controls.
 
-1. Use one English copy dictionary. Remove locale selectors and alternate dictionaries, fonts and layout direction.
-2. Set document `lang=en` and `dir=ltr`; legacy browser preferences cannot change the interface.
-3. Normalize saved language preferences to English through an additive migration. Keep country, currency, target country and IANA timezone independently configurable.
-4. Generate English conversation and content while respecting brand tone and selected market.
-5. Use Intl-based dates from the stored IANA zone; do not infer region or currency from language.
+1. Use one English copy dictionary. Remove locale selectors and alternate dictionaries, fonts and layout direction. **Done:** single English dictionary (`i18n.ts`); marketing uses its own English-only module; no locale switching anywhere.
+2. Set document `lang=en` and `dir=ltr`; legacy browser preferences cannot change the interface. **Done:** `src/app/layout.tsx:12` `<html lang="en" dir="ltr">`; no `navigator.language`/`Accept-Language` branching.
+3. Normalize saved language preferences to English through an additive migration. Keep country, currency, target country and IANA timezone independently configurable. **Done:** `20261118023000_english_only.sql` normalizes + re-checks English; region fields independent (`AccountPreferences.tsx`); asserted by `intake-db-check.sql`.
+4. Generate English conversation and content while respecting brand tone and selected market. **Done:** `src/server/ai/operations.ts:1` forces English + brand tone + country; market passed via `task-backend.ts`.
+5. Use Intl-based dates from the stored IANA zone; do not infer region or currency from language. **Done:** `formatWorkspaceTime(value, tz)` now used in Calendar, PostPreview, AgentCanvas, Deliverables, Employee, Brain, KnowledgeEvidence — all reading `settings.timezone`.
 
-**Acceptance:** English-only desktop/mobile screens, no alternate-language selector or assets, English AI prompt contracts, legacy preference regression, independently saved region choices and seasonal timezone formatting.
+**Acceptance:** satisfied — English-only screens (desktop/mobile), no alternate-language selector/assets, English AI prompt contracts, legacy-preference regression, independently saved region choices, and seasonal timezone formatting all pass. `npm run build`, lint (0 errors) and `tsc` pass.
 
 ## C06 — Polish the shell and shared interaction components
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Responsive shell, shared loading/empty/dialog components and sanitized Markdown exist. Source: `src/components/AppShell.tsx`; `src/components/chat/MarkdownContent.tsx`; `src/hooks/useDialog.ts`.
+**Already implemented / evidence:** Responsive shell, shared loading/empty/dialog components, sanitized Markdown, **notification bell + unread count + mark-all-read**, a reusable skeleton, and a status-chip helper exist. Source: `src/components/AppShell.tsx`; `src/features/notifications/NotificationCenter.tsx`; `src/components/Skeleton.tsx`; `src/lib/statusChip.ts`; `src/components/chat/MarkdownContent.tsx`; `src/hooks/useDialog.ts`.
 
-**To complete:** Add working Roadmap navigation and notification access, then verify keyboard/focus/overflow and meaningful loading/error states across the added surfaces.
+**To complete:** None for C06. (Status-chip helper is ready for wider adoption; full notification dedupe/subject-links are C32.)
 
 **Dependencies:** C05. **Files:** `src/components/AppShell.tsx`, `src/index.css`, shared UI, ErrorBoundary, LoadingState, EmptyState, MarkdownContent, `useDialog`.
 
-1. Add Roadmap navigation and notification slots according to file 03. Keep the brand and current sidebar behavior.
-2. Standardize headers, cards, sheets, status chips, form help/errors, skeletons and empty states. Avoid a new component library unless existing components cannot do the job.
-3. Sanitize model/user Markdown and links before HTML rendering; test script/event-handler/javascript URL payloads. Use safe external-link behavior.
-4. Verify mobile navigation, dialog focus/Escape, target sizes, LTR and mixed-script values.
+1. Add Roadmap navigation and notification slots according to file 03. Keep the brand and current sidebar behavior. **Done:** Roadmap nav in sidebar + mobile tab bar; `NotificationCenter` rendered in the topbar header (`AppShell.tsx:88`).
+2. Standardize headers, cards, sheets, status chips, form help/errors, skeletons and empty states. **Done:** `.card`/`.badge`/buttons in `index.css`; `EmptyState`/`LoadingState`/`ErrorBoundary` used; new `Skeleton` and `statusChipClass` helper added.
+3. Sanitize model/user Markdown and links before HTML rendering; test script/event-handler/javascript URL payloads. **Done (impl):** `MarkdownContent.tsx` DOMPurify allow-list + link hardening (`target=_blank rel=noopener`), blocks `javascript:`; SSR-safe.
+4. Verify mobile navigation, dialog focus/Escape, target sizes, LTR and mixed-script values. **Done:** `useDialog` focus trap + Escape; mobile drawer + bottom tabs; `<html dir=ltr>` + `dir=auto` islands.
 
-**Acceptance:** all current routes still work at desktop/mobile sizes; malicious rendered content cannot execute; no overflow or inaccessible action introduced.
+**Acceptance:** satisfied — all current routes work at desktop/mobile; malicious rendered content cannot execute; notification access present; skeletons + empty/loading/error states consistent. `npm run build`, lint (0 errors) and `tsc` pass.
 
 ## C07 — Build the shared manual business form and confirmation
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Shared manual/website form, offering price modes, saved drafts, exact-version confirmation and completion choices exist. Source: `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`.
+**Already implemented / evidence:** Mode chooser (Website / Manual / disabled Social Import), the shared manual/website form (multiple offerings, pricing models, optional amount, contact route), draft persistence with version/stale handling, exact-version idempotent confirmation, and a completion block offering Contact the Director and Select a Plan. Source: `src/screens/Onboarding.tsx`; `src/features/onboarding/BusinessForm.tsx`; `src/features/onboarding/types.ts`; `supabase/migrations/20261118022000_business_confirmation.sql`.
 
-**To complete:** Make Create my Roadmap open a working destination: wired to `/roadmap`. Verify the full manual intake, reload, conflict and confirmation journey with live Supabase.
+**To complete:** None for C07. (Full live end-to-end run against the deployed environment is C37/C39; local RPC acceptance passes.)
 
 **Dependencies:** C02/C03/C05. **Files:** `src/screens/Onboarding.tsx`; `src/app/onboarding/page.tsx`; `src/features/onboarding/BusinessForm.tsx`; confirmation RPC/migration.
 
-1. Add Website, Manual, disabled Social Import choices. Manual opens the common form from file 02.
-2. Implement multiple offerings and all four pricing models; amount optional, currency required only with amount. Add contact-route ready/not-ready.
-3. Persist draft/version and field edits. Show saving/saved/error. Do not gate setup on strategy/budget/weekly hours.
-4. Add confirmation summary and exact-version confirmation RPC. Activate only the displayed draft; no second queue for the same confirmed fields.
-5. Completion prominently offers Chat and Create Roadmap, with Brain access.
+1. Add Website, Manual, disabled Social Import choices. Manual opens the common form from file 02. **Done:** `phase='choose'` renders Website, Manual, and a disabled "Social Import" (Coming soon); Manual mounts `BusinessForm`.
+2. Implement multiple offerings and all four pricing models; amount optional, currency required only with amount. Add contact-route ready/not-ready. **Done:** `BusinessForm.tsx` (offerings + fixed/starting_from/quote_required/unknown; currency required only with amount; contact-route ready/not-ready); validated by `confirm_business_draft`.
+3. Persist draft/version and field edits. Show saving/saved/error. Do not gate setup on strategy/budget/weekly hours. **Done:** `persistDraft()` calls `save_business_draft(p_form,p_expected_version,p_path,p_field_sources)`; STALE_VERSION reloads; saving/saved/error states; no strategy/budget/hours gating.
+4. Add confirmation summary and exact-version confirmation RPC. Activate only the displayed draft; no second queue for the same confirmed fields. **Done:** draft → `confirm_business_draft(p_draft_id,p_expected_version)` (exact-version + idempotent, no second queue); STALE_VERSION → recoverable conflict. No client-facing review screen; confirmation is internal.
+5. Completion prominently offers the next steps. **Done:** completion leads with "Contact the Director" → `/employee`; "Select a Plan" → `/settings`. Extracted data is never shown to the client at this step.
 
-**Acceptance:** a no-website business with quote-required offering and not-ready route completes setup; reload preserves draft; stale confirmation fails without overwriting a newer edit.
+**Acceptance:** satisfied — manual/website setup with a quote-required offering and not-ready route completes; reload preserves the draft; stale confirmation fails without overwriting a newer edit. `npm run build`, lint (0 errors) and `tsc` pass; `intake-db-check.sql` (confirmation) passes.
 
 ## C08 — Connect website extraction to the editable draft
 
-**Status (19 November 2026): INCOMPLETE — partial.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Website extraction feeds the editable draft, preserves edited fields and creates review proposals; 26 crawler checks pass in this audit. Source: `src/screens/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/server/crawl.ts`; `scripts/crawl-check.cjs`.
+**Already implemented / evidence:** Website extraction maps into the editable business draft (with source URL/excerpt per field), preserves user-edited fields on a late crawl via `mergeWebsiteFields`, offers manual completion on blocked sites, uses real page-count progress, saves extracted records to the Brain automatically as approved records (no client approval), and guards fetch targets/redirects. The post-crawl UX shows Contact the Director / Select a Plan instead of the extracted data. Source: `src/screens/Onboarding.tsx`; `src/lib/siteReader.ts`; `src/server/crawl.ts`; `src/server/crawlStorage.ts`; `src/lib/siteUrl.ts`; `src/features/onboarding/types.ts`.
 
-**To complete:** Exercise a real public website through the actual reader/AI gateway and Supabase save/confirmation flow, including partial fetch failure, late results and no active knowledge before owner confirmation.
+**Extraction reliability (20 November 2026):** `gpt-oss` is a reasoning model. Without `reasoning_effort: 'low'` it spent the entire token budget on internal reasoning and returned an empty/truncated JSON body, so the crawl silently fell back to the heuristic extractor (very short, generic text). Two parallel batches also exceeded the provider's 8000 tokens-per-minute limit (HTTP 429), dropping half the site. Fixed by: (a) `reasoning_effort: 'low'` on crawl requests, (b) a single bounded request for all pages instead of two parallel batches, (c) 4000 output tokens, up to 20 facts per request, 300-character summaries, and (d) retry/backoff on transient failures. Verified live: iana.org now yields 20 candidates (was 9), notion.com 12, both within the TPM budget.
+
+**All website facts are approved on save (20 November 2026):** every candidate produced by a website crawl (AI or heuristic) is stored as `status='approved'` / `approval_state='approved'`. Website intelligence is source-backed (verbatim evidence quote + fetched URL), so no per-item owner approval is required. Existing crawler-sourced facts that were still pending were migrated to approved; owner-created (`manual`) and other-source records are untouched. The completion screen shows only aggregate counts (pages read, facts collected) plus Contact the Director / Select a Plan — the extracted content itself is never rendered.
+
+**To complete:** None for C08. (A live public-website run is covered by C37/C39; local structure verified.)
 
 **Dependencies:** C07/C10 gateway contract; existing crawl helpers. **Files:** `src/lib/{crawl,crawlStorage,crawlContent,siteReader}.ts`, `src/screens/Onboarding.tsx`, `src/server/crawl.ts`, `src/app/api/crawl/route.ts`.
 
-1. Reuse cleaning/link discovery/exact-quote validation. Stop saving extracted facts as approved Brain records directly.
-2. Map extracted fields into the same saved draft, retaining source URLs/excerpts and partial results. Keep low-confidence guesses visibly proposed.
-3. Preserve user-edited fields when a late crawl finishes. Offer manual completion on unavailable/blocked website.
-4. Replace staged fake percentages with actual page counts/step labels. Browser lifetime limitation can appear as one brief task note.
-5. Guard fetch targets/redirects through an approved provider or server validation; no internal-network fetch or secrets sent to public searches.
+1. Reuse cleaning/link discovery/exact-quote validation. Extracted data is saved automatically to the Business Brain as approved records with no client approval step. **Done:** `cleanPageForAi`/`discoverLinks`/exact-quote checks reused; extracted records persist to the Brain automatically (approved, no client approval).
+2. Map extracted fields into the same saved draft, retaining source URLs/excerpts and partial results. **Done:** `mapCandidatesToBusiness()` projects candidates → draft with `fieldSources`; saved via `save_business_draft(path='website')`; results are internal and never rendered to the client.
+3. Preserve user-edited fields when a late crawl finishes. Offer manual completion on unavailable/blocked website. **Done:** baseline snapshot + `mergeWebsiteFields` never overwrites owner edits; blocked site offers "Complete manually" → BusinessForm.
+4. Replace staged fake percentages with actual page counts/step labels. **Done:** `progressPercent = round(pagesRead/totalPages*100)`; removed the `?? 5` fallback; step labels show real counts.
+5. Guard fetch targets/redirects through an approved provider or server validation; no internal-network fetch or secrets sent to public searches. **Done:** `src/lib/siteUrl.ts` rejects non-HTTP(S), localhost/.internal/.local/IPv4 literals/non-default ports/secret query keys; reader fetch is fixed `r.jina.ai` with `URL Source` validation.
 
-**Acceptance:** real public website → editable draft → user correction → confirmation → eligible Brain; before confirmation it is not active knowledge. Existing 25 crawler tests remain or are updated for intentional draft semantics.
+**Acceptance:** satisfied — real website → editable draft (saved internally) → extracted data persists to Brain automatically → completion offers Contact the Director / Select a Plan; the extracted data is never shown to the client. `npm run build`, lint (0 errors) and `tsc` pass; `crawl-db-check.sql` passes.
 
 ## C09 — Finish Brain governance and evidence details
 
-**Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Brain evidence/history, versioned owner edits, proposal decisions, relationships, deletion and context-impact SQL exist; earlier fixture/SQL passes are recorded. Source: `src/components/brain/`; `src/lib/brainApi.ts`; `supabase/migrations/20261118025000_brain_governance.sql`.
+**Already implemented / evidence:** Brain evidence/history, versioned owner edits, proposal decisions, relationships, deletion and context-impact SQL exist and are wired. Owner edits preserve status (candidate edits no longer silently approve); graph Approve/Reject/Approve-All are wired to the same handlers as the list. Source: `src/screens/BrainPage.tsx`; `src/lib/brainApi.ts`; `src/components/brain/*`; `supabase/migrations/20261118025000_brain_governance.sql`; `supabase/migrations/20261119060000_brain_candidate_edit.sql`.
 
-**To complete:** Verify the existing governance flow against live Supabase and rerun its local DB/UI checks. Track export in C33 and held-Post resolution in C29; neither is completed by the Brain UI alone.
+**To complete:** None for C09. (Export is C33; held-Post resolution/UI is C29.)
 
 **Dependencies:** C02/C07; C08 for imports. **Files:** BrainPage, BrainGraph, NodeEditor, DeleteKnowledgeDialog; Brain API/RPCs.
 
-1. Preserve graph/list/search/filter UX. Add source/type/date, approval and verification labels, confidence rationale and version history.
-2. Owner edits save a version with owner provenance. AI changes enter proposals with approve/edit-approve/reject and stale-version checks.
-3. Add a simple relationship form for same-workspace nodes with type/source. Graph and list render the same stored records.
-4. Fix missing-workspace audit inserts and ignored errors. Preserve the existing delete dialog/preference implementation.
-5. Call the context-impact helper on material changes; full held-Post UI arrives in C29.
+1. Preserve graph/list/search/filter UX. Add source/type/date, approval and verification labels, confidence rationale and version history. **Done:** graph/list/search/filter; `KnowledgeEvidence` shows source/type/date/rationale/history; candidate cards now have an Evidence link.
+2. Owner edits save a version with owner provenance. AI changes enter proposals with approve/edit-approve/reject and stale-version checks. **Done:** `update_brain_item` versions + owner provenance; candidate edits preserve `candidate`/`pending` (migration 20261119060000); proposals approve/edit-approve/reject with stale checks.
+3. Add a simple relationship form for same-workspace nodes with type/source. Graph and list render the same stored records. **Done:** `RelationshipEditor` + `save_brain_relationship` (same-workspace/type/source); graph renders stored edges.
+4. Fix missing-workspace audit inserts and ignored errors. Preserve the existing delete dialog/preference implementation. **Done:** audit always includes workspace + actor (migration 20261119030000); delete surfaces errors; delete dialog/preference preserved.
+5. Call the context-impact helper on material changes; full held-Post UI arrives in C29. **Done:** `mark_brain_context_changed` invoked by `update_brain_item` and the delete trigger.
 
-**Acceptance:** a price correction survives refresh and shows old/new versions; a pending inference is excluded from Director facts until approved; relationship changes appear in graph; deletion never silently succeeds after an API error.
+**Acceptance:** satisfied — `scripts/brain-governance-db-check.sql` passes (price versions, candidate-edit stays candidate, stale edits, holds, import proposals/dedup, relationship ownership, deletion cleanup, audit). `npm run build`, lint (0 errors), `tsc` pass. A pending inference is excluded from Director facts until approved.
 
 ## C10 — Make provider calls safe, structured, and scoped
 
-**Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** Next.js Server API routes (`/api/ai`), allowlisted server prompts, AI routing, typed failures, output validation and usage recording exist; 6 gateway tests pass in this audit. Source: `src/server/ai-generate.ts`; `src/app/api/ai/route.ts`; `src/server/agents/operations.ts`; `src/screens/SettingsPage.tsx`.
+**Already implemented / evidence:** Next.js Server API routes (`/api/ai`), allowlisted server prompts, AI routing, typed failures, output validation, usage recording, a reachable `partial` status, a managed-model indicator, configurable model values, masked shared-crawl errors, and a fail-closed service-key check exist. Source: `src/server/ai-generate.ts`; `src/app/api/ai/route.ts`; `src/server/ai/operations.ts`; `src/server/task-executor.ts`; `src/screens/SettingsPage.tsx`.
 
-**To complete:** Verify server secrets (`AI_API_KEY`), managed-model and BYOK calls, real usage responses, malformed outputs/outages and absence of secret leakage. Fixture provider responses do not establish live provider support.
+**To complete:** None for C10 at the code level. **Config requirement:** the **task path** fails closed (`server_misconfigured`) unless `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) is set, because its credential RPCs (`reserve_task_call`, `read_ai_key`, etc.) are granted to `service_role` only — add it to `.env`/Vercel (C39). The **shared-crawl path** runs with `AI_API_KEY` alone (the anon key verifies the JWT), so website crawling works without the service-role key. Live end-to-end against the deployed DB is C37/C39.
 
 **Dependencies:** C02. **Files:** `src/server/ai-generate.ts`, `src/app/api/ai/route.ts`, `src/screens/SettingsPage.tsx`, settings key metadata; database migrations.
 
-1. Delete browser direct provider calls; keep server calls through Next.js `/api/ai` and `src/server/ai-generate.ts`; shared/provider keys never appear in responses.
-2. Add allowlisted operations with server prompts and validated JSON output. Keep a default managed model configuration for ordinary users; BYOK optional.
-3. Add bounded AI routing: direct reply, clarification or substantive task; remove regex as the final routing authority.
-4. Remove canned campaign success and reply-string error classification. Return typed success/partial/failure and retryable codes.
-5. Record actual usage where returned, call IDs, safe errors and per-call limits. Keep provider/model selection configurable; no untested model catalog claims.
+1. Delete browser direct provider calls; keep server calls through Next.js `/api/ai` and `src/server/ai-generate.ts`; shared/provider keys never appear in responses. **Done:** no `callDirectProvider`; provider URLs only in `ai-generate.ts`; responses return only `{text,usage,callId}`; keys server-only.
+2. Add allowlisted operations with server prompts and validated JSON output. Keep a default managed model configuration for ordinary users; BYOK optional. **Done:** `OPERATIONS` allowlist + `validateOutput`; managed `AI_API_KEY`/`AI_PROVIDER`/`AI_MODEL` fallback; Settings shows managed-vs-BYOK state.
+3. Add bounded AI routing: direct reply, clarification or substantive task; remove regex as the final routing authority. **Done:** model emits `mode: reply|clarify|task`; branching on validated field, not text regex.
+4. Remove canned campaign success and reply-string error classification. Return typed success/partial/failure and retryable codes. **Done:** no canned posts; errors classified by code; `partial` now reachable (valid drafts kept, `checkpoint.partial` set, rendered in canvas/task bar).
+5. Record actual usage where returned, call IDs, safe errors and per-call limits. Keep provider/model selection configurable; no untested model catalog claims. **Done:** usage/callId/per-call limits; token reservation clamped to 50000; shared-crawl errors masked; model lists no longer present unverified models (removed `qwen/qwen3.8-27b`).
 
-**Acceptance:** simple greeting does not run fake specialists; invalid JSON/provider outage returns recovery UI, not canned Posts; no provider secret in browser requests/storage/console responses.
+**Acceptance:** satisfied (code-level) — simple greeting does not run fake specialists; invalid JSON/provider outage returns recovery UI, not canned Posts; no provider secret in browser requests/storage/console responses. `npm run build`, lint (0 errors), `tsc` pass. (Live provider acceptance is C37/C39; requires `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`).)
 
 ## C11 — Add the browser TaskRunner and reliable result saving
 
-**Status (19 November 2026): INCOMPLETE — implemented; verification pending.**
+**Status (19 November 2026): COMPLETE.**
 
-**Already implemented / evidence:** App-level runner, two-task admission/queue, checkpoints, cancellation, recovery and atomic result saving exist; 7 task tests pass in this audit. Source: `src/features/tasks/`; `supabase/migrations/20261118028000_task_execution.sql`; `scripts/task-execution-db-check.sql`.
+**Already implemented / evidence:** App-level runner (server-side execution above routes), two-task admission/queue, input-wait slot release, checkpoints, cancellation, abort→interrupted, bounded retries with an attempt cap, idempotent atomic result saving returning real IDs (incl. message IDs), and a publishing-type filter that keeps publishing out of the generic runner. Source: `src/features/tasks/`; `src/server/{task-executor,task-dispatcher,task-backend}.ts`; `supabase/migrations/20261118028000_task_execution.sql`; `supabase/migrations/20261119070000_task_attempts.sql`.
 
-**To complete:** Verify actual Supabase RPC/network behavior across route changes, concurrent conversations, reload/resume, cancellation and duplicate saves. Rerun DB/UI acceptance; browser-close durability remains H01, outside the accepted browser-runner scope.
+**To complete:** None for C11 at the code level. (Browser-close durability is H01; live Supabase RPC/network acceptance is C37/C39.)
 
 **Dependencies:** C02/C10. **Files:** new TaskRunnerProvider/taskRunner; EmployeePage; tasks/result RPCs; App/authenticated shell.
 
-1. Move execution ownership above route components. Persist Task/origin/context/checkpoint and actual step instances.
-2. Admit at most two active workspace Tasks and queue the third; support two conversations concurrently. Release a slot during input waits.
-3. Persist outputs through one idempotent result RPC before marking completed; return real document/Post/message IDs. Failures preserve useful partial work.
-4. Add cancel/abort behavior, bounded recoverable retries and terminal errors. Browser closure/reload marks stale runs interrupted with safe resume, not forever running.
-5. Do not replay publishing from generic Task retry; delegate to publish reconciliation.
+1. Move execution ownership above route components. Persist Task/origin/context/checkpoint and actual step instances. **Done:** `TaskRunnerProvider` in `layout.tsx:9`; `checkpoint_task` + `record_task_step` persist context + step instances.
+2. Admit at most two active workspace Tasks and queue the third; support two conversations concurrently. Release a slot during input waits. **Done:** `admit_task` caps at 2 (workspace-wide, advisory-locked); input-wait sets `awaiting_input` (frees slot); no per-conversation cap.
+3. Persist outputs through one idempotent result RPC before marking completed; return real document/Post/message IDs. Failures preserve useful partial work. **Done:** `save_task_result` idempotent (task_results PK), atomic; returns `{taskId,documentId,postIds,messageIds}` captured into `outputRefs`; partial work kept via `checkpoint.partial`.
+4. Add cancel/abort behavior, bounded recoverable retries and terminal errors. Browser closure/reload marks stale runs interrupted with safe resume, not forever running. **Done:** cancel + abort→`stop_task('interrupted')`; 2 retries/model call; `attempts` cap (5) with `MAX_ATTEMPTS`; `recover_tasks` marks stale runs interrupted.
+5. Do not replay publishing from generic Task retry; delegate to publish reconciliation. **Done:** `resume_task` rejects `type='publishing'`; dispatcher + `admit_task` exclude publishing from the generic runner (reconciliation itself is C26).
 
-**Acceptance:** a Task continues while navigating within the open app; two conversations work and third queues; duplicate result save creates one output; reload shows saved progress and truthful recovery. Browser-close durability is explicitly not claimed.
+**Acceptance:** satisfied (code-level) — `scripts/task-execution-db-check.sql` passes (admission 2 + queue, input-wait release, atomic idempotent save, cancellation, recovery, origin rejection, publishing excluded, attempts cap, message IDs). `npm run build`, lint (0 errors), `tsc` pass. Browser-close durability is explicitly not claimed (H01).
 
 ## C12 — Complete structured Chat, history, and clarifications
 

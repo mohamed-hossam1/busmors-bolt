@@ -50,7 +50,7 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
     id: await stableId(['crawl-node', workspace, key(c)]), workspace_id: workspace,
     category: c.category, title: c.title, summary: c.summary, properties: c.properties,
     source: 'crawler', source_detail: c.source_url, confidence: c.confidence,
-    status: 'candidate',
+    status: 'approved', approval_state: 'approved',
   })))
   if (rows.length) {
     const { error } = await supabase.from('brain_nodes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
@@ -81,7 +81,7 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
       const source = nodes[relation.source_index], target = nodes[relation.target_index]
       if (!source || !target || source.id === target.id) continue
       const row = { workspace_id: workspace, source_node_id: source.id, target_node_id: target.id,
-        relation_type: relation.relation_type, status: 'candidate', weight: relation.confidence }
+        relation_type: relation.relation_type, status: 'approved', weight: relation.confidence }
       const fingerprint = edgeKey(row)
       counted.add(fingerprint)
       if (seen.has(fingerprint)) continue

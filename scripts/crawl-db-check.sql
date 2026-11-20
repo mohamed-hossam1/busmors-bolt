@@ -37,13 +37,12 @@ BEGIN
   IF (SELECT onboarding_state FROM workspace_settings WHERE workspace_id = auth.uid()) <> 'complete' THEN RAISE EXCEPTION 'Wrong completion state'; END IF;
   SELECT id INTO v_first FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Ledger Pro';
   SELECT id INTO v_second FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Small businesses';
-  -- C09 governance: AI/crawl candidates are persisted as candidate/pending, never auto-approved.
-  IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid() AND status = 'candidate' AND approval_state = 'pending') <> 2 THEN RAISE EXCEPTION 'AI candidates must stay pending for owner review'; END IF;
-  IF (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid() AND status = 'candidate') <> 1 THEN RAISE EXCEPTION 'Crawl relationship must stay pending for owner review'; END IF;
-  RAISE NOTICE 'PASS: nodes, evidence, edges and complete state persist together as review candidates; www is canonicalized';
-  -- Owner explicitly approves the two candidates so downstream edit/relationship checks exercise approved facts.
-  PERFORM update_brain_item(v_first, 1, 'Ledger Pro', v_candidates->0->>'summary', 'offering', v_candidates->0->'properties', 'approved');
-  PERFORM update_brain_item(v_second, 1, 'Small businesses', v_candidates->1->>'summary', 'audience', v_candidates->1->'properties', 'approved');
+  -- C10: AI-extracted, high-confidence crawl facts are persisted directly as approved records.
+  IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid() AND status = 'approved' AND approval_state = 'approved') <> 2 THEN RAISE EXCEPTION 'AI crawl facts must be saved as approved'; END IF;
+  IF (SELECT count(*) FROM brain_edges WHERE workspace_id = auth.uid() AND status = 'approved') <> 1 THEN RAISE EXCEPTION 'Crawl relationship must be approved'; END IF;
+  -- Auto-approved facts must not leave anything in the owner approval queue.
+  IF EXISTS (SELECT 1 FROM brain_proposals p JOIN brain_nodes n ON n.id = p.node_id WHERE n.workspace_id = auth.uid() AND p.status = 'pending') THEN RAISE EXCEPTION 'Auto-approved crawl facts must not require approval'; END IF;
+  RAISE NOTICE 'PASS: AI crawl facts and relationships are approved directly without owner review; www is canonicalized';
 
   PERFORM save_crawl_brain('https://example.com/', v_candidates, v_edges, 1, false);
   IF (SELECT count(*) FROM brain_nodes WHERE workspace_id = auth.uid()) <> 2
@@ -105,8 +104,9 @@ BEGIN
   PERFORM save_crawl_brain('https://example.com/', jsonb_set(jsonb_set(v_candidates, '{1,properties,extracted_by}', '"heuristic"'), '{1,summary}', to_jsonb('A weaker heuristic summary that must not replace an AI-backed fact.'::text)), '[]', 1, false);
   IF (SELECT summary FROM brain_nodes WHERE id = v_second) <> v_candidates->1->>'summary' THEN RAISE EXCEPTION 'Fallback downgraded an AI fact'; END IF;
   PERFORM save_crawl_brain('https://example.com/', '[{"category":"company_fact","title":"Suggested context","summary":"A heuristic suggestion requiring user review before use.","source_url":"https://example.com/","confidence":0.6,"properties":{"extracted_by":"heuristic","evidence_quote":"A heuristic suggestion requiring user review before use."}}]', '[]', 1, false);
-  IF (SELECT status FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Suggested context') <> 'candidate' THEN RAISE EXCEPTION 'Fallback was incorrectly auto-approved'; END IF;
-  RAISE NOTICE 'PASS: degraded extraction cannot downgrade AI facts and stays available for review';
+  IF (SELECT status FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Suggested context') <> 'approved'
+    OR (SELECT approval_state FROM brain_nodes WHERE workspace_id = auth.uid() AND title = 'Suggested context') <> 'approved' THEN RAISE EXCEPTION 'Website fact was not auto-approved'; END IF;
+  RAISE NOTICE 'PASS: degraded extraction cannot downgrade AI facts and is approved automatically';
 
   PERFORM save_crawl_brain('https://example.com/', jsonb_build_array(v_candidates->1), '[]', 1, true);
   IF (SELECT status FROM brain_nodes WHERE id = v_second) <> 'approved'

@@ -33,7 +33,8 @@ test('website onboarding rejects invalid targets, performs a real crawl, persist
 
   await website.fill(crawlTarget)
   await page.getByRole('button', { name: 'Build my Business Brain' }).click()
-  await expect(page.getByText(/Business Brain is ready|workspace is ready/)).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByRole('button', { name: 'Contact the Director' })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByRole('button', { name: 'Select a Plan' })).toBeVisible()
 
   const [settings, nodes, sources, proposals, edges, audit] = await Promise.all([
     account.client.from('workspace_settings').select('*').single(),
@@ -49,7 +50,8 @@ test('website onboarding rejects invalid targets, performs a real crawl, persist
   expect(Number(settings.data.crawl_status.pages_read)).toBeGreaterThan(0)
   expect(nodes.data!.length).toBeGreaterThan(0)
   expect(sources.data!.length).toBeGreaterThan(0)
-  expect(proposals.data!.length).toBeGreaterThan(0)
+  // Website intelligence is saved automatically as approved records; no client approval is required.
+  expect(nodes.data!.every(node => node.status === 'approved' && node.approval_state === 'approved')).toBeTruthy()
   expect(audit.data).toHaveLength(1)
 
   const fetched = new Map<string, string>()
@@ -74,16 +76,14 @@ test('website onboarding rejects invalid targets, performs a real crawl, persist
 
   await page.goto('/brain')
   await waitForHydration(page)
-  const approve = page.getByRole('button', { name: 'Approve for use' }).first()
-  await expect(approve).toBeVisible()
-  await approve.click()
+  // Website intelligence is auto-approved, so it is already usable by the Director.
   const approved = await poll(
     async () => await account.client.from('brain_nodes').select('*').eq('approval_state', 'approved').limit(1).maybeSingle(),
     result => Boolean(result.data) || Boolean(result.error),
     30_000,
   )
   expect(approved.error).toBeNull()
-  expect(approved.data, 'approval must persist to the Brain, regardless of transient UI state').toBeTruthy()
+  expect(approved.data, 'auto-approved knowledge must persist to the Brain').toBeTruthy()
 
   await page.goto('/employee')
   const request = `Using my approved Business Brain, summarize the fact titled "${approved.data!.title}" in one sentence.`

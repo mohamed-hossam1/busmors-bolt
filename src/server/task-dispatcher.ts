@@ -4,7 +4,8 @@ import type { ExecutionTask } from '../features/tasks/types'
 export async function dispatchTasks(backend: TaskBackend, budgetMs = 240000) {
  const deadline = Date.now() + budgetMs
  while (Date.now() < deadline) {
-  const queued = (await backend.list()).filter(task => task.status === 'queued').sort((a, b) => a.created_at.localeCompare(b.created_at))
+  // Publishing runs through its own reconciliation path (C26), never the generic runner.
+  const queued = (await backend.list()).filter(task => task.status === 'queued' && (task.type as string) !== 'publishing').sort((a, b) => a.created_at.localeCompare(b.created_at))
   if (!queued.length) return
   let admitted = 0
   await Promise.all(queued.slice(0, 2).map(async candidate => {

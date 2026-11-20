@@ -35,7 +35,7 @@ export function loadE2EEnv(): E2EEnv {
   return {
     supabaseUrl: required('E2E_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL').replace(/\/$/, ''),
     anonKey: required('E2E_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    serviceRoleKey: process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY,
+    serviceRoleKey: process.env.E2E_SUPABASE_SECRET_KEY ?? process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY,
     databaseUrl: required('E2E_DATABASE_URL', 'DATABASE_URL'),
     baseUrl: (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4179').replace(/\/$/, ''),
     aiApiKey: process.env.E2E_AI_API_KEY ?? process.env.AI_API_KEY,
