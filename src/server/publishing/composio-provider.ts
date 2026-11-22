@@ -17,7 +17,11 @@ import type { FacebookPage, PublishOutcome, PublishingProvider } from './provide
  * - Tools (toolkit version pinned below):
  *   FACEBOOK_GET_USER_PAGES { fields, limit, after, user_id } -> data: { data: [{ id, name }], paging }.
  *     Its default fields include Page access tokens, so fields is always 'id,name'.
- *   FACEBOOK_CREATE_POST { page_id, message, published (default true), link, ... } (required: page_id, message).
+ *   FACEBOOK_CREATE_POST { page_id, message, published (default true), link, scheduled_publish_time, ... }
+ *     (required: page_id, message) -> data: { id: 'pageid_postid' }.
+ *     scheduled_publish_time: integer Unix seconds UTC, at least 10 minutes ahead, with
+ *     published=false. Meta: 10 minutes to 30 days (Pages API guide; the Graph reference
+ *     says 75 days, the stricter 30 is used). BUSMORA allows 15 minutes to 29 days.
  *   (The plan's FACEBOOK_LIST_MANAGED_PAGES does not exist.)
  * - tools.execute(slug, { userId, connectedAccountId, version, arguments }) -> { data, error, successful, logId }.
  * Composio user id = BUSMORA workspace id; never taken from client input.
@@ -110,7 +114,10 @@ export const composioProvider: PublishingProvider = {
     return pages
   },
 
-  async publishText({ workspaceId, connectionRef, pageId, message }): Promise<PublishOutcome> {
+  async publishText({ workspaceId, connectionRef, pageId, message, scheduleAt }): Promise<PublishOutcome> {
+    // Facebook-native scheduling: published=false + scheduled_publish_time (integer Unix
+    // seconds, UTC). Facebook then publishes the post itself at that time.
+    const timing = typeof scheduleAt === 'number' ? { published: false, scheduled_publish_time: scheduleAt } : { published: true }
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), PUBLISH_TIMEOUT_MS) })
     try {
@@ -119,7 +126,7 @@ export const composioProvider: PublishingProvider = {
           userId: workspaceId,
           connectedAccountId: connectionRef,
           version: FACEBOOK_TOOLKIT_VERSION,
-          arguments: { page_id: pageId, message, published: true },
+          arguments: { page_id: pageId, message, ...timing },
         }),
         timeout,
       ])

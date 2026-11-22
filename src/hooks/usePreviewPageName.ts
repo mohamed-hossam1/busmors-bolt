@@ -1,24 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useCopy } from './useCopy'
-import { loadPublishingStatus } from '../server/publishing-actions'
+import { loadPublishingStatus, type PublishingStatus } from '../server/publishing-actions'
 
 /**
- * Page name for Facebook previews. Loads the publishing status once per screen
- * (call this only in the top-level screen component and pass the name down).
+ * Publishing status and the Page name for Facebook previews. Loads once per screen
+ * (call it only in the top-level screen component and pass the values down).
  */
-export function usePreviewPageName(): string {
+export function usePublishingStatus(): { status: PublishingStatus | null; pageName: string; reload: () => void } {
   const { t } = useCopy()
-  const [pageName, setPageName] = useState<string | null>(null)
+  const [status, setStatus] = useState<PublishingStatus | null>(null)
+  const reload = useCallback(() => {
+    loadPublishingStatus().then(setStatus).catch(() => { /* the fallback name stays */ })
+  }, [])
   useEffect(() => {
     let alive = true
-    loadPublishingStatus()
-      .then((status) => {
-        if (alive && status.connection?.status === 'connected' && status.connection.pageName) setPageName(status.connection.pageName)
-      })
-      .catch(() => { /* the fallback name stays */ })
+    loadPublishingStatus().then((value) => { if (alive) setStatus(value) }).catch(() => { /* the fallback name stays */ })
     return () => { alive = false }
   }, [])
-  return pageName ?? t('fbPageFallback')
+  const connected = status?.connection?.status === 'connected' && status.connection.pageName
+  return { status, pageName: connected ? status!.connection!.pageName! : t('fbPageFallback'), reload }
+}
+
+/** Page name for Facebook previews (screens that do not need the full status). */
+export function usePreviewPageName(): string {
+  return usePublishingStatus().pageName
 }

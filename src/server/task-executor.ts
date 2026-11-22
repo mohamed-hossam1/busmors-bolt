@@ -23,6 +23,9 @@ export function parseRoute(text:string):RouteDecision {
  // (e.g. 14 for "2 weeks") is clamped, and clarification options are limited
  // to the first 8 usable ones.
  if(value&&typeof value==='object'){
+  // An intent name in "mode" (e.g. "content_creation") means: run it as a task.
+  const mode:string=value.mode
+  if(!['reply','clarify','task'].includes(mode)&&mode===value.intent&&value.intent!=='simple_answer')value.mode='task'
   const quantity=Math.round(Number(value.quantity??1))
   if(Number.isFinite(quantity))value.quantity=Math.min(12,Math.max(1,quantity))
   if(value.question&&Array.isArray(value.question.options))value.question.options=value.question.options.filter(option=>typeof option==='string'&&option.trim()&&option.length<=200).slice(0,8)

@@ -1,14 +1,27 @@
 'use server'
 import { getIdentity } from './auth'
+import { createAdminClient } from './supabase-admin'
 import { createHash } from 'node:crypto'
 import type { PlannedPost } from '../lib/types'
 
 export async function loadPosts(): Promise<PlannedPost[]> {
  const identity = await getIdentity()
  if (!identity) throw new Error('Sign in again.')
+ // Sends whose result was never recorded become Needs review after 10 minutes. This
+ // only updates state; it never sends or retries anything.
+ try { await createAdminClient().rpc('mark_stale_publish_attempts') } catch { /* best effort */ }
  const { data, error } = await identity.supabase.from('planned_posts').select('*').order('scheduled_for', { ascending: true })
  if (error) throw new Error('Posts could not be loaded.')
- return (data ?? []) as PlannedPost[]
+ const posts = (data ?? []) as PlannedPost[]
+ // Unresolved holds explain why a post is On hold (owner RLS allows reading them).
+ const { data: holds } = await identity.supabase.from('post_holds').select('post_id, reason, kind').is('resolved_at', null)
+ const byPost = new Map<string, { reason: string; kind: string }[]>()
+ for (const hold of (holds ?? []) as { post_id: string; reason: string; kind: string }[]) {
+  const list = byPost.get(hold.post_id) ?? []
+  list.push({ reason: hold.reason, kind: hold.kind })
+  byPost.set(hold.post_id, list)
+ }
+ return posts.map(post => ({ ...post, holds: byPost.get(post.id) ?? [] }))
 }
 
 export async function recoverPosts(): Promise<PlannedPost[]> {
@@ -69,6 +82,7 @@ export async function updatePosts(ids: string[], change: { status?: PlannedPost[
  })
  if (error) {
    const code = error.message || ''
+   if (code.includes('LOCKED')) return { error: 'This post was already sent to Facebook and cannot be edited here.' }
    if (code.includes('VERSION_CONFLICT')) return { error: 'This post changed since you opened it. Refresh and retry.' }
    if (code.includes('NOT_APPROVED')) return { error: 'Only an approved post can be marked published.' }
    if (code.includes('INVALID_TRANSITION')) return { error: 'That status change is not allowed from the current state.' }
@@ -88,6 +102,6 @@ export async function deletePosts(ids: string[]): Promise<{ error: string | null
  if (!identity) return { error: 'Sign in again.' }
  if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some(id => typeof id !== 'string')) return { error: 'Invalid post selection.' }
  const { error } = await identity.supabase.rpc('delete_post', { p_ids: ids })
- if (error) return { error: 'The posts could not be deleted. Please retry.' }
+ if (error) return { error: error.message?.includes('HAS_PUBLISH_HISTORY') ? 'This post has publishing history and cannot be deleted.' : 'The posts could not be deleted. Please retry.' }
  return { error: null }
 }

@@ -22,8 +22,14 @@ export interface PublishingProvider {
   completeConnection(workspaceId: string, callbackParams: URLSearchParams): Promise<{ ok: true; connectionRef: ConnectionRef } | { ok: false; reason: 'denied' | 'invalid' }>
   verifyConnection(workspaceId: string, connectionRef: ConnectionRef): Promise<boolean>
   listPages(workspaceId: string, connectionRef: ConnectionRef): Promise<FacebookPage[]>
-  /** Never throws. Must finish within 20 seconds; a timeout after sending is 'uncertain'. */
-  publishText(input: { workspaceId: string; connectionRef: ConnectionRef; pageId: string; message: string }): Promise<PublishOutcome>
+  /**
+   * Sends the text once. Without scheduleAt it is published immediately. With scheduleAt
+   * (Unix seconds, UTC; Facebook allows 10 minutes to 30 days ahead) Facebook stores it
+   * as a scheduled post and publishes it at that time; 'confirmed' then means Facebook
+   * accepted the schedule. Never throws. Must finish within 20 seconds; a timeout after
+   * sending is 'uncertain'.
+   */
+  publishText(input: { workspaceId: string; connectionRef: ConnectionRef; pageId: string; message: string; scheduleAt?: number }): Promise<PublishOutcome>
   /** Ignores "not found". */
   disconnect(workspaceId: string, connectionRef: ConnectionRef): Promise<void>
 }

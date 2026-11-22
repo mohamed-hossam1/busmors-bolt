@@ -42,7 +42,7 @@ export default function FacebookConnectionCard() {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   useDialog(confirmDisconnect, () => setConfirmDisconnect(false))
 
-  const refresh = () => loadPublishingStatus().then(setStatus).catch(() => setStatus({ configured: false, connection: null, autoPublishActive: false }))
+  const refresh = () => loadPublishingStatus().then(setStatus).catch(() => setStatus({ configured: false, connection: null }))
 
   useEffect(() => {
     void refresh()

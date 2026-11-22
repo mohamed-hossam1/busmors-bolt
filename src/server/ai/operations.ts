@@ -19,7 +19,9 @@ export function validateOutput(operation: Operation, text: string): boolean {
     // Structure only. parseRoute in the task executor clamps quantity to 1-12 and
     // keeps at most 8 usable options, so e.g. "a 2-week campaign" (quantity 14)
     // or a ninth option no longer rejects an otherwise usable routing decision.
-    if (operation === 'route') return ['reply','clarify','task'].includes(v.mode) && typeof v.reply === 'string'
+    // The model sometimes puts the intent name into "mode" (e.g. "content_creation");
+    // parseRoute treats that as a task, so it is accepted here.
+    if (operation === 'route') return (['reply','clarify','task'].includes(v.mode) || (v.mode === v.intent && v.intent !== 'simple_answer')) && typeof v.reply === 'string'
       && v.reply.length <= 12000 && (v.mode !== 'reply' || v.reply.trim().length > 0)
       && ['simple_answer','market_research','competitor_analysis','content_creation','campaign_planning','performance_diagnosis'].includes(v.intent)
       && Number.isFinite(Number(v.quantity ?? 1)) && Number(v.quantity ?? 1) >= 1

@@ -2,7 +2,7 @@
 
 **Written:** 21 November 2026 · **Revised:** 22 November 2026 (review findings and owner decisions applied; Phase 0 local DB checks added; Facebook-side edit/delete ruled out)\
 **Audience:** the coding agent that implements this plan, which may be a smaller model. Follow every step literally. If a step is ambiguous, read §0 again; if it is still ambiguous, stop and ask the owner instead of guessing.\
-**Status:** not started.
+**Status:** Phases 0–4 done; Phase 5 revised for Facebook-native scheduling (22 Nov 2026); Phase 6 cancelled.
 
 ---
 
@@ -16,11 +16,11 @@
 4. **Two-step approval (owner decision, 22 Nov 2026).**
    - **Step 1, content approval:** every draft post shows **Approve** and **Reject**. Approve means "the text is right". It does **not** authorize publishing.
    - **Step 2, after Approve**, the post shows three actions:
-     - **Schedule**: a dialog with the proposed time (editable, workspace timezone) and the lateness allowance shown. Confirming creates the **publish approval** bound to the exact version, Page and time. Approved scheduled posts are published automatically at that time by a background job.
+     - **Schedule**: a dialog with the proposed time (editable, workspace timezone; 15 minutes to 29 days ahead). Confirming authorizes the exact version, Page and time and **sends the post to Facebook immediately as a Facebook scheduled post** (`published=false`, `scheduled_publish_time`). **Facebook** publishes it at that time; BUSMORA has no scheduler (revised 22 Nov 2026, §5.R).
      - **Publish now**: a confirmation dialog with the Facebook preview and Page name, then publish immediately.
      - **I'll publish it myself**: copy caption, then **I published it** (owner-reported).
    - If no Facebook Page is connected, **Schedule** and **Publish now** are visible but **disabled** with the text "Connect a Facebook Page in Settings". **I'll publish it myself** stays available.
-   - Editing the text of an approved or scheduled post returns it to **draft**, revokes any schedule, and requires Approve again.
+   - Editing the text of an approved (not yet sent) post returns it to **draft** and requires Approve again. Once a post is sent to Facebook (scheduled or published) it is **locked** in BUSMORA: no Edit, no Delete; changes or cancellations happen on Facebook.
 5. **Click a day → see that day's posts.** The day panel lists every post planned for that day (proposed or scheduled) with the actions above.
 6. Publishing goes through **Composio** (managed Facebook OAuth app, so BUSMORA does not need its own Meta App Review), behind a `PublishingProvider` adapter so the provider can be swapped later.
 
@@ -32,7 +32,7 @@
 | Which results get the "Save?" offer | Substantial results only (§1.2). Short chat replies get no offer. |
 | Publishing provider | **Composio** managed OAuth, wrapped in a `PublishingProvider` adapter. |
 | Approval | **Two steps** (§0.1 item 4): content Approve/Reject, then Schedule / Publish now / I'll publish it myself. |
-| Scheduling | **Automatic publishing at the scheduled time** + a **Publish now** button. |
+| Scheduling | **Facebook's native scheduling** (owner decision 22 Nov 2026): Schedule sends the post to Facebook right away with `scheduled_publish_time`; Facebook publishes it. Plus a **Publish now** button. No BUSMORA scheduler, cron, poller or heartbeat. |
 | Dates | **AI proposes dates; the owner confirms the exact time** in the Schedule dialog. |
 | Platform | **Facebook Page only.** |
 | Media | **Text (and links inside text) only.** No image upload in this plan. |
@@ -41,10 +41,10 @@
 | Language | Product UI strings are **English only** (repo decision of 18 Nov 2026). |
 | Compatibility | The project is in development with no customers. **No backward-compatibility or data-migration work** is needed. |
 | Post drafts as a Deliverable | Kept: `content_posts` / `content_calendar` documents are a **read-only snapshot** of the drafts at save time, with a line pointing to Calendar & Publishing. The live, editable post stays only in Publishing. This is a documented deviation from PRD FR-41 ("Social Posts live only in Publishing"); record it in the end-of-session report. |
-| Lateness allowance | Shown in the Schedule dialog as a select: 5, 15, **30 (default)**, 60, 120 minutes. Publish now uses 30. |
+| Lateness allowance | **Removed** (22 Nov 2026): Facebook publishes at the exact time. The Schedule dialog allows 15 minutes to 29 days ahead (Facebook: 10 minutes to 30 days) and points to Publish now for anything sooner. |
 | Context holds | The owner can resolve a Brain-context hold with **"I reviewed it, keep this text"** (§5.1.7). |
 | Deleting posts with publish history | **Refused** with a clear message (keeps the provider evidence). |
-| "Auto-publish is active" claims | Shown only when the publisher has actually run in the last 5 minutes (heartbeat, §6.1). |
+| "Auto-publish is active" claims | **Not applicable** (Phase 6 cancelled). After a scheduled time passes the post reads "Published via Facebook schedule" with a note that BUSMORA does not check Facebook; it never claims BUSMORA verified it. |
 | Test adapter | A `FakePublishingProvider` exists for development and tests only (§4.5). |
 | Posts on Facebook (owner decision, 22 Nov 2026) | BUSMORA only **creates** posts on Facebook. It never edits, deletes, unpublishes or reads back a post on Facebook, and it does not sync changes the owner makes on Facebook. Editing a post's text **inside BUSMORA before it is published** stays in scope (it returns the post to draft, §5.1.1). A published post is read-only in BUSMORA. |
 | Database checks | Run only against a **local** PostgreSQL (`LOCAL_PG_URL`, localhost only), never against the shared Supabase project (Phase 0). |
@@ -551,7 +551,7 @@ export interface PublishingProvider {
   verifyConnection(workspaceId: string, connectionRef: ConnectionRef): Promise<boolean>
   listPages(workspaceId: string, connectionRef: ConnectionRef): Promise<FacebookPage[]>
   /** Never throws. Must finish within 20 seconds; a timeout after sending is 'uncertain'. */
-  publishText(input: { workspaceId: string; connectionRef: ConnectionRef; pageId: string; message: string }): Promise<PublishOutcome>
+  publishText(input: { workspaceId: string; connectionRef: ConnectionRef; pageId: string; message: string; scheduleAt?: number /* Unix seconds UTC: Facebook-native scheduled post */ }): Promise<PublishOutcome>
   /** Ignores "not found". */
   disconnect(workspaceId: string, connectionRef: ConnectionRef): Promise<void>
 }
@@ -638,6 +638,16 @@ Add **one new card below the existing settings card** (same classes as line 131:
 ---
 
 ## 5. Phase 5: Two-step approval, Publish now, and the publishing core
+
+### 5.R Revision, 22 Nov 2026 (owner decision): Facebook-native scheduling. **This section overrides anything below that conflicts with it.**
+
+- **Schedule** sends the post to Facebook **immediately** with `FACEBOOK_CREATE_POST` `published=false` + `scheduled_publish_time` (integer Unix seconds, UTC; Composio schema). Facebook publishes it at that time. Verified limits: Facebook accepts 10 minutes to 30 days ahead (Meta Pages API guide; the Graph reference says 75 days, the stricter 30 is used). BUSMORA allows **15 minutes to 29 days** and tells the owner to use **Publish now** for anything sooner. **No lateness allowance.**
+- **One send per post version, for both actions.** User RPC `authorize_post_publish(p_post_id, p_expected_version, p_mode 'now'|'schedule', p_instant, p_zone)` replaces `schedule_post`: it binds the exact version, Page and time (`scheduled_time` keeps `latenessAllowanceMinutes: 0` for the existing CHECK, plus `mode`), and raises `ALREADY_ATTEMPTED` once the post was sent. Server-only `claim_post_publish(p_post_id, 'now'|'schedule')` is the single send gate (`publish_attempts.mode` column added); a scheduled post counts as sent.
+- **`record_publish_result`**: confirmed + schedule → `status='scheduled'`, `execution_state='confirmed'`, `scheduled_for` = the instant, `publish_result` keeps Facebook's post id and `scheduledOnFacebook: true`; confirmed + now → `published`.
+- **Locked once sent** (scheduled or published): `update_post` raises `LOCKED` for `scheduled`/`publishing`/`published`; `delete_post` raises `HAS_PUBLISH_HISTORY`. **`unschedule_post` is removed.** The card shows "Scheduled on Facebook · <time>" and "Scheduled on Facebook. To change or cancel it, use your Page's scheduled posts on Facebook." After the time passes it shows "Published via Facebook schedule · <time>" plus "BUSMORA does not check Facebook after scheduling; open your Page to confirm." (UI only; BUSMORA never reads posts back).
+- `claim_post_publish` has no `'due'` mode and no missed-window logic. `mark_stale_publish_attempts()` runs (best effort, admin client) when the owner loads the calendar; it only changes state and never sends.
+- `PublishingStatus` has no `autoPublishActive`. The calendar hint is "Schedule sends a post to Facebook right away and Facebook publishes it at the chosen time. Publish now sends it immediately."
+- Acceptance (replaces §5.6 items 3–6 where they conflict): Publish now → published on the Page; Publish now twice → one post; Schedule 15+ minutes ahead → "Scheduled on Facebook" and the post is in the Page's scheduled posts; a scheduled post shows no Edit/Delete; I'll publish it myself → "You published this post".
 
 **Goal:** the owner approves the text (step 1), then schedules it, publishes it now, or publishes it themselves (step 2). Every send is claimed once, recorded, and verified.
 
@@ -782,6 +792,8 @@ Run 1–6 with `PUBLISHING_PROVIDER=fake` first, then 3 again with Composio on a
 ---
 
 ## 6. Phase 6: Automatic publishing at the scheduled time
+
+> **CANCELLED (owner decision, 22 Nov 2026).** Facebook's native scheduling replaces it (§5.R). Do **not** build the cron endpoint, a local poller, the `publisher_heartbeat` table or the heartbeat RPC. The text below is kept only as history and is out of scope.
 
 **Goal:** scheduled posts publish themselves at `scheduled_for` without the browser open, and the UI tells the truth about whether that is happening.
 
