@@ -3,10 +3,12 @@
 import React from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { SkeletonBox } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function CalendarSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="workspace-page animate-fade-in" aria-label="Loading posting schedule…">
+    <div className="workspace-page animate-fade-in" aria-label={t('loadingPostingSchedule')}>
       <div className="mx-auto max-w-6xl">
         {/* Header */}
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -27,9 +29,9 @@ export default function CalendarSkeleton() {
         {/* 3 Stat Cards */}
         <div className="mb-6 grid grid-cols-3 gap-3 sm:gap-4">
           {[
-            { label: 'All posts', width: 'w-16' },
-            { label: 'To review', width: 'w-18' },
-            { label: 'Approved', width: 'w-16' },
+            { label: t('allPosts'), width: 'w-16' },
+            { label: t('calendarToReview'), width: 'w-18' },
+            { label: t('status_approved'), width: 'w-16' },
           ].map((stat, i) => (
             <div key={i} className="stat-card p-4 rounded-2xl bg-white border border-ink-100 shadow-2xs">
               <SkeletonBox className={`h-3 ${stat.width} rounded`} />
@@ -70,8 +72,8 @@ export default function CalendarSkeleton() {
           {/* Calendar Grid */}
           <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-2xs">
             <div className="grid grid-cols-7 border-b border-ink-100 bg-ink-50/70">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+              {[t('daySun'), t('dayMon'), t('dayTue'), t('dayWed'), t('dayThu'), t('dayFri'), t('daySat')].map((day, index) => (
+                <div key={index} className="py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-ink-400">
                   {day}
                 </div>
               ))}
@@ -139,7 +141,7 @@ export default function CalendarSkeleton() {
           <aside className="flex flex-col gap-3 rounded-2xl border border-ink-200 bg-white p-4 shadow-2xs">
             <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Day plan</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">{t('calendarDayPlan')}</p>
                 <SkeletonBox className="mt-1 h-4 w-32 rounded" />
               </div>
               <span className="badge bg-ink-100 text-ink-600 font-semibold px-2 py-0.5 rounded-full text-xs">2</span>
@@ -153,7 +155,7 @@ export default function CalendarSkeleton() {
                       <div className="h-3 w-3 rounded-full bg-primary-400/70" />
                       <SkeletonBox className="h-3.5 w-20 rounded" />
                     </div>
-                    <span className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Review</span>
+                    <span className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800">{t('review')}</span>
                   </div>
                   <div className="space-y-1.5">
                     <SkeletonBox className="h-3 w-full rounded" />

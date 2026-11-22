@@ -2,6 +2,7 @@ import { after } from 'next/server'
 import { requireApiIdentity, apiError } from '@/server/auth'
 import { taskBackend } from '@/server/task-backend'
 import { dispatchTasks } from '@/server/task-dispatcher'
+import { runOrchestratorRequest } from '@/server/orchestrator/gateway-server'
 import { createClient } from '@supabase/supabase-js'
 import { publicSupabaseConfig } from '@/lib/supabase-config'
 export const maxDuration = 300
@@ -19,6 +20,22 @@ export async function POST(request: Request) {
   let result: unknown
   switch (body.action) {
    case 'refresh': await backend.rpc('recover_tasks', { p_runner_id: null }); result = await backend.list(); break
+   // Orchestrator-first: every message runs through the Orchestrator before any task.
+   case 'orchestrate':
+    if (typeof body.conversationId !== 'string' || !body.conversationId) return Response.json({ error: 'Missing conversation.' }, { status: 400 })
+    if (typeof body.request !== 'string' || !body.request.trim() || body.request.length > 12000) return Response.json({ error: 'Enter a message of up to 12,000 characters.' }, { status: 400 })
+    if (typeof body.idempotencyKey !== 'string' || !body.idempotencyKey) return Response.json({ error: 'Missing request key.' }, { status: 400 })
+    result = await runOrchestratorRequest({
+     supabase: db,
+     workspaceId: user.id,
+     token,
+     conversationId: body.conversationId,
+     request: body.request,
+     idempotencyKey: body.idempotencyKey,
+     origin: body.origin,
+     signal: request.signal,
+    })
+    break
    case 'submit':
     if (typeof body.request !== 'string' || !body.request.trim() || body.request.length > 12000) return Response.json({ error: 'Enter a request of up to 12,000 characters.' }, { status: 400 })
     result = await backend.rpc('enqueue_task', { p_conversation_id: body.conversationId, p_request: body.request, p_origin: body.origin ?? { kind: 'direct', conversationId: body.conversationId }, p_idempotency_key: body.idempotencyKey }); break

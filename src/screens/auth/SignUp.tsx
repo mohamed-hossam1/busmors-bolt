@@ -1,26 +1,38 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, type FormEvent } from 'react'
+import { Link } from '@/shared/i18n'
+import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
 import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthLayout'
+import { useAuth } from '../../context/AuthContext'
 
 import GoogleButton from '../../components/auth/GoogleButton'
 
 
 export default function SignUp() {
   const { t } = useCopy()
+  const { session, loading } = useAuth()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { error, setError, busy, run } = useAuthError()
 
+  useEffect(() => {
+    if (session) {
+      router.replace('/employee')
+    }
+  }, [session, router])
+
+  if (session) {
+    return null
+  }
+
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (password.length < 8) {
-      setError(('Use at least 8 characters.'))
+      setError(t('passwordMinLength'))
       return
     }
     void run(async () => {
@@ -28,15 +40,15 @@ export default function SignUp() {
         email,
         password,
       })
-      if (error) return ('Unable to create the account. Check your email and password, then try again.')
-      if (!data.session) return 'Your account could not be signed in. Please contact the workspace administrator.'
+      if (error) return t('signUpFailed')
+      if (!data.session) return t('sessionError')
       router.replace('/onboarding'); router.refresh()
       return null
     })
   }
 
   return (
-    <AuthLayout title={('Create your workspace')} subtitle={('Your business context. Your next useful step.')}>
+    <AuthLayout title={t('signUpTitle')} subtitle={t('signUpSubtitle')}>
 
       <GoogleButton />
       <form onSubmit={submit} className="space-y-4">

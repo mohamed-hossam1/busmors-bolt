@@ -1,5 +1,6 @@
 import type { ExecutionTask } from './types'
 import type { TaskOrigin } from '../../lib/contracts'
+import type { OrchestratorResult } from '../orchestrator/contracts'
 /** UI coordinator only. Work runs in Next.js; persisted leases arbitrate concurrency. */
 export class TaskClient {
  tasks: ExecutionTask[] = []
@@ -24,6 +25,12 @@ export class TaskClient {
   try { const tasks = await this.request<ExecutionTask[]>('refresh'); if (!this.stopped) { this.tasks = tasks; this.error = ''; this.notify() } }
   catch { if (!this.stopped) { this.error = 'Task progress could not be refreshed. Your saved work is kept.'; this.notify() } }
   finally { this.refreshing = false }
+ }
+ /** Orchestrator-first entry point: every message is understood and routed here. */
+ async orchestrate(conversationId: string, request: string, idempotencyKey: string, origin?: TaskOrigin): Promise<OrchestratorResult> {
+  const result = await this.request<OrchestratorResult>('orchestrate', { conversationId, request, idempotencyKey, origin })
+  await this.refresh()
+  return result
  }
  async submit(conversationId: string, request: string, idempotencyKey: string, origin?: TaskOrigin) {
   const task = await this.request<ExecutionTask>('submit', { conversationId, request, idempotencyKey, origin })

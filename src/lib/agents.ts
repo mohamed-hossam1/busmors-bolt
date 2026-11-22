@@ -23,7 +23,7 @@ export async function callAi(input: {
   temperature?: number
   jsonMode?: boolean
   useSharedCrawlKey?: boolean
-  crawlOperation?: 'extract' | 'relate'
+  crawlOperation?: 'extract' | 'extract_ar' | 'relate'
   reasoningEffort?: 'low' | 'medium' | 'high'
   signal?: AbortSignal
 }): Promise<AiCallResult> {

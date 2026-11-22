@@ -1,6 +1,7 @@
 import { requireApiIdentity, apiError } from '@/server/auth'
 import { extractKnowledgeFromSite, analyzeSiteKnowledge, prepareSiteKnowledge, saveCrawlKnowledge } from '@/server/crawl'
 import { normalizeSiteUrl } from '@/lib/siteUrl'
+import { DEFAULT_CRAWL_PAGES } from '@/server/siteReader'
 export const maxDuration = 120
 
 // Bounded, short-lived retry cache, isolated by authenticated workspace.
@@ -10,6 +11,8 @@ const completedReads = new Map<string, { expires: number; pagesRead: number; pre
 export async function POST(request: Request) {
   try {
     const { user } = await requireApiIdentity(request)
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.replace(/^Bearer\s+/i, '')
     const body = await request.json()
     if (!['read', 'organize'].includes(body.action) || typeof body.url !== 'string' || body.url.length > 2048) {
       return Response.json({ error: 'Invalid website request.' }, { status: 400 })
@@ -25,11 +28,11 @@ export async function POST(request: Request) {
           const key = user.id + ':' + url
           let completed = completedReads.get(key)
           if (!completed || completed.expires < Date.now()) {
-            const result = await extractKnowledgeFromSite(url, (read, total, currentUrl) => send({ stage: 'read', read, total, currentUrl }), 10, { forceRefresh: true, signal: controller.signal })
+            const result = await extractKnowledgeFromSite(url, (read, total, currentUrl) => send({ stage: 'read', read, total, currentUrl }), DEFAULT_CRAWL_PAGES, { forceRefresh: true, signal: controller.signal })
             if (!result.pages_read) throw new Error('No useful website pages were found.')
             const categories = Array.from(new Set(result.candidates.map(c => c.category)))
-            send({ stage: 'extract', read: result.pages_read, categories, message: 'Finding business information supported by your website...' })
-            const analysis = await analyzeSiteKnowledge(result.pages)
+            send({ stage: 'extract', read: result.pages_read, categories })
+            const analysis = await analyzeSiteKnowledge(result.pages, { token, language: body.language })
             if (controller.signal.aborted) return
             completed = { expires: Date.now() + 300000, pagesRead: result.pages_read, prepared: prepareSiteKnowledge(result.pages, result.candidates, analysis), analysis }
             if (completedReads.size >= 20) completedReads.delete(completedReads.keys().next().value!)
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
           if (body.action === 'read') {
             send({ result: { pages_read: pagesRead, candidates: prepared.candidates, categories } })
           } else {
-            send({ stage: 'save', message: 'Saving your business knowledge...', read: pagesRead, categories })
+            send({ stage: 'save', read: pagesRead, categories })
             const counts = await saveCrawlKnowledge(url, prepared.candidates, prepared.relations, pagesRead, analysis.candidates.length > 0 && analysis.warnings.length === 0, user.id)
             completedReads.delete(key)
             send({ result: { success: true, pagesRead, categories, ...counts, warning: counts.warning || (analysis.warnings.length ? analysis.warnings.join(' ') + ' Source-backed suggestions were saved for review; existing knowledge was kept.' : undefined) } })

@@ -3,6 +3,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { removeAiKey } from '../server/key-actions'
+import { useCopy } from '../hooks/useCopy'
 
 interface Props {
   children: ReactNode
@@ -14,8 +15,10 @@ interface State {
   error: Error | null
 }
 
-export default class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+type Copy = ReturnType<typeof useCopy>['t']
+
+class ErrorBoundaryInner extends Component<Props & { t: Copy }, State> {
+  constructor(props: Props & { t: Copy }) {
     super(props)
     this.state = { hasError: false, error: null }
   }
@@ -39,6 +42,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    const { t } = this.props
     if (this.state.hasError) {
       return (
         <div className="flex h-full min-h-[400px] items-center justify-center p-6">
@@ -48,10 +52,10 @@ export default class ErrorBoundary extends Component<Props, State> {
             </div>
             <div>
               <h2 className="text-lg font-bold text-ink-900">
-                {this.props.fallbackTitle || 'Something went wrong'}
+                {this.props.fallbackTitle || t('somethingWentWrong')}
               </h2>
               <p className="mt-1 text-xs text-ink-500">
-                {this.state.error?.message || 'An unexpected error occurred while loading this view.'}
+                {this.state.error?.message || t('unexpectedViewError')}
               </p>
             </div>
 
@@ -62,7 +66,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 className="btn-primary text-xs py-2 px-4 gap-2"
               >
                 <RefreshCw size={14} />
-                Reload page
+                {t('reloadPage')}
               </button>
               <button
                 type="button"
@@ -70,7 +74,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 className="btn-danger text-xs py-2 px-4 gap-2"
               >
                 <Trash2 size={14} />
-                Reset AI Key
+                {t('resetAiKey')}
               </button>
             </div>
           </div>
@@ -80,4 +84,9 @@ export default class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children
   }
+}
+
+export default function ErrorBoundary(props: Props) {
+  const { t } = useCopy()
+  return <ErrorBoundaryInner {...props} t={t} />
 }

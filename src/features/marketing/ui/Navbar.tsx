@@ -9,6 +9,8 @@ import { Link } from "@/shared/i18n";
 
 import { ROUTES } from "@/shared/routes";
 import Brand from "@/components/Brand";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { supabase } from "@/lib/supabase";
 
 const navigationLinks = [
   { href: ROUTES.MARKETING.HOME, label: "Navbar.home" },
@@ -16,14 +18,33 @@ const navigationLinks = [
   { href: ROUTES.MARKETING.PRICING, label: "Navbar.plans" },
 ] as const;
 
-export default function Navbar() {
+export default function Navbar({ initialAuthenticated = false }: { initialAuthenticated?: boolean } = {}) {
   const t = useTranslations("Marketing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useDialog(mobileMenuOpen, () => setMobileMenuOpen(false));
   const [scrolled, setScrolled] = useState(false);
   const [overLight, setOverLight] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(initialAuthenticated);
   const stateRef = useRef({ scrolled: false, overLight: false, hidden: false });
+
+  useEffect(() => {
+    let alive = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (alive && data.session?.user) {
+        setIsAuthenticated(true);
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (alive) {
+        setIsAuthenticated(Boolean(session?.user));
+      }
+    });
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -114,17 +135,24 @@ export default function Navbar() {
 
           {/* Right Links + CTA */}
           <div className="flex shrink-0 items-center gap-4">
-            
-            <Link
-              href="/signin"
-
-              className="p-[15.9px] text-[15.9px] font-medium leading-[19.08px] text-stage-muted transition-colors hover:text-white"
-            >{t("Navbar.login")}</Link>
-            <Link
-              href="/signup"
-
-              className="inline-flex h-[52px] w-[148px] items-center justify-center rounded-[47.7px] bg-cosmic-canvas text-[15.9px] font-normal text-white transition-colors duration-200 hover:bg-cosmic-active"
-            >{t("Navbar.getStarted")}</Link>
+            <LanguageSwitcher />
+            {isAuthenticated ? (
+              <Link
+                href="/employee"
+                className="inline-flex h-[52px] items-center justify-center rounded-[47.7px] bg-cosmic-canvas px-6 text-[15.9px] font-normal text-white transition-colors duration-200 hover:bg-cosmic-active"
+              >{t("Navbar.dashboard")}</Link>
+            ) : (
+              <>
+                <Link
+                  href="/signin"
+                  className="p-[15.9px] text-[15.9px] font-medium leading-[19.08px] text-stage-muted transition-colors hover:text-white"
+                >{t("Navbar.login")}</Link>
+                <Link
+                  href="/signup"
+                  className="inline-flex h-[52px] w-[148px] items-center justify-center rounded-[47.7px] bg-cosmic-canvas text-[15.9px] font-normal text-white transition-colors duration-200 hover:bg-cosmic-active"
+                >{t("Navbar.getStarted")}</Link>
+              </>
+            )}
           </div>
         </nav>
       </header>
@@ -172,18 +200,27 @@ export default function Navbar() {
           </div>
 
           <div className="flex flex-col gap-3 pt-6">
-            <Link
-              href="/signin"
+            <div className="flex justify-center pb-1"><LanguageSwitcher /></div>
+            {isAuthenticated ? (
+              <Link
+                href="/employee"
                 onClick={() => setMobileMenuOpen(false)}
-
-              className="w-full text-center py-3 rounded-full text-sm font-medium text-cyan-electric bg-cosmic-card border border-white/10"
-            >{t("Navbar.login")}</Link>
-            <Link
-              href="/signup"
-                onClick={() => setMobileMenuOpen(false)}
-
-              className="w-full text-center py-3 rounded-full text-sm font-semibold text-white bg-primary hover:bg-purple-hover shadow-lg shadow-primary/30"
-            >{t("Navbar.getStarted")}</Link>
+                className="w-full text-center py-3 rounded-full text-sm font-semibold text-white bg-primary hover:bg-purple-hover shadow-lg shadow-primary/30"
+              >{t("Navbar.dashboard")}</Link>
+            ) : (
+              <>
+                <Link
+                  href="/signin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-3 rounded-full text-sm font-medium text-cyan-electric bg-cosmic-card border border-white/10"
+                >{t("Navbar.login")}</Link>
+                <Link
+                  href="/signup"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-3 rounded-full text-sm font-semibold text-white bg-primary hover:bg-purple-hover shadow-lg shadow-primary/30"
+                >{t("Navbar.getStarted")}</Link>
+              </>
+            )}
           </div>
         </div>
       )}

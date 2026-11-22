@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useCopy } from '../hooks/useCopy'
 
 interface LoadingStateProps {
   label?: string
@@ -10,8 +11,10 @@ interface LoadingStateProps {
 
 export default function LoadingState({
   fullScreen = false,
-  label = 'Loading Busmora…',
+  label,
 }: LoadingStateProps = {}) {
+  const { t } = useCopy()
+  const resolvedLabel = label ?? t('loadingBrand')
   const [revealed, setRevealed] = useState(false)
 
   useEffect(() => {
@@ -25,7 +28,7 @@ export default function LoadingState({
   return (
     <div
       role="status"
-      aria-label={label}
+      aria-label={resolvedLabel}
       className={
         fullScreen
           ? 'fixed inset-0 z-50 flex items-center justify-center bg-ink-50 p-6 select-none'

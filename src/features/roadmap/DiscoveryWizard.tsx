@@ -1,7 +1,5 @@
 'use client'
 
-'use client'
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
@@ -18,15 +16,19 @@ import {
 } from 'lucide-react'
 import { RoadmapSkeleton } from '../../components/skeletons'
 import { useAuth } from '../../context/AuthContext'
+import { useCopy } from '../../hooks/useCopy'
+import { useI18n } from '../../context/I18nContext'
+import type { AppKey } from '../../lib/i18n'
 import type { AnswerStatus } from '../../lib/contracts'
 import type { BrainNode } from '../../lib/types'
 import {
-  DISCOVERY_GOALS,
   answerLabel,
   buildDiscoveryPlan,
+  getDiscoveryGoals,
   goalDefinition,
   isOpenStatus,
   isPositiveStatus,
+  localizeQuestionSchema,
 } from './discovery'
 import {
   loadDiscovery,
@@ -60,7 +62,16 @@ function rpcCode(error: unknown): string {
   return ''
 }
 
-function statusLabel(status: AnswerStatus): string {
+function statusLabel(status: AnswerStatus, t?: (key: AppKey) => string): string {
+  if (t) {
+    if (status === 'answered') return t('statusAnswered')
+    if (status === 'confirmed') return t('statusConfirmed')
+    if (status === 'unknown') return t('statusUnknown')
+    if (status === 'skipped') return t('statusSkipped')
+    if (status === 'not_applicable') return t('statusNotApplicable')
+    if (status === 'researching') return t('statusResearching')
+    return t('statusNotAnswered')
+  }
   if (status === 'answered') return 'Answered'
   if (status === 'confirmed') return 'Confirmed'
   if (status === 'unknown') return 'Unknown'
@@ -132,7 +143,12 @@ function QuestionCard({
   onLoadLatest,
   onSaveMine,
 }: QuestionCardProps) {
-  const schema = question.schema
+  const { t } = useCopy()
+  const { locale } = useI18n()
+  const schema = useMemo(
+    () => localizeQuestionSchema(question.question_key, question.schema, locale),
+    [question.question_key, question.schema, locale]
+  )
   const positive = isPositiveStatus(answer.status)
   const blocked = ['unknown', 'skipped', 'not_applicable', 'researching'].includes(answer.status)
   const reused = positive
@@ -146,9 +162,9 @@ function QuestionCard({
   return (
     <article className={`card p-5 transition sm:p-6 ${index === 0 ? 'border-primary-200' : ''}`}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="badge bg-ink-100 text-ink-700">Question {index + 1} of {total}</span>
-        <span className={`badge ${statusStyle(answer.status)}`}>{statusLabel(answer.status)}</span>
-        {reused && <span className="badge bg-emerald-50 text-emerald-700"><CheckCircle2 size={12} /> Already known</span>}
+        <span className="badge bg-ink-100 text-ink-700">{t('questionIndex', { index: index + 1, total })}</span>
+        <span className={`badge ${statusStyle(answer.status)}`}>{statusLabel(answer.status, t)}</span>
+        {reused && <span className="badge bg-emerald-50 text-emerald-700"><CheckCircle2 size={12} /> {t('alreadyKnown')}</span>}
       </div>
 
       <h3 className="text-base font-semibold leading-snug text-ink-900">{schema.label}</h3>
@@ -156,15 +172,15 @@ function QuestionCard({
 
       {blocked && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="flex items-center gap-2 font-medium"><AlertTriangle size={16} /> {statusLabel(answer.status)}</p>
+          <p className="flex items-center gap-2 font-medium"><AlertTriangle size={16} /> {statusLabel(answer.status, t)}</p>
           <p className="mt-1 text-xs leading-5">
             {answer.status === 'researching'
-              ? 'A linked research answer can return to this exact question later. Nothing has been treated as answered yet.'
-              : 'This is stored as an explicit non-answer. It will not be reused as a positive fact in the plan.'}
+              ? t('researchingNote')
+              : t('explicitNonAnswerNote')}
           </p>
           {answer.status !== 'researching' && (
             <button type="button" onClick={() => onStatus(question, 'unanswered')} className="mt-3 text-xs font-semibold underline">
-              Answer instead
+              {t('answerInstead')}
             </button>
           )}
         </div>
@@ -174,15 +190,18 @@ function QuestionCard({
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <CheckCircle2 size={16} className="text-emerald-700" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Already known from your Brain</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">{t('alreadyKnownFromBrain')}</p>
             <span className="badge bg-white/70 text-emerald-800">v{schema.reuse?.version}</span>
           </div>
-          <p className="mt-2 text-sm font-medium text-ink-900">{answerLabel(answer.value, schema) || 'Saved answer'}</p>
+          <p className="mt-2 text-sm font-medium text-ink-900">{answerLabel(answer.value, schema) || t('savedAnswer')}</p>
           <p className="mt-1 text-xs leading-5 text-emerald-900">
-            Source: {schema.reuse?.title} · {schema.reuse?.verificationState ?? 'owner reported'}. Edit it if this goal needs a different answer.
+            {t('reuseSourceNote', {
+              title: schema.reuse?.title ?? '',
+              verificationState: schema.reuse?.verificationState ?? t('ownerReported'),
+            })}
           </p>
           <button type="button" onClick={() => onEditReuse(question)} className="mt-3 text-xs font-semibold text-emerald-900 underline">
-            Edit this answer
+            {t('editThisAnswer')}
           </button>
         </div>
       )}
@@ -198,7 +217,7 @@ function QuestionCard({
                 role="radio"
                 aria-checked={selected}
                 onClick={() => onChoose(question, option.value)}
-                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
+                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-start transition ${
                   selected
                     ? 'border-primary-400 bg-primary-50 text-primary-900'
                     : 'border-ink-200 bg-white hover:border-primary-300'
@@ -210,7 +229,7 @@ function QuestionCard({
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                     {option.label}
-                    {option.source === 'brain' && <span className="badge bg-emerald-50 text-emerald-700">From your Brain</span>}
+                    {option.source === 'brain' && <span className="badge bg-emerald-50 text-emerald-700">{t('fromYourBrain')}</span>}
                   </span>
                   {option.detail && <span className="mt-0.5 block text-xs leading-5 text-ink-600">{option.detail}</span>}
                 </span>
@@ -222,13 +241,13 @@ function QuestionCard({
 
       {!blocked && !reused && selectedOther && (
         <label className="mt-3 block text-xs font-medium text-ink-700">
-          Your answer
+          {t('yourAnswer')}
           <input
             type="text"
             value={textValue}
             maxLength={300}
             onChange={(event) => onOther(question, event.target.value)}
-            placeholder="Type a short answer"
+            placeholder={t('typeShortAnswer')}
             className="input-field mt-1"
           />
         </label>
@@ -236,7 +255,7 @@ function QuestionCard({
 
       {!blocked && !reused && (schema.type === 'text' || schema.type === 'long_text') && (
         <label className="mt-4 block text-xs font-medium text-ink-700">
-          Your answer
+          {t('yourAnswer')}
           {schema.type === 'long_text' ? (
             <textarea
               value={textValue}
@@ -261,9 +280,9 @@ function QuestionCard({
       {!blocked && !reused && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => onSave(question)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
-            <Save size={13} /> Save answer
+            <Save size={13} /> {t('saveAnswer')}
           </button>
-          <span className="text-[11px] text-ink-500">Autosaves while you type.</span>
+          <span className="text-[11px] text-ink-500">{t('autosavesWhileTyping')}</span>
         </div>
       )}
 
@@ -274,7 +293,7 @@ function QuestionCard({
           onClick={() => onStatus(question, 'unknown')}
           className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${answer.status === 'unknown' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-ink-200 text-ink-600 hover:border-amber-300'}`}
         >
-          Not sure
+          {t('notSure')}
         </button>
         <button
           type="button"
@@ -282,7 +301,7 @@ function QuestionCard({
           onClick={() => onStatus(question, 'skipped')}
           className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${answer.status === 'skipped' ? 'border-slate-400 bg-slate-100 text-slate-800' : 'border-ink-200 text-ink-600 hover:border-slate-300'}`}
         >
-          Skip for now
+          {t('skipForNow')}
         </button>
         <button
           type="button"
@@ -290,23 +309,23 @@ function QuestionCard({
           onClick={() => onStatus(question, 'not_applicable')}
           className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${answer.status === 'not_applicable' ? 'border-ink-400 bg-ink-100 text-ink-800' : 'border-ink-200 text-ink-600 hover:border-ink-300'}`}
         >
-          Not applicable
+          {t('statusNotApplicable')}
         </button>
         {positive && (
           <button type="button" onClick={() => onStatus(question, 'unanswered')} className="rounded-full border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 hover:border-red-300 hover:text-red-700">
-            Clear answer
+            {t('clearAnswer')}
           </button>
         )}
       </div>
-      <p className="mt-2 text-[11px] leading-5 text-ink-500">Unknown, skipped and not applicable stay separate. None becomes a positive fact in the plan.</p>
+      <p className="mt-2 text-[11px] leading-5 text-ink-500">{t('unknownsSeparateNote')}</p>
 
       {conflict && (
         <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-medium">This answer changed elsewhere</p>
+          <p className="font-medium">{t('thisAnswerChangedElsewhere')}</p>
           <p className="mt-1 text-xs leading-5">{conflict}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => onLoadLatest(question)} className="btn-secondary min-h-8 px-3 py-1 text-xs">Load latest</button>
-            <button type="button" onClick={() => onSaveMine(question)} className="btn-secondary min-h-8 px-3 py-1 text-xs">Save mine over it</button>
+            <button type="button" onClick={() => onLoadLatest(question)} className="btn-secondary min-h-8 px-3 py-1 text-xs">{t('loadLatest')}</button>
+            <button type="button" onClick={() => onSaveMine(question)} className="btn-secondary min-h-8 px-3 py-1 text-xs">{t('saveMineOverIt')}</button>
           </div>
         </div>
       )}
@@ -316,6 +335,8 @@ function QuestionCard({
 
 export default function DiscoveryWizard() {
   const { settings } = useAuth()
+  const { t } = useCopy()
+  const { locale } = useI18n()
   const hasWebsite = Boolean(settings?.company_url?.trim())
 
   const [loading, setLoading] = useState(true)
@@ -384,7 +405,7 @@ export default function DiscoveryWizard() {
 
       let nextDraft = loaded.draft
       let nextQuestions = loaded.questions
-      const definition = goalDefinition(loaded.draft.goal)
+      const definition = goalDefinition(loaded.draft.goal, locale)
       if (!definition) {
         setDraft(loaded.draft)
         draftRef.current = loaded.draft
@@ -394,7 +415,7 @@ export default function DiscoveryWizard() {
         return
       }
 
-      const plan = buildDiscoveryPlan({ goal: loaded.draft.goal, hasWebsite, facts: brainFacts })
+      const plan = buildDiscoveryPlan({ goal: loaded.draft.goal, hasWebsite, facts: brainFacts, locale })
       const active = loaded.questions.filter((question) => question.active).sort((a, b) => a.position - b.position)
       const samePlan = active.length === plan.length && plan.every((item, index) =>
         active[index]?.question_key === item.question_key
@@ -419,7 +440,7 @@ export default function DiscoveryWizard() {
     } finally {
       setLoading(false)
     }
-  }, [applyLocal, applyQuestions, hasWebsite])
+  }, [applyLocal, applyQuestions, hasWebsite, locale])
 
   useEffect(() => {
     void load()
@@ -435,7 +456,7 @@ export default function DiscoveryWizard() {
     try {
       const existing = draftRef.current
       const saved = await saveDiscoveryDraft(goal, existing?.version ?? 0)
-      const plan = buildDiscoveryPlan({ goal, hasWebsite, facts: factsRef.current })
+      const plan = buildDiscoveryPlan({ goal, hasWebsite, facts: factsRef.current, locale })
       const synced = await syncDiscoveryQuestions(saved.id, saved.version, plan)
       if (!synced.draft) throw new Error('The saved Discovery draft was not returned.')
       const preserved = synced.questions.filter((question) => !question.active && isPositiveStatus(question.status)).length
@@ -713,25 +734,26 @@ export default function DiscoveryWizard() {
     )
   }
 
-  const goal = draft ? goalDefinition(draft.goal) : undefined
+  const goal = draft ? goalDefinition(draft.goal, locale) : undefined
   const saveLabel = saveState === 'saving'
-    ? 'Saving…'
+    ? t('saving')
     : saveState === 'error'
-      ? 'Save failed'
+      ? t('saveFailed')
       : localCount > 0
-        ? 'Unsaved changes'
+        ? t('unsavedChanges')
         : saveState === 'saved'
-          ? 'All answers saved'
-          : 'Saved'
+          ? t('allAnswersSaved')
+          : t('saved')
 
   if (!draft || goalPicker) {
+    const goals = getDiscoveryGoals(locale)
     return (
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 flex items-center gap-3">
           <span className="brain-page-heading"><Route size={22} /></span>
           <div>
-            <h1 className="workspace-heading">Roadmap</h1>
-            <p className="workspace-description">Start with the outcome. Discovery adapts, saves, and reuses what your Brain already knows.</p>
+            <h1 className="workspace-heading">{t('roadmapTitle')}</h1>
+            <p className="workspace-description">{t('roadmapDescription')}</p>
           </div>
         </header>
 
@@ -740,41 +762,41 @@ export default function DiscoveryWizard() {
         {draftConflict && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             <p>{draftConflict}</p>
-            <button type="button" onClick={() => void load()} className="mt-3 underline">Reload saved draft</button>
+            <button type="button" onClick={() => void load()} className="mt-3 underline">{t('reloadSavedDraft')}</button>
           </div>
         )}
 
         <div className="mb-5 rounded-xl border border-primary-100 bg-primary-50/60 p-4 text-sm text-primary-900">
-          <p className="flex items-center gap-2 font-medium"><Sparkles size={16} /> {hasWebsite ? 'Your Brain is available as context.' : 'No website needed.'}</p>
+          <p className="flex items-center gap-2 font-medium"><Sparkles size={16} /> {hasWebsite ? t('brainContextAvailable') : t('noWebsiteNeeded')}</p>
           <p className="mt-1 text-xs leading-5">
             {hasWebsite
-              ? 'Approved facts can prefill an answer, and you can always edit them.'
-              : 'Answer with what you know. The plan will use a real contact route instead of assuming a website.'}
+              ? t('brainContextDesc')
+              : t('noWebsiteDesc')}
           </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {DISCOVERY_GOALS.map((item) => (
+          {goals.map((item) => (
             <button
               key={item.value}
               type="button"
               disabled={busy}
               onClick={() => void selectGoal(item.value)}
-              className="card flex items-start gap-4 p-5 text-left transition hover:border-primary-400 disabled:opacity-60"
+              className="card flex items-start gap-4 p-5 text-start transition hover:border-primary-400 disabled:opacity-60"
             >
               <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Route size={18} /></span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-ink-900">{item.label}</span>
                 <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
               </span>
-              <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400" />
+              <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400 rtl:rotate-180" />
             </button>
           ))}
         </div>
 
-        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Loader2 size={15} className="animate-spin" /> Saving your goal…</p>}
+        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Loader2 size={15} className="animate-spin" /> {t('savingGoal')}</p>}
         {draft && goalPicker && (
-          <button type="button" onClick={() => setGoalPicker(false)} className="btn-secondary mt-5">Back to the current goal</button>
+          <button type="button" onClick={() => setGoalPicker(false)} className="btn-secondary mt-5">{t('backToCurrentGoal')}</button>
         )}
       </div>
     )
@@ -785,21 +807,21 @@ export default function DiscoveryWizard() {
       <header className="mb-5 flex flex-wrap items-start gap-3">
         <span className="brain-page-heading"><Route size={22} /></span>
         <div className="min-w-0 flex-1">
-          <h1 className="workspace-heading">Discovery</h1>
+          <h1 className="workspace-heading">{t('discoveryTitle')}</h1>
           <p className="workspace-description">
-            Goal: <span className="font-medium text-ink-900">{goal?.label ?? draft.goal}</span> · draft v{draft.version}
+            {t('discoveryGoalPrefix')} <span className="font-medium text-ink-900">{goal?.label ?? draft.goal}</span> · {t('discoveryDraftPrefix')} {draft.version}
           </p>
         </div>
-        <button type="button" onClick={() => setGoalPicker(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">Change goal</button>
+        <button type="button" onClick={() => setGoalPicker(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">{t('changeGoal')}</button>
       </header>
 
       <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white/95 p-3 backdrop-blur">
         <span role="status" className={`badge ${saveState === 'error' ? 'bg-red-50 text-red-700' : saveState === 'saving' ? 'bg-primary-50 text-primary-700' : 'bg-emerald-50 text-emerald-700'}`}>
           {saveState === 'saving' ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} {saveLabel}
         </span>
-        <span className="text-xs text-ink-500">{positiveCount} of {activeQuestions.length} answered</span>
+        <span className="text-xs text-ink-500">{t('answeredCount', { count: positiveCount, total: activeQuestions.length })}</span>
         <button type="button" onClick={() => void saveAll()} disabled={saveState === 'saving'} className="btn-primary ms-auto min-h-9 px-3 py-1.5 text-xs">
-          <Save size={13} /> Save answers
+          <Save size={13} /> {t('saveAnswers')}
         </button>
       </div>
 
@@ -808,7 +830,7 @@ export default function DiscoveryWizard() {
       {draftConflict && (
         <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p>{draftConflict}</p>
-          <button type="button" onClick={() => void load()} className="mt-3 underline">Reload saved draft</button>
+          <button type="button" onClick={() => void load()} className="mt-3 underline">{t('reloadSavedDraft')}</button>
         </div>
       )}
       {notice && <p role="status" className="mb-4 rounded-xl bg-primary-50 p-3 text-sm text-primary-800">{notice}</p>}
@@ -817,19 +839,19 @@ export default function DiscoveryWizard() {
         <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <LockKeyhole size={17} className="text-amber-800" />
-            <h2 className="font-semibold text-amber-900">Preliminary plan saved — not activated</h2>
+            <h2 className="font-semibold text-amber-900">{t('preliminaryPlanSaved')}</h2>
           </div>
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            No Roadmap was generated or activated. The next step will use {positiveCount} answered question{positiveCount === 1 ? '' : 's'} and mark {openQuestions.length} open unknown{openQuestions.length === 1 ? '' : 's'} instead of inventing answers.
+            {t('preliminaryPlanSavedDesc', { answered: positiveCount, unknowns: openQuestions.length })}
           </p>
           {openQuestions.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {openQuestions.map((question) => (
-                <li key={question.id} className="badge bg-white/70 text-amber-900">{question.schema.label} · {statusLabel(answerFor(question, local).status)}</li>
+                <li key={question.id} className="badge bg-white/70 text-amber-900">{localizeQuestionSchema(question.question_key, question.schema, locale).label} · {statusLabel(answerFor(question, local).status, t)}</li>
               ))}
             </ul>
           )}
-          <button type="button" onClick={() => setPreliminary(false)} className="btn-secondary mt-4 min-h-9 px-3 py-1.5 text-xs">Keep editing answers</button>
+          <button type="button" onClick={() => setPreliminary(false)} className="btn-secondary mt-4 min-h-9 px-3 py-1.5 text-xs">{t('keepEditingAnswers')}</button>
         </section>
       )}
 
@@ -862,28 +884,29 @@ export default function DiscoveryWizard() {
 
           {earlierQuestions.length > 0 && (
             <section className="card mt-6 p-4">
-              <button type="button" onClick={() => setShowEarlier((value) => !value)} className="flex w-full items-center gap-2 text-left">
+              <button type="button" onClick={() => setShowEarlier((value) => !value)} className="flex w-full items-center gap-2 text-start">
                 <ChevronDown size={16} className={`transition ${showEarlier ? 'rotate-180' : ''}`} />
-                <span className="font-semibold">Saved earlier answers ({earlierQuestions.length})</span>
-                <span className="ms-auto text-xs text-ink-500">Kept when the goal changed</span>
+                <span className="font-semibold">{t('savedEarlierAnswers', { count: earlierQuestions.length })}</span>
+                <span className="ms-auto text-xs text-ink-500">{t('keptWhenGoalChanged')}</span>
               </button>
               {showEarlier && (
                 <div className="mt-4 space-y-3">
                   {earlierQuestions.map((question) => {
                     const answer = answerFor(question, local)
-                    const branch = question.branch ? goalDefinition(question.branch) : undefined
+                    const branch = question.branch ? goalDefinition(question.branch, locale) : undefined
+                    const locSchema = localizeQuestionSchema(question.question_key, question.schema, locale)
                     return (
                       <div key={question.id} className="rounded-xl border border-ink-200 p-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium">{question.schema.label}</p>
-                          <span className={`badge ${statusStyle(answer.status)}`}>{statusLabel(answer.status)}</span>
+                          <p className="text-sm font-medium">{locSchema.label}</p>
+                          <span className={`badge ${statusStyle(answer.status)}`}>{statusLabel(answer.status, t)}</span>
                           {branch && <span className="badge bg-ink-100 text-ink-600">{branch.label}</span>}
                         </div>
-                        {answerLabel(answer.value, question.schema) && <p className="mt-1 text-sm text-ink-700">{answerLabel(answer.value, question.schema)}</p>}
-                        <p className="mt-1 text-xs text-ink-500">This answer was not deleted. Switch back to its goal to use it again.</p>
+                        {answerLabel(answer.value, locSchema) && <p className="mt-1 text-sm text-ink-700">{answerLabel(answer.value, locSchema)}</p>}
+                        <p className="mt-1 text-xs text-ink-500">{t('answerNotDeleted')}</p>
                         {branch && branch.value !== draft.goal && (
                           <button type="button" onClick={() => void selectGoal(branch.value)} className="mt-2 text-xs font-semibold text-primary-700 underline">
-                            Restore {branch.label}
+                            {t('restoreGoal', { goal: branch.label })}
                           </button>
                         )}
                       </div>
@@ -897,28 +920,28 @@ export default function DiscoveryWizard() {
 
         <aside className="space-y-4">
           <section className="card p-4">
-            <h2 className="text-sm font-semibold">Progress</h2>
+            <h2 className="text-sm font-semibold">{t('progressLabel')}</h2>
             <p className="mt-2 text-3xl font-semibold text-ink-900">{positiveCount}<span className="text-base font-normal text-ink-500"> / {activeQuestions.length}</span></p>
-            <p className="mt-1 text-xs leading-5 text-ink-600">Answered or confirmed. Unknowns stay visible instead of being filled in.</p>
+            <p className="mt-1 text-xs leading-5 text-ink-600">{t('progressHelp')}</p>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-ink-100">
               <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${activeQuestions.length ? Math.round((positiveCount / activeQuestions.length) * 100) : 0}%` }} />
             </div>
           </section>
 
           <section className="card p-4">
-            <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} className="text-primary-600" /> From your Brain</h2>
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} className="text-primary-600" /> {t('fromYourBrain')}</h2>
             {visibleFacts.length === 0
-              ? <p className="mt-2 text-xs leading-5 text-ink-600">No eligible confirmed facts yet. Discovery will ask instead of assuming.</p>
+              ? <p className="mt-2 text-xs leading-5 text-ink-600">{t('noEligibleFacts')}</p>
               : (
                 <ul className="mt-3 space-y-3">
                   {visibleFacts.map((fact) => (
                     <li key={fact.id} className="rounded-xl bg-ink-50 p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs font-medium text-ink-900">{fact.title}</p>
-                        {usedBrainIds.has(fact.id) && <span className="badge bg-emerald-50 text-emerald-700">Used</span>}
+                        {usedBrainIds.has(fact.id) && <span className="badge bg-emerald-50 text-emerald-700">{t('usedBadge')}</span>}
                       </div>
                       <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-ink-600">{fact.summary}</p>
-                      <p className="mt-1 text-[10px] text-ink-500">{fact.category.replaceAll('_', ' ')} · v{fact.version} · {fact.verification_state?.replaceAll('_', ' ') ?? 'owner reported'}</p>
+                      <p className="mt-1 text-[10px] text-ink-500">{fact.category.replaceAll('_', ' ')} · v{fact.version} · {fact.verification_state?.replaceAll('_', ' ') ?? t('ownerReported')}</p>
                     </li>
                   ))}
                 </ul>
@@ -926,31 +949,34 @@ export default function DiscoveryWizard() {
           </section>
 
           <section className="card p-4">
-            <h2 className="text-sm font-semibold">Open unknowns</h2>
+            <h2 className="text-sm font-semibold">{t('openUnknowns')}</h2>
             {openQuestions.length === 0
-              ? <p className="mt-2 text-xs leading-5 text-ink-600">Every active question has an answer or a confirmed reused fact.</p>
+              ? <p className="mt-2 text-xs leading-5 text-ink-600">{t('allQuestionsAnswered')}</p>
               : (
                 <ul className="mt-2 space-y-2">
-                  {openQuestions.map((question) => (
-                    <li key={question.id} className="text-xs leading-5 text-ink-600">
-                      <span className="font-medium text-ink-800">{question.schema.label}</span>
-                      <span className={`badge ms-1 ${statusStyle(answerFor(question, local).status)}`}>{statusLabel(answerFor(question, local).status)}</span>
-                    </li>
-                  ))}
+                  {openQuestions.map((question) => {
+                    const locSchema = localizeQuestionSchema(question.question_key, question.schema, locale)
+                    return (
+                      <li key={question.id} className="text-xs leading-5 text-ink-600">
+                        <span className="font-medium text-ink-800">{locSchema.label}</span>
+                        <span className={`badge ms-1 ${statusStyle(answerFor(question, local).status)}`}>{statusLabel(answerFor(question, local).status, t)}</span>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
           </section>
 
           {!preliminary && (
             <section className="card p-4">
-              <h2 className="text-sm font-semibold">Preliminary plan</h2>
+              <h2 className="text-sm font-semibold">{t('preliminaryPlan')}</h2>
               <p className="mt-2 text-xs leading-5 text-ink-600">
-                You do not need every answer. A preliminary plan can use what is confirmed and disclose the rest as unknowns.
+                {t('preliminaryPlanHelp')}
               </p>
               <button type="button" onClick={() => void continuePreliminary()} disabled={planning} className="btn-secondary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
-                {planning ? <><Loader2 size={13} className="animate-spin" /> Saving…</> : 'Continue with a preliminary plan'}
+                {planning ? <><Loader2 size={13} className="animate-spin" /> {t('saving')}</> : t('continuePreliminary')}
               </button>
-              <p className="mt-2 text-[10px] leading-5 text-ink-500">This only saves plan readiness. It does not generate or activate a Roadmap.</p>
+              <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('preliminaryPlanNote')}</p>
             </section>
           )}
         </aside>

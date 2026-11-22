@@ -14,12 +14,14 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report test-results/e2e/report",
-    "test:db:local": "python3 scripts/local-migration-check.py",
+    "test:db:local": "node scripts/local-migration-check.mjs",
+    "test:unit": "node --experimental-transform-types --import ./scripts/testing/ts-register.mjs --test tests/research/*.test.ts tests/orchestrator/*.test.ts",
     "test:posts:db": "node scripts/db-check.cjs scripts/planned-posts-db-check.sql",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@composio/core": "0.28.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "dompurify": "3.4.18",

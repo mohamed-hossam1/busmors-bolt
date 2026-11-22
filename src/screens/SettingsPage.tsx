@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
 import AccountPreferences from '../components/settings/AccountPreferences'
 import { SettingsSkeleton } from '../components/skeletons'
+import FacebookConnectionCard from '../components/settings/FacebookConnectionCard'
+import { useCopy } from '../hooks/useCopy'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
@@ -26,6 +28,7 @@ interface AiKeyInfo {
 }
 
 function SettingsContent() {
+  const { t } = useCopy()
   const [aiKey, setAiKey] = useState<AiKeyInfo | null>(null)
   const [provider, setProvider] = useState<string>('groq')
   const [model, setModel] = useState<string>('openai/gpt-oss-20b')
@@ -94,7 +97,7 @@ function SettingsContent() {
       setRawKey('')
     } catch (err) {
       console.error('Error removing AI key:', err)
-      setKeyError('An error occurred while removing the key.')
+      setKeyError(t('removeKeyError'))
     } finally {
       setKeyBusy(false)
     }
@@ -111,7 +114,7 @@ function SettingsContent() {
       setKeySaved(true)
       await load()
     } catch (err: unknown) {
-      setKeyError(err instanceof Error ? err.message : 'An error occurred while saving the key.')
+      setKeyError(err instanceof Error ? err.message : t('saveKeyError'))
     } finally {
       setKeyBusy(false)
     }
@@ -126,17 +129,17 @@ function SettingsContent() {
   return (
     <div className="workspace-page">
       <div className="mx-auto max-w-3xl space-y-6">
-        <header><p className="mb-2 text-xs font-semibold uppercase tracking-[.14em] text-primary-600">Your workspace</p><h1 className="workspace-heading">Settings</h1><p className="workspace-description">Manage your account, region, and Director preferences.</p></header>
+        <header><p className="mb-2 text-xs font-semibold uppercase tracking-[.14em] text-primary-600">{t('workspaceEyebrow')}</p><h1 className="workspace-heading">{t('navSettings')}</h1><p className="workspace-description">{t('settingsDescription')}</p></header>
         <AccountPreferences/>
         <section className="card p-4 sm:p-6 border border-ink-200/80 shadow-card">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <h2 className="flex items-center gap-2 font-bold text-lg text-ink-900">
               <KeyRound size={20} className="text-primary-600 shrink-0" />
-              AI Key
+              {t('aiKeyLabel')}
             </h2>
             <span className="badge bg-primary-50 text-primary-700 text-xs self-start sm:self-auto">
               <ShieldCheck size={13} className="me-1 inline" />
-              Server-side Encrypted
+              {t('serverSideEncrypted')}
             </span>
           </div>
 
@@ -145,23 +148,23 @@ function SettingsContent() {
               <Sparkles size={14} className="shrink-0 text-primary-600" />
               {managedModel ? (
                 <>
-                  <span className="badge bg-emerald-100 text-emerald-800">Managed model active</span>
-                  <span className="text-ink-600">This workspace uses the managed model by default. Adding your own key below is optional (BYOK).</span>
+                  <span className="badge bg-emerald-100 text-emerald-800">{t('managedModelActive')}</span>
+                  <span className="text-ink-600">{t('managedModelHint')}</span>
                 </>
               ) : (
-                <span className="text-ink-600">No managed model is configured on the server. Add your own API key below to enable AI.</span>
+                <span className="text-ink-600">{t('noManagedModel')}</span>
               )}
             </div>
           )}
 
           <p className="mb-5 text-sm text-ink-600 leading-relaxed">
-            Paste your own API key (Groq, OpenAI, Anthropic, Gemini, etc.). It is encrypted server-side and never leaves the backend — the browser never sees it again.
+            {t('aiKeyHelp')}
           </p>
 
           {loadingInitial ? (
             <div className="flex items-center justify-center p-6 text-ink-400 text-sm gap-2">
               <Loader2 size={16} className="animate-spin" />
-              Loading settings...
+              {t('loadingSettings')}
             </div>
           ) : (
             <>
@@ -174,9 +177,9 @@ function SettingsContent() {
                         {(aiKey.provider || '').toUpperCase()} · {aiKey.model || ''}
                       </span>
                       {aiKey.status === 'invalid' ? (
-                        <span className="badge bg-red-100 text-red-700">Invalid</span>
+                        <span className="badge bg-red-100 text-red-700">{t('invalidKey')}</span>
                       ) : (
-                        <span className="badge bg-emerald-100 text-emerald-800">Active</span>
+                        <span className="badge bg-emerald-100 text-emerald-800">{t('activeKey')}</span>
                       )}
                     </div>
                     <div className="text-xs text-ink-500 mt-1" dir="ltr">
@@ -188,11 +191,11 @@ function SettingsContent() {
                     type="button"
                     onClick={removeAiKey}
                     disabled={keyBusy}
-                    title="Remove current key"
+                    title={t('removeKeyTitle')}
                     className="btn-danger px-3 py-2 text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-red-50 self-start sm:self-auto"
                   >
                     {keyBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={14} />}
-                    <span>Remove key</span>
+                    <span>{t('removeKey')}</span>
                   </button>
                 </div>
               )}
@@ -200,7 +203,7 @@ function SettingsContent() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink-700">
-                    Provider
+                    {t('providerLabel')}
                   </span>
                   <select
                     value={provider}
@@ -226,12 +229,12 @@ function SettingsContent() {
 
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink-700">
-                    Model
+                    {t('modelLabel')}
                   </span>
                   <input
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    placeholder={selectedProvider.models[0] ?? 'e.g. your-model-name'}
+                    placeholder={selectedProvider.models[0] ?? t('modelPlaceholder')}
                     className="input-field"
                     dir="ltr"
                     list="model-suggestions"
@@ -247,7 +250,7 @@ function SettingsContent() {
 
                 {selectedProvider.needsBaseUrl && (
                   <label className="block sm:col-span-2">
-                    <span className="mb-1.5 block text-sm font-medium text-ink-700">Base URL</span>
+                    <span className="mb-1.5 block text-sm font-medium text-ink-700">{t('baseUrlLabel')}</span>
                     <input
                       value={baseUrl}
                       onChange={(e) => setBaseUrl(e.target.value)}
@@ -260,7 +263,7 @@ function SettingsContent() {
 
                 <label className="block sm:col-span-2">
                   <span className="mb-1.5 block text-sm font-medium text-ink-700">
-                    API Key {provider === 'groq' ? '(Groq API Key)' : ''}
+                    {t('apiKeyLabel')} {provider === 'groq' ? t('groqApiKeySuffix') : ''}
                   </span>
                   <input
                     type="password"
@@ -273,7 +276,7 @@ function SettingsContent() {
                   />
                   {provider === 'groq' && (
                     <span className="text-[11px] text-ink-400 mt-1 block">
-                      Groq keys start with <code className="bg-ink-100 px-1 rounded">gsk_...</code>
+                      {t('groqKeysStartWith')} <code className="bg-ink-100 px-1 rounded">gsk_...</code>
                     </span>
                   )}
                 </label>
@@ -289,7 +292,7 @@ function SettingsContent() {
               {keySaved && (
                 <div className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 border border-emerald-200">
                   <Check size={16} className="shrink-0 text-emerald-600" />
-                  <span>Key saved & encrypted successfully! Ready for use.</span>
+                  <span>{t('keySavedSuccess')}</span>
                 </div>
               )}
 
@@ -305,20 +308,22 @@ function SettingsContent() {
                 className="btn-primary mt-5 flex items-center justify-center gap-2 shadow-lift w-full sm:w-auto"
               >
                 {keyBusy && <Loader2 size={16} className="animate-spin" />}
-                <span>{aiKey ? 'Update key' : 'Save key'}</span>
+                <span>{aiKey ? t('updateKey') : t('saveKey')}</span>
                 {keySaved && <Check size={16} />}
               </button>
             </>
           )}
         </section>
+        <FacebookConnectionCard />
       </div>
     </div>
   )
 }
 
 export default function SettingsPage() {
+  const { t } = useCopy()
   return (
-    <ErrorBoundary fallbackTitle="Could not load settings">
+    <ErrorBoundary fallbackTitle={t('settingsLoadError')}>
       <SettingsContent />
     </ErrorBoundary>
   )

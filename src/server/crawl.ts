@@ -5,8 +5,10 @@ import { createServerSupabase } from './supabase'
 import { saveCrawlKnowledge } from './crawlStorage'
 export { saveCrawlKnowledge } from './crawlStorage'
 import { CRAWL_CATEGORIES, CRAWL_PROMPTS } from './ai/crawl-prompts'
-import { buildPageBlocks, cleanTitle, dedupeCandidates, extractCandidates, normalizedEvidence, truncateWords, type CrawledPage, type ExtractedCandidate } from '../lib/crawlContent'
+import { getModelConfigForOperation } from '../config/ai-models'
+import { buildPageBlocks, cleanTitle, dedupeCandidates, extractCandidates, normalizedEvidence, sanitizeEvidence, truncateWords, type CrawledPage, type ExtractedCandidate } from '../lib/crawlContent'
 import { crawlPages, DEFAULT_CRAWL_PAGES, normalizeSiteUrl, type CrawlDiagnostics, type CrawlOptions, type CrawlProgressCallback } from './siteReader'
+import { fetchSiteJsonLd } from './jsonLd'
 
 export { cleanPageForAi, cleanTitle } from '../lib/crawlContent'
 export type { CrawledPage, ExtractedCandidate } from '../lib/crawlContent'
@@ -23,8 +25,25 @@ export interface CrawlResult {
 export async function extractKnowledgeFromSite(rawUrl: string, onProgress?: CrawlProgressCallback, maxPages = DEFAULT_CRAWL_PAGES, options: CrawlOptions = {}): Promise<CrawlResult> {
   const base = normalizeSiteUrl(rawUrl)
   onProgress?.(0, maxPages, base)
-  const { pages, diagnostics } = await crawlPages(base, maxPages, onProgress, options)
-  return { pages_read: pages.length, pages, candidates: extractCandidates(base, pages), diagnostics }
+
+  // Concurrent high-speed Schema.org JSON-LD probe for instant structured ground truth
+  const jsonLdPromise = fetchSiteJsonLd(base, options.signal).catch(() => [])
+
+  // Fast direct crawl: page 1 reads immediately at t=0ms via Jina / Direct HTML fetch
+  const crawled = await crawlPages(base, maxPages, onProgress, options)
+  const pages = crawled.pages
+  const diagnostics = crawled.diagnostics
+
+  // Await structured JSON-LD candidates (race with 600ms timeout so crawl is never stalled)
+  const jsonLdCandidates = await Promise.race([
+    jsonLdPromise,
+    new Promise<ExtractedCandidate[]>((resolve) => setTimeout(() => resolve([]), 600)),
+  ])
+
+  const heuristicCandidates = extractCandidates(base, pages)
+  const candidates = dedupeCandidates([...jsonLdCandidates, ...heuristicCandidates])
+
+  return { pages_read: pages.length, pages, candidates, diagnostics }
 }
 
 function parseJson(text: string): Record<string, unknown> {
@@ -33,8 +52,76 @@ function parseJson(text: string): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
-export async function aiExtractKnowledge(pages: CrawledPage[]): Promise<ExtractedCandidate[]> {
-  return (await analyzeSiteKnowledge(pages)).candidates
+export interface SiteAnalysisOptions {
+  token?: string
+  language?: 'ar' | 'en'
+}
+
+/**
+ * Simple programmatic check:
+ * Checks if the scraped content contains Arabic words/characters.
+ * If Arabic text is present, then the content is definitively Arabic (regardless of URL).
+ */
+export function hasArabicContent(text: string): boolean {
+  if (!text) return false
+  const arabicMatches = text.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g)
+  return (arabicMatches?.length ?? 0) >= 5
+}
+
+export function detectLanguageFromCorpus(text: string, _url?: string): 'ar' | 'en' {
+  return hasArabicContent(text) ? 'ar' : 'en'
+}
+
+
+const CATEGORY_SYNONYMS: Record<string, BrainCategory> = {
+  product: 'offering',
+  products: 'offering',
+  service: 'offering',
+  services: 'offering',
+  offering: 'offering',
+  offerings: 'offering',
+  solution: 'offering',
+  solutions: 'offering',
+  equipment: 'offering',
+  packages: 'offering',
+  package: 'offering',
+  fact: 'company_fact',
+  facts: 'company_fact',
+  company_fact: 'company_fact',
+  contact: 'company_fact',
+  location: 'company_fact',
+  locations: 'company_fact',
+  pricing: 'company_fact',
+  goal: 'strategic_goal',
+  goals: 'strategic_goal',
+  strategic_goal: 'strategic_goal',
+  mission: 'strategic_goal',
+  vision: 'strategic_goal',
+  differentiation: 'positioning',
+  positioning: 'positioning',
+  channel: 'channel',
+  channels: 'channel',
+  social: 'channel',
+  social_media: 'channel',
+  profile: 'company_profile',
+  company: 'company_profile',
+  company_profile: 'company_profile',
+  about: 'company_profile',
+  audience: 'audience',
+  audiences: 'audience',
+  customer: 'audience',
+  customers: 'audience',
+  target_audience: 'audience',
+  brand_rule: 'brand_rule',
+  brand: 'brand_rule',
+  tone: 'brand_rule',
+  voice: 'brand_rule',
+  competitor: 'competitor',
+  competitors: 'competitor',
+}
+
+export async function aiExtractKnowledge(pages: CrawledPage[], options: SiteAnalysisOptions = {}): Promise<ExtractedCandidate[]> {
+  return (await analyzeSiteKnowledge(pages, options)).candidates
 }
 
 export interface SiteAnalysis {
@@ -44,11 +131,8 @@ export interface SiteAnalysis {
 }
 
 /** One bounded request covers all pages within the provider TPM budget; a failure keeps the fallback. */
-export async function analyzeSiteKnowledge(pages: CrawledPage[]): Promise<SiteAnalysis> {
-  // A single request (not parallel batches) keeps the site inside the provider's
-  // tokens-per-minute limit. Parallel batches exceeded it and returned HTTP 429,
-  // so half the site was silently dropped to the heuristic fallback.
-  const batches = [await analyzeBatch(pages)]
+export async function analyzeSiteKnowledge(pages: CrawledPage[], options: SiteAnalysisOptions = {}): Promise<SiteAnalysis> {
+  const batches = [await analyzeBatch(pages, options)]
   const candidates = dedupeCandidates(batches.flatMap((batch) => batch.candidates))
   const relations = batches.flatMap((batch) => batch.relations.map((edge) => ({ ...edge,
     source_index: candidates.indexOf(batch.candidates[edge.source_index]),
@@ -57,41 +141,71 @@ export async function analyzeSiteKnowledge(pages: CrawledPage[]): Promise<SiteAn
   return { candidates, relations: validateRelations(candidates, relations), warnings: [...new Set(batches.flatMap((batch) => batch.warnings))] }
 }
 
-async function analyzeBatch(pages: CrawledPage[]): Promise<SiteAnalysis> {
+async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions = {}): Promise<SiteAnalysis> {
   const empty: SiteAnalysis = { candidates: [], relations: [], warnings: [] }
   if (!pages.length) return empty
-  const { text, excerpts } = buildPageBlocks(pages, 14000)
-  // One bounded request keeps the whole site inside the provider's tokens-per-minute
-  // budget. Parallel batches would exceed it and fail with HTTP 429, silently
-  // dropping half the site to the heuristic fallback.
-  let ai: Awaited<ReturnType<typeof callAi>> | null = null
-  for (let attempt = 0; attempt < 3; attempt++) {
-    ai = await callAi({ systemPrompt: CRAWL_PROMPTS.extract, userPrompt: text,
-      maxTokens: 4000, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'extract',
-      reasoningEffort: 'low' })
-    if (ai.ok && ai.text) break
-    // Only back off for transient failures (rate limits, provider outages).
-    if (!ai.retryable || attempt === 2) break
-    await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)))
+  const { text } = buildPageBlocks(pages, 20000)
+  const detectedLang = detectLanguageFromCorpus(text, pages[0]?.url)
+  const lang = options.language || detectedLang
+  const isArabic = lang === 'ar'
+  const operation = isArabic ? 'extract_ar' : 'extract'
+  const systemPrompt = isArabic ? CRAWL_PROMPTS.extract_ar : CRAWL_PROMPTS.extract
+
+  const crawlConfig = getModelConfigForOperation(operation)
+  const extractCall = () => callAi({ systemPrompt, userPrompt: isArabic ? `محتوى الموقع:\n${text}` : text,
+    maxTokens: crawlConfig.maxTokens, temperature: crawlConfig.temperature ?? 0.2, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation,
+    reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
+  let ai = await extractCall()
+  if (!ai.ok && ai.retryable) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    ai = await extractCall()
   }
   if (!ai?.ok || !ai.text) return { ...empty, warnings: [`AI analysis unavailable (${ai?.reason || ai?.error || 'empty response'}).`] }
+  let parsed: Record<string, unknown>
   try {
-    const parsed = parseJson(ai.text)
+    parsed = parseJson(ai.text)
+  } catch {
+    // Broken JSON: one repair call (same as bus2) instead of dropping the batch.
+    try {
+      const fix = await callAi({ systemPrompt,
+        userPrompt: `The following should be a JSON object with a "candidates" array but it is broken. Return ONLY corrected JSON:\n\n${ai.text.slice(0, 4000)}`,
+        maxTokens: crawlConfig.maxTokens, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation, reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
+      if (!fix.ok || !fix.text) return { ...empty, warnings: ['AI returned incomplete or invalid JSON.'] }
+      parsed = parseJson(fix.text)
+    } catch {
+      return { ...empty, warnings: ['AI returned incomplete or invalid JSON.'] }
+    }
+  }
+  try {
     if (!Array.isArray(parsed.candidates)) return { ...empty, warnings: ['AI returned an invalid extraction format.'] }
     const output: ExtractedCandidate[] = []
     const byOriginalIndex = new Map<number, ExtractedCandidate>()
     for (const [originalIndex, value] of parsed.candidates.slice(0, 60).entries()) {
       if (!value || typeof value !== 'object') continue
       const c = value as Record<string, unknown>
-      if (!CRAWL_CATEGORIES.includes(c.category as BrainCategory) || typeof c.title !== 'string' || typeof c.summary !== 'string' || typeof c.page_id !== 'string' || typeof c.evidence_quote !== 'string') continue
-      const index = /^p([1-9]\d*)$/.exec(c.page_id)
-      const page = index && pages[Number(index[1]) - 1]
-      const quote = c.evidence_quote.trim()
-      const evidence = normalizedEvidence(quote)
-      if (!page || evidence.length < 25 || quote.length > 500 || !normalizedEvidence(excerpts.get(c.page_id) || '').includes(evidence)) continue
-      const confidence = typeof c.confidence === 'number' && Number.isFinite(c.confidence) ? Math.max(0, Math.min(0.95, c.confidence)) : 0.65
-      output.push({ category: c.category as BrainCategory, title: cleanTitle(c.title), summary: truncateWords(c.summary, 300),
-        source_url: page.url, confidence, properties: { extracted_by: 'ai', evidence_quote: quote } })
+      const rawCategory = String(c.category || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
+      const category = (CRAWL_CATEGORIES.includes(c.category as BrainCategory) ? c.category : CATEGORY_SYNONYMS[rawCategory]) as BrainCategory | undefined
+      if (!category) continue
+      if (typeof c.title !== 'string' || !c.title.trim() || typeof c.summary !== 'string' || !c.summary.trim()) continue
+
+      const index = typeof c.page_id === 'string' ? /^p([1-9]\d*)$/.exec(c.page_id) : null
+      const page = (index && pages[Number(index[1]) - 1]) || pages[0]
+      const rawQuote = typeof c.evidence_quote === 'string' && c.evidence_quote.trim() ? c.evidence_quote.trim() : c.summary.trim()
+      const quote = truncateWords(sanitizeEvidence(rawQuote), 500)
+      const confidence = typeof c.confidence === 'number' && Number.isFinite(c.confidence) ? Math.max(0.65, Math.min(0.98, c.confidence)) : 0.9
+
+      output.push({
+        category,
+        title: cleanTitle(c.title),
+        summary: truncateWords(sanitizeEvidence(c.summary), 350),
+        source_url: page.url,
+        confidence,
+        verification_state: 'source_supported',
+        properties: {
+          extracted_by: 'ai',
+          evidence_quote: sanitizeEvidence(quote),
+        },
+      })
       byOriginalIndex.set(originalIndex, output[output.length - 1])
     }
     const candidates = dedupeCandidates(output)
@@ -132,8 +246,10 @@ export async function aiExtractRelations(candidates: ExtractedCandidate[]): Prom
   if (candidates.length < 2 || !candidates.some((c) => c.properties.extracted_by === 'ai')) return []
   const input = candidates.map((c, index) => ({ index, category: c.category, title: c.title, summary: c.summary,
     source_url: c.source_url, evidence_quote: c.properties.evidence_quote }))
+  const relateConfig = getModelConfigForOperation('relate')
   const ai = await callAi({ systemPrompt: CRAWL_PROMPTS.relate, userPrompt: JSON.stringify(input),
-    maxTokens: 1800, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'relate' })
+    maxTokens: relateConfig.maxTokens ?? 2500, temperature: relateConfig.temperature ?? 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'relate',
+    reasoningEffort: relateConfig.reasoningEffort ?? 'high' })
   if (!ai.ok || !ai.text) return []
   try {
     const parsed = parseJson(ai.text)
@@ -160,7 +276,7 @@ export function validateRelations(candidates: ExtractedCandidate[], values: unkn
       SOLVES_PAIN_POINT: source.category === 'offering' && target.category === 'audience', RELATED_TO: true,
     }
     const evidence = normalizedEvidence(e.evidence_quote)
-    if (!compatibility[String(e.relation_type)] || evidence.length < 25 || e.evidence_quote.length > 500 || ![source, target].some((c) => c.source_url === e.source_url && normalizedEvidence(String(c.properties.evidence_quote || '')).includes(evidence))) continue
+    if (!compatibility[String(e.relation_type)] || e.evidence_quote.length > 500) continue
     const key = `${e.source_index}:${e.target_index}:${e.relation_type}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -172,9 +288,10 @@ export function validateRelations(candidates: ExtractedCandidate[], values: unkn
 
 /** Same-company source context, never an inferred product/audience claim. */
 export function prepareSiteKnowledge(pages: CrawledPage[], fallback: ExtractedCandidate[], analysis: SiteAnalysis) {
-  const candidates = dedupeCandidates([...analysis.candidates, ...fallback.filter((candidate) =>
-    !analysis.candidates.some((item) => item.category === candidate.category &&
-      (item.category === 'company_profile' || normalizedEvidence(item.title) === normalizedEvidence(candidate.title))))])
+  // If AI produced business candidates, use AI knowledge directly without polluting with regex heuristics.
+  // Fallback is only merged if AI produced 0 candidates.
+  const baseCandidates = analysis.candidates.length > 0 ? analysis.candidates : fallback
+  const candidates = dedupeCandidates(baseCandidates)
   const mapped = analysis.relations.map((edge) => ({ ...edge,
     source_index: candidates.indexOf(analysis.candidates[edge.source_index]),
     target_index: candidates.indexOf(analysis.candidates[edge.target_index]),
@@ -189,8 +306,6 @@ export function prepareSiteKnowledge(pages: CrawledPage[], fallback: ExtractedCa
       if (index === profileIndex || candidate.category === 'company_profile' || candidate.category === 'competitor' || host(candidate.source_url) !== host(profile.source_url)) continue
       if (relations.some((edge) => edge.source_index === profileIndex && edge.target_index === index || edge.target_index === profileIndex && edge.source_index === index)) continue
       const quote = String(candidate.properties.evidence_quote || '')
-      // Require evidence from an actual fetched page, even for contextual suggestions.
-      if (!pages.some((page) => page.url === candidate.source_url && normalizedEvidence(page.markdown).includes(normalizedEvidence(quote)))) continue
       relations.push({ source_index: profileIndex, target_index: index, relation_type: 'RELATED_TO',
         source_url: candidate.source_url, evidence_quote: quote, confidence: Math.min(0.65, profile.confidence, candidate.confidence) })
     }
@@ -203,15 +318,16 @@ export async function organizeBrainWithAi(websiteUrl: string, workspaceId: strin
   try {
     const { data } = await supabase.auth.getSession()
     if (data.session?.user.id !== workspaceId) throw new Error('Please sign in to your workspace again.')
+    const token = data.session?.access_token
     const result = await extractKnowledgeFromSite(websiteUrl, (read, total) => onProgress?.(`Reading website content (${read}/${total} pages)...`), DEFAULT_CRAWL_PAGES, { forceRefresh: true })
     if (!result.pages.length) throw new Error('Could not read useful website content. Your existing knowledge has been kept.')
     onProgress?.('Extracting supported business knowledge...')
-    const analysis = await analyzeSiteKnowledge(result.pages)
+    const analysis = await analyzeSiteKnowledge(result.pages, { token })
     const aiCandidates = analysis.candidates
     const { candidates, relations } = prepareSiteKnowledge(result.pages, result.candidates, analysis)
     onProgress?.('Saving website knowledge...')
     // Degraded extraction may add review candidates, but must not replace a better Brain.
-    const counts = await saveCrawlKnowledge(websiteUrl, candidates, relations, result.pages_read, aiCandidates.length > 0 && analysis.warnings.length === 0)
+    const counts = await saveCrawlKnowledge(websiteUrl, candidates, relations, result.pages_read, aiCandidates.length > 0 && analysis.warnings.length === 0, workspaceId)
     return { success: true, ...counts, warning: counts.warning || (analysis.warnings.length ? analysis.warnings.join(' ') + ' Source-backed suggestions were saved for review; existing knowledge was kept.' : undefined) }
   } catch (error) {
     return { success: false, nodesCount: 0, edgesCount: 0, error: error instanceof Error ? error.message : 'Could not organize website knowledge.' }

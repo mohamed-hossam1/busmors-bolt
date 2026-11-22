@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { Link } from '@/shared/i18n'
 import type { LucideIcon } from 'lucide-react'
 
 export default function EmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description: string; action?: { to: string; label: string } }) {
