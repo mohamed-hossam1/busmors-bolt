@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
 import AccountPreferences from '../components/settings/AccountPreferences'
 import { SettingsSkeleton } from '../components/skeletons'
+import FacebookConnectionCard from '../components/settings/FacebookConnectionCard'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
@@ -311,6 +312,7 @@ function SettingsContent() {
             </>
           )}
         </section>
+        <FacebookConnectionCard />
       </div>
     </div>
   )
