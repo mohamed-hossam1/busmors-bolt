@@ -21,7 +21,7 @@ export default function AuthLayout({
   panel?: ReactNode
   alignTop?: boolean
 }) {
-  const isTop = alignTop || Boolean(panel)
+  const isTop = alignTop
   const { t } = useCopy()
 
   return (

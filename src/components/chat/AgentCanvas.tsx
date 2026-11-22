@@ -30,6 +30,7 @@ import {
   Network,
   ExternalLink,
   X,
+  BrainCircuit,
 } from 'lucide-react'
 import type { AgentEvent } from '../../lib/types'
 import { useCopy } from '../../hooks/useCopy'
@@ -57,6 +58,7 @@ interface AgentNodeData extends CanvasNode {
 
 const NODE_ICON: Record<CanvasNodeKind, typeof Bot> = {
   user: User,
+  orchestrator: BrainCircuit,
   director: Sparkles,
   subagent: Bot,
   tool: Wrench,
@@ -76,6 +78,11 @@ function statePill(node: CanvasNode, t: ReturnType<typeof useCopy>['t']) {
 function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
   const { t } = useCopy()
   const { selected, onSelect } = data
+  const isTool = data.kind === 'tool'
+  const isSkill = data.kind === 'skill'
+  const isCircleNode = isTool || isSkill
+  const displayLabel = data.label
+
   const Icon = NODE_ICON[data.kind] ?? Bot
   const border = data.state === 'failed'
     ? 'border-red-400 bg-red-50/70'
@@ -86,10 +93,29 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
         : selected || data.state === 'running'
           ? 'border-primary-400 bg-white ring-2 ring-primary-400/20'
           : 'border-ink-200 bg-white'
-  const circle = data.kind === 'director' || data.kind === 'tool' || data.kind === 'skill'
+
+  if (isCircleNode) {
+    return (
+      <div
+        className={`relative flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-full border-2 p-1 text-center shadow-md transition-all hover:scale-105 ${border}`}
+        onClick={() => onSelect(data.id)}
+      >
+        <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+        <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ backgroundColor: `${data.color}25`, color: data.color }}>
+          <Icon size={12} />
+        </span>
+        <span className="mt-0.5 text-[10px] font-extrabold tracking-tight text-ink-900">{displayLabel}</span>
+        <div className="scale-75">
+          {statePill(data, t)}
+        </div>
+        <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+      </div>
+    )
+  }
+
   return (
     <div
-      className={`relative min-w-[150px] cursor-pointer rounded-xl border p-2.5 transition-all ${circle ? 'rounded-full' : ''} ${border}`}
+      className={`relative min-w-[150px] cursor-pointer rounded-xl border p-2.5 transition-all ${border}`}
       onClick={() => onSelect(data.id)}
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
@@ -98,7 +124,7 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
           <Icon size={14} />
         </span>
         <div className="min-w-0">
-          <div className="truncate text-xs font-bold leading-tight text-ink-900">{data.label}</div>
+          <div className="truncate text-xs font-bold leading-tight text-ink-900">{displayLabel}</div>
           <div className="mt-0.5 flex items-center gap-1">
             {statePill(data, t)}
             {data.sources > 0 && <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600">{t('sourcesShort', { count: data.sources })}</span>}
@@ -121,6 +147,7 @@ export default function AgentCanvas({
   events,
   running,
   taskId,
+  userMessage = null,
   previewPosts = EMPTY_PREVIEWS,
 }: {
   conversationId: string | null
@@ -128,6 +155,7 @@ export default function AgentCanvas({
   running: boolean
   taskId?: string | null
   taskStatus?: string
+  userMessage?: string | null
   previewPosts?: CanvasPreviewPost[]
 }) {
   const { t } = useCopy()
@@ -145,14 +173,15 @@ export default function AgentCanvas({
   const graph = useMemo(() => buildAgentGraph({
     events: events as unknown as PersistedEvent[],
     running,
-  }), [events, running])
+    userMessage,
+  }), [events, running, userMessage])
 
   useEffect(() => {
     const newNodes: Node[] = graph.nodes.map((node, index) => {
-      const director = graph.directorId !== null && node.id === graph.directorId
+      const isEntry = graph.entryId !== null && node.id === graph.entryId
       const position = userPositionsRef.current[node.id] ?? {
-        x: director ? 300 : 60 + (index % 3) * 230,
-        y: director ? 40 : 160 + Math.floor(index / 3) * 130,
+        x: isEntry ? 300 : 60 + (index % 3) * 230,
+        y: isEntry ? 20 : 150 + Math.floor(index / 3) * 130,
       }
       return {
         id: node.id,

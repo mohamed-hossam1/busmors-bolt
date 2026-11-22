@@ -78,18 +78,18 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
    // eligible context again before another model call, retaining output-only
    // checkpoints so a save retry never regenerates finished work.
    if(task.checkpoint.phase!=='persist'){
-    const context=await step('orchestrator','Load confirmed business context',()=>backend.context(task)) as TaskContext
+    const context=await backend.context(task) as TaskContext
     await checkpoint({...task.checkpoint,context,contextRefs:context.facts.map(fact=>({nodeId:fact.id,version:fact.version}))})
    }
    const prompt=()=>JSON.stringify({request:task.user_request,context:task.checkpoint.context,answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
    if(task.checkpoint.phase==='route'){
-    // Route A/B and the scope guardrails run first, and the decision is observable.
+    // Route A/B and the scope guardrails run first without polluting user-facing canvas.
     const facts=task.checkpoint.context?.facts??[]
-    const guard=await step('orchestrator','Route the request',async()=>routeRequest({
+    const guard=routeRequest({
      request:task.user_request,
      hasBrainContext:facts.length>0,
      brainFacts:facts.map(fact=>fact.summary),
-    })) as ReturnType<typeof routeRequest>
+    })
     if(guard.route==='refuse'||guard.route==='out_of_scope'){
      await checkpoint({...task.checkpoint,route:{mode:'reply',reply:guard.message,intent:'simple_answer',quantity:1},phase:'persist',output:{reply:guard.message,posts:[]}})
      return
@@ -98,7 +98,7 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     const forced=guard.route==='research'&&explicitResearchRequest(task.user_request)
     const route:RouteDecision=forced
      ?{mode:'task',reply:'',intent:'marketing_research',quantity:1,researchMode:inferResearchMode(task.user_request)}
-     :await step('orchestrator','Route the request',async()=>parseRoute(await call('route',prompt()))) as RouteDecision
+     :parseRoute(await call('route',prompt()))
     if(route.mode==='clarify'){
      await checkpoint({...task.checkpoint,route})
      await backend.rpc('await_task_input',{p_task_id:task.id,p_run_id:task.run_id,p_label:route.question!.label,p_options:route.question!.options.slice(0,6)})

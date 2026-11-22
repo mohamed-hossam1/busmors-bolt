@@ -127,6 +127,11 @@ export default function EmployeePage() {
     return (lastCard.payload?.posts as CanvasPreviewPost[]) ?? []
   }, [displayedMessages])
 
+  const lastUserMessage = useMemo(() => {
+    const last = [...displayedMessages].reverse().find((m) => m.role === 'user' && m.type === 'text')
+    return last?.content ?? null
+  }, [displayedMessages])
+
   const loadConversationsList = async (userId: string) => {
     const { data } = await supabase
       .from('conversations')
@@ -223,13 +228,13 @@ export default function EmployeePage() {
 
   useEffect(()=>{
     setEvents([])
-    if(!activeTask||!conversationId)return
+    if(!conversationId)return
     let cancelled=false,polling=false
     const refresh=async()=>{
       if(polling)return
       polling=true
       try{
-        const {data,error}=await supabase.from('agent_events').select('*').eq('task_id',activeTask).order('created_at',{ascending:true})
+        const {data,error}=await supabase.rpc('list_conversation_events',{p_conversation_id:conversationId})
         if(cancelled)return
         if(error)throw error
         setEvents((data??[]) as AgentEvent[]);setCanvasLoadError(null)
@@ -238,7 +243,7 @@ export default function EmployeePage() {
     }
     void refresh();const interval=setInterval(()=>void refresh(),1800)
     return()=>{cancelled=true;clearInterval(interval)}
-  },[activeTask,conversationId])
+  },[conversationId,activeTask])
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'})},[displayedMessages.length,running])
 
@@ -322,7 +327,7 @@ export default function EmployeePage() {
     const pending=continuationOrigin.current
     const origin:TaskOrigin|undefined=pending?{kind:'document',conversationId,deliverableId:pending.deliverableId,version:pending.version}:undefined
     try{
-      const task=await runner.submit(conversationId,textToSend,requestKey.current.key,origin)
+      const result=await runner.orchestrate(conversationId,textToSend,requestKey.current.key,origin)
       requestKey.current=null
       continuationOrigin.current=null
       composedRef.current=null
@@ -331,7 +336,7 @@ export default function EmployeePage() {
         for(const key of ['compose','document','version','conversation'])next.delete(key)
         router.replace('?' + next.toString(), { scroll: false })
       }
-      if(viewedConversationRef.current===conversationId){setActiveTask(task.id)}
+      if(result.taskId&&viewedConversationRef.current===conversationId){setActiveTask(result.taskId)}
       const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
       if(viewedConversationRef.current===conversationId){
         if(error)setActionError(t('messagesRefreshFailed'))
@@ -587,7 +592,7 @@ export default function EmployeePage() {
           ) : canvasLoadError ? (
             <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
           ) : (
-            <AgentCanvas key={`${conversationId}:${activeTask}`} conversationId={conversationId ? `${conversationId}:${activeTask??'empty'}` : null} events={events} running={selectedTask?.status==='running'} taskId={selectedTask?.id} taskStatus={selectedTask?.status} previewPosts={canvasPreviews} />
+            <AgentCanvas key={`${conversationId}:${activeTask}`} conversationId={conversationId ? `${conversationId}:${activeTask??'empty'}` : null} events={events} running={running} taskId={selectedTask?.id} taskStatus={selectedTask?.status} userMessage={lastUserMessage} previewPosts={canvasPreviews} />
           )}
         </div>
       </div>

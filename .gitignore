@@ -13,3 +13,5 @@ bus2/
 .scratch/
 .claude/
 .agents/
+supabase/.branches/
+supabase/.temp/

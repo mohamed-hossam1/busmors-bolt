@@ -5,6 +5,7 @@ import { createServerSupabase } from './supabase'
 import { saveCrawlKnowledge } from './crawlStorage'
 export { saveCrawlKnowledge } from './crawlStorage'
 import { CRAWL_CATEGORIES, CRAWL_PROMPTS } from './ai/crawl-prompts'
+import { getModelConfigForOperation } from '../config/ai-models'
 import { buildPageBlocks, cleanTitle, dedupeCandidates, extractCandidates, normalizedEvidence, sanitizeEvidence, truncateWords, type CrawledPage, type ExtractedCandidate } from '../lib/crawlContent'
 import { crawlPages, DEFAULT_CRAWL_PAGES, normalizeSiteUrl, type CrawlDiagnostics, type CrawlOptions, type CrawlProgressCallback } from './siteReader'
 import { fetchSiteJsonLd } from './jsonLd'
@@ -150,9 +151,10 @@ async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions =
   const operation = isArabic ? 'extract_ar' : 'extract'
   const systemPrompt = isArabic ? CRAWL_PROMPTS.extract_ar : CRAWL_PROMPTS.extract
 
+  const crawlConfig = getModelConfigForOperation(operation)
   const extractCall = () => callAi({ systemPrompt, userPrompt: isArabic ? `محتوى الموقع:\n${text}` : text,
-    maxTokens: 4000, temperature: 0.2, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation,
-    reasoningEffort: 'low' }, options.token)
+    maxTokens: crawlConfig.maxTokens, temperature: crawlConfig.temperature ?? 0.2, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation,
+    reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
   let ai = await extractCall()
   if (!ai.ok && ai.retryable) {
     await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -167,7 +169,7 @@ async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions =
     try {
       const fix = await callAi({ systemPrompt,
         userPrompt: `The following should be a JSON object with a "candidates" array but it is broken. Return ONLY corrected JSON:\n\n${ai.text.slice(0, 4000)}`,
-        maxTokens: 4000, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation, reasoningEffort: 'low' }, options.token)
+        maxTokens: crawlConfig.maxTokens, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation, reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
       if (!fix.ok || !fix.text) return { ...empty, warnings: ['AI returned incomplete or invalid JSON.'] }
       parsed = parseJson(fix.text)
     } catch {
@@ -244,8 +246,10 @@ export async function aiExtractRelations(candidates: ExtractedCandidate[]): Prom
   if (candidates.length < 2 || !candidates.some((c) => c.properties.extracted_by === 'ai')) return []
   const input = candidates.map((c, index) => ({ index, category: c.category, title: c.title, summary: c.summary,
     source_url: c.source_url, evidence_quote: c.properties.evidence_quote }))
+  const relateConfig = getModelConfigForOperation('relate')
   const ai = await callAi({ systemPrompt: CRAWL_PROMPTS.relate, userPrompt: JSON.stringify(input),
-    maxTokens: 1800, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'relate' })
+    maxTokens: relateConfig.maxTokens ?? 2500, temperature: relateConfig.temperature ?? 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'relate',
+    reasoningEffort: relateConfig.reasoningEffort ?? 'high' })
   if (!ai.ok || !ai.text) return []
   try {
     const parsed = parseJson(ai.text)

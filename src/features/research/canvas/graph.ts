@@ -1,7 +1,7 @@
 import type { AgentNodeState, UsageRecord } from '../contracts'
 import { emptyUsage } from '../contracts'
 
-export type CanvasNodeKind = 'user' | 'director' | 'subagent' | 'tool' | 'skill' | 'auditor' | 'synthesis'
+export type CanvasNodeKind = 'user' | 'orchestrator' | 'director' | 'subagent' | 'tool' | 'skill' | 'auditor' | 'synthesis'
 
 export interface PersistedEvent {
   id?: string
@@ -67,11 +67,14 @@ export interface CanvasGraph {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   directorId: string | null
+  /** The central entry node (Orchestrator when present, else the Director). */
+  entryId: string | null
   order: string[]
 }
 
 const ICONS: Readonly<Record<CanvasNodeKind, string>> = Object.freeze({
   user: 'user',
+  orchestrator: 'sparkles',
   director: 'sparkles',
   subagent: 'bot',
   tool: 'wrench',
@@ -81,7 +84,8 @@ const ICONS: Readonly<Record<CanvasNodeKind, string>> = Object.freeze({
 })
 
 const COLORS: Readonly<Record<CanvasNodeKind, string>> = Object.freeze({
-  user: '#2563eb',
+  user: '#64748b',
+  orchestrator: '#2563eb',
   director: '#7c3aed',
   subagent: '#0891b2',
   tool: '#f59e0b',
@@ -91,7 +95,8 @@ const COLORS: Readonly<Record<CanvasNodeKind, string>> = Object.freeze({
 })
 
 function roleKind(agentRole: string | null | undefined, agentId: string, eventType: string): CanvasNodeKind {
-  if (agentRole === 'director' || agentId === 'research_director' || agentId === 'top_level_orchestrator') return 'director'
+  if (agentId === 'orchestrator' || agentId === 'top_level_orchestrator' || agentRole === 'orchestrator') return 'orchestrator'
+  if (agentRole === 'director' || agentId === 'research_director') return 'director'
   if (agentRole === 'auditor') return 'auditor'
   if (agentRole === 'synthesis') return 'synthesis'
   if (agentRole === 'tool' || eventType === 'tool_call') return 'tool'
@@ -113,22 +118,52 @@ function numberFrom(value: unknown): number {
   return 0
 }
 
+function isInternalPlumbing(agentId?: string | null, label?: string | null): boolean {
+  const normAgent = (agentId || '').toLowerCase().trim()
+  const normLabel = (label || '').toLowerCase().trim()
+  if (normAgent === 'orchestrator' || normAgent === 'top_level_orchestrator') {
+    if (
+      !normLabel ||
+      normLabel.includes('load confirmed') ||
+      normLabel.includes('business context') ||
+      normLabel.includes('route the request') ||
+      normLabel.includes('answer the request') ||
+      normLabel.startsWith('route ')
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function displayLabel(kind: CanvasNodeKind, agentId: string, rawLabel: string): string {
+  if (agentId === 'orchestrator') return 'Orchestrator'
+  if (agentId === 'brain') return 'Brain'
+  if (agentId === 'director' && kind === 'director') return 'Director'
+  if (kind === 'tool') return 'Scrape'
+  if (kind === 'skill') return 'Skill'
+  return rawLabel
+}
+
 /** Build the graph only from persisted events and steps. No event is invented. */
-export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: PersistedStep[]; running?: boolean }): CanvasGraph {
+export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: PersistedStep[]; running?: boolean; userMessage?: string | null }): CanvasGraph {
   const nodes = new Map<string, CanvasNode>()
   const edges: CanvasEdge[] = []
   const order: string[] = []
+  const pendingFlowEdges: { seq: number; from: string; to: string; message: string }[] = []
 
   for (const step of input.steps ?? []) {
     if (nodes.has(step.id)) continue
+    if (isInternalPlumbing(step.agent, step.label)) continue
     const kind = roleKind(null, step.agent, 'step')
+    const label = displayLabel(kind, step.agent, step.label)
     nodes.set(step.id, {
       id: step.id,
       instanceId: step.id,
       kind,
       agentId: step.agent,
-      label: step.label,
-      objective: step.label,
+      label,
+      objective: label,
       state: step.status === 'failed' ? 'failed' : step.status === 'running' ? 'running' : 'completed',
       icon: ICONS[kind],
       color: COLORS[kind],
@@ -148,18 +183,21 @@ export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: Persi
     if (event.event_type === 'flow_connection') {
       const from = String(event.payload?.from ?? event.payload?.source ?? '')
       const to = String(event.payload?.to ?? event.payload?.target ?? '')
-      if (from && to) edges.push({ id: `edge:${event.seq}:${from}:${to}`, from, to, kind: 'flow', message: String(event.payload?.label ?? event.public_message ?? ''), animated: false })
+      if (from && to) pendingFlowEdges.push({ seq: event.seq, from, to, message: String(event.payload?.label ?? event.public_message ?? '') })
       continue
     }
+    const rawLabel = String(event.payload?.task_summary ?? event.agent_id)
+    if (isInternalPlumbing(event.agent_id, rawLabel)) continue
     const id = event.instance_id ?? `${event.agent_id}:${event.seq}`
     const kind = roleKind(event.agent_role ?? null, event.agent_id, event.event_type)
     const existing = nodes.get(id)
     const state = stateFromEvent(event.event_type, event.status)
+    const label = existing?.label || displayLabel(kind, event.agent_id, rawLabel)
     const node: CanvasNode = existing ? {
       ...existing,
       state,
-      label: existing.label || String(event.payload?.task_summary ?? event.agent_id),
-      objective: String(event.payload?.task_summary ?? existing.objective ?? existing.label),
+      label,
+      objective: label,
       sources: existing.sources + numberFrom(event.source_ids ?? event.payload?.source_ids),
       consumption: addConsumption(existing.consumption, event.consumption),
       startedAt: existing.startedAt ?? event.started_at ?? event.created_at ?? null,
@@ -172,8 +210,8 @@ export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: Persi
       instanceId: event.instance_id ?? null,
       kind,
       agentId: event.agent_id,
-      label: String(event.payload?.task_summary ?? event.agent_id),
-      objective: String(event.payload?.task_summary ?? event.agent_id),
+      label,
+      objective: label,
       state,
       icon: ICONS[kind],
       color: COLORS[kind],
@@ -191,15 +229,49 @@ export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: Persi
 
     const parent = event.parent_instance_id ?? (typeof event.payload?.parent_instance_id === 'string' ? event.payload.parent_instance_id : undefined)
     const from = typeof parent === 'string' ? parent : undefined
-    if (from && from !== id) {
+    if (from && from !== id && nodes.has(from)) {
       const kindOfEdge: CanvasEdge['kind'] = event.event_type === 'delegation' ? 'delegation' : event.event_type === 'skill_read' ? 'skill_read' : event.event_type === 'tool_call' ? 'tool_call' : 'flow'
       edges.push({ id: `edge:${event.seq}:${from}:${id}`, from, to: id, kind: kindOfEdge, message: event.public_message ?? '', animated: kindOfEdge === 'delegation' })
     }
   }
 
-  const list = [...nodes.values()]
+  for (const pf of pendingFlowEdges) {
+    if (nodes.has(pf.from) && nodes.has(pf.to)) {
+      edges.push({ id: `edge:${pf.seq}:${pf.from}:${pf.to}`, from: pf.from, to: pf.to, kind: 'flow', message: pf.message, animated: false })
+    }
+  }
+
+  const userMessage = (input.userMessage ?? '').trim()
+  if (userMessage) {
+    const orchestrator = [...nodes.values()].find(node => node.kind === 'orchestrator')
+    if (orchestrator && !nodes.has('user')) {
+      nodes.set('user', {
+        id: 'user', instanceId: null, kind: 'user', agentId: 'user', label: 'You', objective: 'You',
+        state: 'completed', icon: ICONS.user, color: COLORS.user, sources: 0, consumption: emptyUsage(),
+        startedAt: null, endedAt: null, failureReason: null, parametersRedacted: {}, messages: [userMessage], order: -1,
+      })
+      edges.push({ id: 'edge:user:orchestrator', from: 'user', to: orchestrator.id, kind: 'flow', message: '', animated: false })
+    }
+  }
+
+  // Connect the Director handoff to the executor's root nodes so the task path
+  // reads Orchestrator -> Director -> work. Only the explicit handoff node
+  // (agentId "director") drives this; pure research graphs are unaffected.
+  const handoff = [...nodes.values()].find(node => node.kind === 'director' && node.agentId === 'director')
+  if (handoff) {
+    const targets = new Set(edges.map(edge => edge.to))
+    for (const node of nodes.values()) {
+      if (node.id === handoff.id || node.kind === 'orchestrator' || node.kind === 'user') continue
+      if (targets.has(node.id)) continue
+      edges.push({ id: `edge:handoff:${node.id}`, from: handoff.id, to: node.id, kind: 'delegation', message: '', animated: false })
+      targets.add(node.id)
+    }
+  }
+
+  const list = [...nodes.values()].sort((a, b) => a.order - b.order)
+  const orchestrator = list.find(node => node.kind === 'orchestrator') ?? null
   const director = list.find(node => node.kind === 'director') ?? null
-  return { nodes: list, edges, directorId: director?.id ?? null, order }
+  return { nodes: list, edges, directorId: director?.id ?? null, entryId: orchestrator?.id ?? director?.id ?? null, order }
 }
 
 function addConsumption(current: UsageRecord, addition: { calls?: number; pages?: number; tokens?: number; credits?: number } | null | undefined): UsageRecord {

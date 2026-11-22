@@ -5,14 +5,16 @@ import React from 'react'
 export function SkeletonBox({
   className = '',
   style,
+  dark = false,
 }: {
   className?: string
   style?: React.CSSProperties
+  dark?: boolean
 }) {
   return (
     <div
       aria-hidden="true"
-      className={`skeleton-shimmer rounded-lg ${className}`}
+      className={`${dark ? 'skeleton-shimmer-dark' : 'skeleton-shimmer'} rounded-lg ${className}`}
       style={style}
     />
   )
@@ -21,14 +23,16 @@ export function SkeletonBox({
 export function SkeletonCircle({
   size = 40,
   className = '',
+  dark = false,
 }: {
   size?: number
   className?: string
+  dark?: boolean
 }) {
   return (
     <div
       aria-hidden="true"
-      className={`skeleton-shimmer shrink-0 rounded-full ${className}`}
+      className={`${dark ? 'skeleton-shimmer-dark' : 'skeleton-shimmer'} shrink-0 rounded-full ${className}`}
       style={{ width: size, height: size }}
     />
   )
