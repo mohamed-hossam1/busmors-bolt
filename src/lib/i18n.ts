@@ -173,6 +173,16 @@ export const translations = {
   calendarUnscheduledTitle: 'Drafts without a date',
   calendarUnscheduledHint: 'These drafts have no time yet. Approve or edit them here, then schedule them in chat.',
   calendarNoTime: 'No date set',
+  proposedBadge: 'Proposed',
+  fbPageFallback: 'Your Facebook Page',
+  fbPreviewLabel: 'Preview of how this post will appear on Facebook',
+  fbDraft: 'Draft',
+  fbProposedAt: 'Proposed · {time}',
+  fbScheduledAt: 'Scheduled · {time}',
+  fbSeeMore: 'See more',
+  fbLike: 'Like',
+  fbComment: 'Comment',
+  fbShare: 'Share',
   calendarWeekStarts: 'Week starts Sunday',
 
   // settings

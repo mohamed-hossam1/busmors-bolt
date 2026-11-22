@@ -13,9 +13,22 @@ import { useAuth } from '../context/AuthContext'
 import { formatWorkspaceTime } from '../lib/region'
 import {
   addDays, addMonths, dayHeading, dayKey, hourLabel, monthGrid, monthLabel,
-  startOfWeek, timeLabel, todayKey, weekKeys, weekRangeLabel, weekdayOf, zonedParts,
+  planTime, startOfWeek, timeLabel, todayKey, weekKeys, weekRangeLabel, weekdayOf, zonedParts,
 } from '../lib/calendar'
 import type { PlannedPost } from '../lib/types'
+import FacebookPostPreview, { type PreviewTimeKind } from '../components/publishing/FacebookPostPreview'
+import { usePreviewPageName } from '../hooks/usePreviewPageName'
+
+/** Has an AI-proposed time but no schedule: shown dashed with a "Proposed" badge. */
+const isProposed = (post: PlannedPost) => !post.scheduled_for && Boolean(post.proposed_for)
+
+/** Time line of the Facebook preview: published, else scheduled, else proposed, else draft. */
+function previewTime(post: PlannedPost): { timeLabelKind: PreviewTimeKind; time: string | null } {
+  if (post.status === 'published') return { timeLabelKind: 'published', time: post.published_at }
+  if (post.scheduled_for) return { timeLabelKind: 'scheduled', time: post.scheduled_for }
+  if (post.proposed_for) return { timeLabelKind: 'proposed', time: post.proposed_for }
+  return { timeLabelKind: 'draft', time: null }
+}
 
 type View = 'month' | 'week'
 
@@ -62,6 +75,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
   const { t } = useCopy()
   const { settings } = useAuth()
   const tz = settings?.timezone ?? 'UTC'
+  const pageName = usePreviewPageName()
   const today = todayKey(tz)
 
   const [posts, setPosts] = useState<PlannedPost[]>(initial)
@@ -99,17 +113,17 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
     finally { setBusy(false) }
   }
 
-  const scheduled = useMemo(() => posts.filter((post) => Boolean(post.scheduled_for)), [posts])
-  const unscheduled = useMemo(() => posts.filter((post) => !post.scheduled_for), [posts])
+  const scheduled = useMemo(() => posts.filter((post) => Boolean(planTime(post))), [posts])
+  const unscheduled = useMemo(() => posts.filter((post) => !planTime(post)), [posts])
   const byDay = useMemo(() => {
     const map = new Map<string, PlannedPost[]>()
     for (const post of scheduled) {
-      const key = dayKey(post.scheduled_for, tz)
+      const key = dayKey(planTime(post)!, tz)
       const bucket = map.get(key)
       if (bucket) bucket.push(post)
       else map.set(key, [post])
     }
-    for (const bucket of map.values()) bucket.sort((a, b) => Date.parse(a.scheduled_for) - Date.parse(b.scheduled_for))
+    for (const bucket of map.values()) bucket.sort((a, b) => Date.parse(planTime(a)!) - Date.parse(planTime(b)!))
     return map
   }, [scheduled, tz])
 
@@ -275,6 +289,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
                       <PostCard
                         key={post.id}
                         post={post}
+                        pageName={pageName}
                         onApprove={() => setStatus(post, 'approved')}
                         onReject={() => setStatus(post, 'rejected')}
                         onEdit={() => { setEditing(post); setEditText(post.caption) }}
@@ -299,6 +314,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
                     <PostCard
                       key={post.id}
                       post={post}
+                      pageName={pageName}
                       onApprove={() => setStatus(post, 'approved')}
                       onReject={() => setStatus(post, 'rejected')}
                       onEdit={() => { setEditing(post); setEditText(post.caption) }}
@@ -419,6 +435,7 @@ function WeekGrid({
   tz: string
   onSelect: (key: string) => void
 }) {
+  const { t } = useCopy()
   return (
     <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white">
       <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-ink-100 bg-ink-50/70">
@@ -463,22 +480,25 @@ function WeekGrid({
                     <div key={hour} className="border-b border-ink-100/60" style={{ height: HOUR_HEIGHT }} />
                   ))}
                   {(byDay.get(key) ?? []).map((post) => {
-                    const parts = zonedParts(post.scheduled_for, tz)
+                    const time = planTime(post)!
+                    const parts = zonedParts(time, tz)
                     const tone = toneFor(post.status)
+                    const proposed = isProposed(post)
                     return (
                       <button
                         key={post.id}
                         type="button"
                         onClick={() => onSelect(key)}
-                        className={`card absolute inset-x-0.5 overflow-hidden rounded-md border px-1 py-0.5 text-start transition hover:shadow-sm ${tone.chip}`}
+                        className={`card absolute inset-x-0.5 overflow-hidden rounded-md border px-1 py-0.5 text-start transition hover:shadow-sm ${tone.chip} ${proposed ? 'border-dashed' : ''}`}
                         style={{ top: (parts.hour + parts.minute / 60) * HOUR_HEIGHT, height: HOUR_HEIGHT - 4 }}
                       >
                         <span className="flex items-center gap-1 text-[10px] font-semibold">
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
-                          <span className="truncate">{timeLabel(post.scheduled_for, tz)}</span>
+                          <span className="truncate">{timeLabel(time, tz)}</span>
                         </span>
-                        <span className="mt-0.5 line-clamp-2 block text-[10px] leading-tight text-ink-700">{post.caption}</span>
-                        <span className="sr-only">{formatWorkspaceTime(post.scheduled_for, tz)}</span>
+                        {proposed && <span className="badge mt-0.5 w-fit max-w-full truncate bg-ink-100 px-1 py-0 text-[9px] text-ink-600">{t('proposedBadge')}</span>}
+                        <span className={`mt-0.5 ${proposed ? 'line-clamp-1' : 'line-clamp-2'} block text-[10px] leading-tight text-ink-700`}>{post.caption}</span>
+                        <span className="sr-only">{formatWorkspaceTime(time, tz)}</span>
                       </button>
                     )
                   })}
@@ -500,20 +520,23 @@ function weekdayLabel(key: string) {
 function PostChip({ post, tz, onSelect }: { post: PlannedPost; tz: string; onSelect: () => void }) {
   const { t } = useCopy()
   const tone = toneFor(post.status)
+  const time = planTime(post)!
+  const proposed = isProposed(post)
   return (
     <button
       type="button"
       onClick={onSelect}
-      aria-label={`${t(`platform_${post.platform}` as never)} — ${formatWorkspaceTime(post.scheduled_for, tz)}`}
-      className={`card flex w-full min-w-0 flex-col gap-0.5 rounded-lg border px-1.5 py-1 text-start text-[11px] leading-snug transition hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${tone.chip}`}
+      aria-label={`${t(`platform_${post.platform}` as never)} — ${proposed ? t('proposedBadge') + ' ' : ''}${formatWorkspaceTime(time, tz)}`}
+      className={`card relative flex w-full min-w-0 flex-col gap-0.5 rounded-lg border px-1.5 py-1 text-start text-[11px] leading-snug transition hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${tone.chip} ${proposed ? 'border-dashed' : ''}`}
     >
       <span className="flex min-w-0 items-center gap-1 font-semibold">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
-        <span className="truncate">{timeLabel(post.scheduled_for, tz)}</span>
+        <span className="truncate">{timeLabel(time, tz)}</span>
         <PlatformIcon platform={post.platform} className="ms-auto h-3 w-3 shrink-0 opacity-60" />
       </span>
-      <span className="line-clamp-2 break-words text-ink-700">{post.caption}</span>
-      <span className="sr-only">{formatWorkspaceTime(post.scheduled_for, tz)}</span>
+      {proposed && <span className="badge w-fit max-w-full truncate bg-ink-100 px-1.5 py-0 text-[9px] text-ink-600">{t('proposedBadge')}</span>}
+      <span className={`${proposed ? 'line-clamp-1' : 'line-clamp-2'} break-words text-ink-700`}>{post.caption}</span>
+      <span className="sr-only">{formatWorkspaceTime(time, tz)}</span>
     </button>
   )
 }
@@ -526,8 +549,10 @@ function PostCard({
   onCopy,
   copied,
   onMarkPublished,
+  pageName,
 }: {
   post: PlannedPost
+  pageName: string
   onApprove?: () => void
   onReject?: () => void
   onEdit?: () => void
@@ -559,17 +584,11 @@ function PostCard({
             {t(`status_${post.status}` as never)}
           </span>
           <span className="ms-auto text-xs text-ink-400 font-normal">
-            {post.scheduled_for ? formatWorkspaceTime(post.scheduled_for, tz) : t('calendarNoTime')}
+            {planTime(post) ? formatWorkspaceTime(planTime(post)!, tz) : t('calendarNoTime')}
           </span>
         </div>
 
-        <p className="text-sm leading-relaxed text-ink-850 font-normal whitespace-pre-wrap">{post.caption}</p>
-
-        {post.hashtags && (
-          <p className="mt-2.5 text-xs font-medium text-primary-700 leading-normal" dir="ltr">
-            {post.hashtags}
-          </p>
-        )}
+        <FacebookPostPreview compact pageName={pageName} caption={post.caption} hashtags={post.hashtags} timezone={tz} {...previewTime(post)} />
 
         {post.status === 'published' && post.publish_result?.published_by === 'user' && (
           <p className="mt-2.5 flex items-center gap-1 text-xs text-primary-700">✓ {t('publishedByYou')}</p>

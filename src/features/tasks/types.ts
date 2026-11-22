@@ -9,7 +9,7 @@ export interface RouteDecision {
 }
 export interface TaskOutput {
  reply:string;document?:{title:string;type:Deliverable['type'];content:string}
- posts:{caption:string;hashtags:string;visualBrief?:string;platform:'facebook'|'instagram';proposedAt?:string|null}[]
+ posts:{caption:string;hashtags:string;visualBrief?:string;platform:'facebook';/** UTC ISO; a suggestion the owner confirms when scheduling. */proposedAt?:string|null}[]
  sourceRefs?:string[];limitations?:string[]
 }
 export interface TaskContext {facts:Pick<BrainNode,'id'|'version'|'category'|'title'|'summary'|'properties'|'verification_state'>[];history:{role:string;content:string}[];region:{country?:string;currency?:string;target_market?:string;timezone?:string}}

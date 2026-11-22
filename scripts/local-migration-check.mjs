@@ -13,6 +13,7 @@ const checks = [
   'discovery-db-check.sql',
   'planned-posts-db-check.sql',
   'deliverable-offer-db-check.sql',
+  'post-proposed-time-db-check.sql',
 ]
 
 const conn = localConnection()

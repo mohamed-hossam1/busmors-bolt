@@ -3,6 +3,7 @@ import type { AiCallResult } from '../lib/agents'
 import type { ExecutionTask, RouteDecision, TaskCheckpoint, TaskContext, TaskOutput } from '../features/tasks/types'
 import { isSubstantialReply, replyTitle, sectionForTask } from '../lib/deliverableRouting'
 import { postsMarkdown, scheduleTable } from '../lib/deliverableMarkdown'
+import { localToInstant } from '../lib/calendar'
 
 export interface TaskBackend {
  rpc<T>(name:string,args:Record<string,unknown>):Promise<T>
@@ -18,6 +19,14 @@ const intentNames=['simple_answer','market_research','competitor_analysis','cont
 export function parseRoute(text:string):RouteDecision {
  let value:RouteDecision
  try{value=JSON.parse(text)}catch{throw new TaskFailure('invalid_output','The Director returned an unreadable response. Retry this task.')}
+ // Normalize recoverable details before validating: a quantity outside 1-12
+ // (e.g. 14 for "2 weeks") is clamped, and clarification options are limited
+ // to the first 8 usable ones.
+ if(value&&typeof value==='object'){
+  const quantity=Math.round(Number(value.quantity??1))
+  if(Number.isFinite(quantity))value.quantity=Math.min(12,Math.max(1,quantity))
+  if(value.question&&Array.isArray(value.question.options))value.question.options=value.question.options.filter(option=>typeof option==='string'&&option.trim()&&option.length<=200).slice(0,8)
+ }
  if(!value||!['reply','clarify','task'].includes(value.mode)||typeof value.reply!=='string'||value.reply.length>12000||(value.mode==='reply'&&!value.reply.trim())||!intentNames.includes(value.intent)||!Number.isInteger(value.quantity)||value.quantity<1||value.quantity>12
   ||(value.mode==='clarify'&&(!value.question||typeof value.question.label!=='string'||!value.question.label.trim()||value.question.label.length>500||!Array.isArray(value.question.options)||value.question.options.length>8||value.question.options.some(option=>typeof option!=='string'||!option.trim()||option.length>200))))throw new TaskFailure('invalid_output','The Director returned an incomplete response. Retry this task.')
  return value
@@ -30,12 +39,23 @@ export function parseRoute(text:string):RouteDecision {
 // skipped) a question, the router must proceed instead of asking again, which
 // otherwise loops and spends the task allowance on routing alone.
 const generatedIntents=['content_creation','campaign_planning','performance_diagnosis']
-export function promoteTaskIntent(route:RouteDecision,answered=0):RouteDecision {
+// The router tends to set quantity 1 for campaigns. A campaign gets the number of
+// posts the user asked for (max 12), otherwise at least 3.
+export function campaignQuantity(request:string,quantity:number):number {
+ const asked=/\b(\d{1,2})\s+(?:[a-z-]+\s+){0,2}(?:posts?|drafts?)\b/i.exec(request)
+ if(asked)return Math.min(12,Math.max(1,Number(asked[1])))
+ return Math.min(12,Math.max(3,quantity))
+}
+export function promoteTaskIntent(route:RouteDecision,answered=0,request=''):RouteDecision {
+ // The router sometimes labels an explicit campaign request as plain post copy;
+ // a request that says "campaign" gets the campaign brief and quantity rule.
+ if(route.intent==='content_creation'&&/\bcampaigns?\b/i.test(request))route={...route,intent:'campaign_planning'}
  if(route.mode==='reply'&&generatedIntents.includes(route.intent))return {...route,mode:'task'}
  if(route.mode==='clarify'&&answered>0){const {question:_question,...rest}=route;return {...rest,mode:'task'}}
  return route
 }
-export function parsePosts(text:string,quantity:number):{title?:string;content?:string;posts:TaskOutput['posts'];partial:boolean} {
+const HOUR_MS=3_600_000
+export function parsePosts(text:string,quantity:number,timeZone:string,now:Date):{title?:string;content?:string;posts:TaskOutput['posts'];partial:boolean} {
  let value:Record<string,unknown>
  try{value=JSON.parse(text)}catch{throw new TaskFailure('invalid_output','The drafts could not be read. Retry to generate complete drafts.')}
  const raw=value.posts
@@ -43,8 +63,17 @@ export function parsePosts(text:string,quantity:number):{title?:string;content?:
  let dropped=0
  if(Array.isArray(raw)){
   for(const post of raw){
-   if(post&&typeof post.caption==='string'&&post.caption.trim()&&post.caption.length<=6000&&typeof post.hashtags==='string'&&post.hashtags.length<=1000)posts.push({caption:post.caption,hashtags:post.hashtags,visualBrief:typeof post.visualBrief==='string'?post.visualBrief:'',platform:post.platform==='instagram'?'instagram':'facebook'})
-   else dropped++
+   if(post&&typeof post.caption==='string'&&post.caption.trim()&&post.caption.length<=6000&&typeof post.hashtags==='string'&&post.hashtags.length<=1000){
+    // A proposed time is a suggestion only. Keep it when it parses in the
+    // workspace timezone and falls between 1 hour and 60 days from now.
+    // The model often adds seconds and a "Z" although it was asked for local
+    // wall-clock time; keep the YYYY-MM-DDTHH:mm part and read it as local time.
+    const local=typeof post.proposedLocalTime==='string'?/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(post.proposedLocalTime.trim())?.[1]:undefined
+    const instant=local?localToInstant(local,timeZone):null
+    const at=instant?Date.parse(instant):NaN
+    const proposedAt=instant&&at>=now.getTime()+HOUR_MS&&at<=now.getTime()+60*24*HOUR_MS?instant:null
+    posts.push({caption:post.caption,hashtags:post.hashtags,visualBrief:typeof post.visualBrief==='string'?post.visualBrief:'',platform:'facebook',proposedAt})
+   }else dropped++
   }
  }
  // Keep the valid subset instead of discarding everything. No usable draft at all
@@ -53,7 +82,9 @@ export function parsePosts(text:string,quantity:number):{title?:string;content?:
  if(!posts.length)throw new TaskFailure('invalid_output','The response did not contain any complete drafts. Nothing has been saved as a Post.')
  // save_task_result accepts at most 12 posts, a 1-200 character title and an 80000 character brief.
  if(posts.length>12){dropped+=posts.length-12;posts.length=12}
- const partial=dropped>0||posts.length!==quantity
+ // Partial means work is missing: fewer drafts than requested or invalid ones
+ // dropped. More drafts than the minimum (e.g. a campaign's "at least 3") is not.
+ const partial=dropped>0||posts.length<quantity
  const title=typeof value.title==='string'&&value.title.trim()?value.title.trim().slice(0,200):undefined
  const content=typeof value.content==='string'&&value.content.trim()?value.content.slice(0,80000):undefined
  return {title,content,posts,partial}
@@ -111,11 +142,11 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     const context=await step('orchestrator','Load confirmed business context',()=>backend.context(task)) as TaskContext
     await checkpoint({...task.checkpoint,context,contextRefs:context.facts.map(fact=>({nodeId:fact.id,version:fact.version}))})
    }
-   const prompt=()=>JSON.stringify({request:task.user_request,context:task.checkpoint.context,answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
+   const prompt=()=>JSON.stringify({request:task.user_request,now:new Date().toISOString(),context:task.checkpoint.context,answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
    const routePrompt=()=>JSON.stringify({request:task.user_request,context:routeContext(task.checkpoint.context),answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
    const timezone=()=>task.checkpoint.context?.region?.timezone||'UTC'
    if(task.checkpoint.phase==='route'){
-    const route=promoteTaskIntent(await step('orchestrator','Route the request',async()=>parseRoute(await call('route',routePrompt()))) as RouteDecision,task.checkpoint.answers?.length??0)
+    const route=promoteTaskIntent(await step('orchestrator','Route the request',async()=>parseRoute(await call('route',routePrompt()))) as RouteDecision,task.checkpoint.answers?.length??0,task.user_request)
     if(route.mode==='clarify'){
      await checkpoint({...task.checkpoint,route})
      await backend.rpc('await_task_input',{p_task_id:task.id,p_run_id:task.run_id,p_label:route.question!.label,p_options:route.question!.options.slice(0,6)})
@@ -124,7 +155,10 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     if(route.mode==='reply'){
      const document=isSubstantialReply(route.reply)?{document:{title:replyTitle(route.reply,task.user_request),content:route.reply,type:'general' as const}}:{}
      await checkpoint({...task.checkpoint,route,phase:'persist',output:{reply:route.reply,posts:[],...document}})
-    }else await checkpoint({...task.checkpoint,route,phase:'generate'},route.intent)
+    }else{
+     const planned=route.intent==='campaign_planning'?{...route,quantity:campaignQuantity(task.user_request,route.quantity)}:route
+     await checkpoint({...task.checkpoint,route:planned,phase:'generate'},route.intent)
+    }
    }
    if(task.checkpoint.phase==='generate'){
     const route=task.checkpoint.route!
@@ -133,7 +167,7 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     if(['market_research','competitor_analysis'].includes(route.intent))throw new TaskFailure('research_unavailable','Public research is not configured yet. No sources have been retrieved. Your question is saved for retry after setup.')
     if(route.intent==='content_creation'||route.intent==='campaign_planning'){
      const campaign=route.intent==='campaign_planning'
-     const draft=await step(campaign?'campaign_planner':'content_writer',campaign?'Create the campaign brief and drafts':'Write the requested Post drafts',async()=>parsePosts(await call(campaign?'campaign':'copy',prompt()),route.quantity)) as ReturnType<typeof parsePosts>
+     const draft=await step(campaign?'campaign_planner':'content_writer',campaign?'Create the campaign brief and drafts':'Write the requested Post drafts',async()=>parsePosts(await call(campaign?'campaign':'copy',prompt()),route.quantity,timezone(),new Date())) as ReturnType<typeof parsePosts>
      // A complete brief is required only to persist a document. A missing brief or
      // a short draft set is a partial result: keep the valid drafts and mark it,
      // rather than discarding the work and recording a hard failure.

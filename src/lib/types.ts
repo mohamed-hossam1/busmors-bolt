@@ -169,7 +169,16 @@ export interface PlannedPost {
   hashtags: string
   image_url: string | null
   status: PostStatus
-  scheduled_for: string
+  /** Time of the active publish approval; set only when the owner schedules. */
+  scheduled_for: string | null
+  /** AI-suggested time; a proposal, never a schedule. */
+  proposed_for: string | null
+  version: number
+  approval_state: 'unapproved' | 'approved' | 'rejected'
+  execution_state: 'idle' | 'scheduled' | 'submitted' | 'confirmed' | 'failed' | 'uncertain' | 'held' | 'cancelled' | 'owner_reported'
+  published_at: string | null
+  current_version_id: string | null
+  holds?: { reason: string; kind: string }[]
   idempotency_key: string
   publish_result: Record<string, unknown> | null
   created_at: string

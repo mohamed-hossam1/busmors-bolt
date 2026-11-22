@@ -35,6 +35,33 @@ export function zonedParts(value: string | Date, timezone: string): ZonedParts {
   }
 }
 
+/**
+ * Converts a local wall-clock time (`YYYY-MM-DDTHH:mm`) in a timezone to a UTC
+ * ISO instant. Returns null for malformed input or a time that does not exist
+ * in that zone (a DST gap). Used on the server and in the browser.
+ */
+export function localToInstant(local: string, timeZone: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local)
+  if (!match) return null
+  const [year, month, day, hour, minute] = match.slice(1).map(Number)
+  const guess = Date.UTC(year, month - 1, day, hour, minute)
+  if (Number.isNaN(guess)) return null
+  const offsetAt = (instant: number) => {
+    const parts = zonedParts(new Date(instant), timeZone)
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - instant
+  }
+  let candidate = guess - offsetAt(guess)
+  candidate = guess - offsetAt(candidate)
+  const check = zonedParts(new Date(candidate), timeZone)
+  if (check.year !== year || check.month !== month || check.day !== day || check.hour !== hour || check.minute !== minute) return null
+  return new Date(candidate).toISOString()
+}
+
+/** Where a post sits on the calendar: its scheduled time, else its proposed time. */
+export function planTime(post: { scheduled_for: string | null; proposed_for: string | null }): string | null {
+  return post.scheduled_for ?? post.proposed_for
+}
+
 /** Stable `YYYY-MM-DD` identity for a calendar day in a workspace timezone. */
 export function dayKey(value: string | Date, timezone: string): string {
   const parts = zonedParts(value, timezone)
