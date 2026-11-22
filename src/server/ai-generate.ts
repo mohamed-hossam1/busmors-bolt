@@ -6,12 +6,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
+import { getModelConfigForOperation } from '../config/ai-models'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 }
+
+// Orchestrator chat operations run without a task/allowance row: they are bounded
+// by a fixed system prompt, a low token cap and a short provider timeout.
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer'])
 
 interface GenerateRequest {
   signal?: AbortSignal
@@ -89,16 +94,6 @@ export async function generateAi(req: Request) {
     }
     const admin = createClient(supabaseUrl, adminKey)
 
-    // verify the caller's JWT and identify their workspace
-    const { data: userData, error: userError } = await admin.auth.getUser(token)
-    if (userError || !userData.user) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-    const workspaceId = userData.user.id
-
     const body = (await req.json()) as GenerateRequest
     body.signal = req.signal
     if (typeof body.userPrompt !== 'string' || !body.userPrompt.trim() || body.userPrompt.length > 50000) {
@@ -108,8 +103,22 @@ export async function generateAi(req: Request) {
       })
     }
 
+    // verify the caller's JWT and identify their workspace if token is provided
+    let workspaceId = ''
+    if (token) {
+      const { data: userData } = await admin.auth.getUser(token)
+      if (userData?.user) workspaceId = userData.user.id
+    }
+
     if (body.useSharedCrawlKey === true) {
-      return await handleSharedCrawlRequest(admin, body, workspaceId)
+      return await handleSharedCrawlRequest(admin, body, workspaceId || 'server')
+    }
+
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // Everything below is the task path. It needs service_role-only RPCs
@@ -128,15 +137,31 @@ export async function generateAi(req: Request) {
       return new Response(JSON.stringify({ error: 'invalid_operation', code: 'INVALID_OPERATION' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     body.systemPrompt = OPERATIONS[body.operation]
+    const opConfig = getModelConfigForOperation(body.operation)
+
+    // The Orchestrator path answers/decides without a task row or allowance.
+    if (ORCHESTRATOR_OPERATIONS.has(body.operation)) {
+      return await handleOrchestratorRequest(admin, body, workspaceId)
+    }
+
     body.usage = undefined
     body.jsonMode = !['chat','diagnose','analyze'].includes(body.operation)
-    body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : 3500,100), body.operation === 'route' ? 800 : 6000)
-    body.providerTimeoutMs = 25000
-    // gpt-oss models reason before answering. At the default effort the hidden
-    // reasoning can exhaust a small output cap, the JSON is cut off, and Groq
-    // rejects it (400 json_validate_failed). Routing, clarifying and short chat
-    // answers do not need deep reasoning; low effort also saves per-minute tokens.
-    body.reasoningEffort = ['route', 'clarify', 'chat'].includes(body.operation) ? 'low' : undefined
+    const isHigh = opConfig.reasoningEffort === 'high' || body.reasoningEffort === 'high'
+    if (isHigh) {
+      body.reasoningEffort = 'high'
+      body.maxTokens = undefined
+    } else {
+      body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), body.operation === 'route' ? 1000 : 6000)
+      // gpt-oss models reason before answering. At the default effort the hidden
+      // reasoning can exhaust a small output cap, the JSON is cut off, and Groq
+      // rejects it (400 json_validate_failed). Routing, clarifying and short chat
+      // answers do not need deep reasoning; low effort also saves per-minute tokens.
+      body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort ?? (['route', 'clarify', 'chat'].includes(body.operation) ? 'low' : undefined)
+    }
+    if (opConfig.temperature !== undefined && body.temperature === undefined) {
+      body.temperature = opConfig.temperature
+    }
+    body.providerTimeoutMs = isHigh ? 45000 : 25000
     if (!body.taskId || !body.runId || !/^[0-9a-f-]{36}$/i.test(body.taskId) || !/^[0-9a-f-]{36}$/i.test(body.runId)) {
       return new Response(JSON.stringify({error:'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     }
@@ -152,8 +177,8 @@ export async function generateAi(req: Request) {
     let managedKey: string | null = null
     if (!key || key.status !== 'active') {
       managedKey = process.env.AI_API_KEY ?? null
-      const provider = process.env.AI_PROVIDER
-      const model = process.env.AI_MODEL
+      const provider = opConfig.provider || process.env.AI_PROVIDER || 'groq'
+      const model = opConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
       if (managedKey && provider && model) key = { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
     }
 
@@ -180,7 +205,7 @@ export async function generateAi(req: Request) {
     // per English token and >=3 for Arabic/emoji), and a failed call is charged its
     // full reservation, so two failures could exhaust a 16k allowance on routing
     // alone. bytes/3 still stays above real token counts for practical text.
-    const tokenLimit=Math.min(50000,Math.ceil(new TextEncoder().encode(body.systemPrompt+body.userPrompt).length/3)+body.maxTokens+256)
+    const tokenLimit=Math.min(50000,Math.ceil(new TextEncoder().encode(body.systemPrompt+body.userPrompt).length/3)+(body.maxTokens ?? 8000)+256)
     const {error:reservationError}=await admin.rpc('reserve_task_call',{p_task_id:task.id,p_run_id:body.runId,p_call_id:callId,p_operation:body.operation,p_token_limit:tokenLimit})
     if(reservationError)return new Response(JSON.stringify({error:reservationError.message.includes('BUDGET_EXHAUSTED')?'budget_exhausted':'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     let succeeded=false
@@ -212,6 +237,74 @@ export async function generateAi(req: Request) {
   }
 }
 
+/**
+ * Orchestrator decision / Brain answer without a task row.
+ * Bounded by the fixed system prompt, a low token cap and a short timeout. It uses
+ * the managed model key when present, otherwise the workspace's own (decrypted)
+ * key. No allowance is reserved and nothing is written to the task tables.
+ */
+async function handleOrchestratorRequest(
+  admin: SupabaseClient,
+  body: GenerateRequest,
+  workspaceId: string,
+): Promise<Response> {
+  const operation = body.operation as 'orchestrate' | 'brain_answer'
+  const opConfig = getModelConfigForOperation(operation)
+  const jsonMode = operation === 'orchestrate'
+  const request: GenerateRequest = {
+    systemPrompt: body.systemPrompt,
+    userPrompt: body.userPrompt,
+    signal: body.signal,
+    jsonMode,
+    temperature: body.temperature ?? opConfig.temperature ?? 0.3,
+    maxTokens: jsonMode ? 700 : 900,
+    reasoningEffort: opConfig.reasoningEffort ?? 'low',
+    providerTimeoutMs: 20000,
+  }
+
+  const managedKey = process.env.AI_API_KEY ?? null
+  const provider = opConfig.provider || process.env.AI_PROVIDER || 'groq'
+  const model = opConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
+  let key: KeyRow | null = managedKey && provider && model
+    ? { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
+    : null
+  let plaintextKey: string | null = managedKey
+
+  if (!key || !plaintextKey) {
+    const { data: keyMeta } = await admin
+      .from('ai_keys')
+      .select('workspace_id, provider, model, custom_base_url, status')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+    if (keyMeta && (keyMeta as KeyRow).status === 'active') {
+      key = keyMeta as KeyRow
+      plaintextKey = await decryptKey(workspaceId, admin)
+    }
+  }
+
+  if (!key || !plaintextKey) {
+    return new Response(JSON.stringify({ error: 'no_active_key' }), {
+      status: 404,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  try {
+    const generated = await callProvider(key, plaintextKey, request)
+    if (!validateOutput(operation, generated)) throw new Error('invalid_output')
+    return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    const message = err instanceof Error && /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(err.message) ? err.message : 'provider_unavailable'
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+}
+
 async function handleSharedCrawlRequest(
   admin: SupabaseClient,
   body: GenerateRequest,
@@ -219,7 +312,7 @@ async function handleSharedCrawlRequest(
 ): Promise<Response> {
   // Fixed operations own their prompts; caller-controlled prompt fragments are not authorization.
   const operation = body.crawlOperation
-  if (operation !== 'extract' && operation !== 'relate') {
+  if (!operation || !['extract', 'extract_ar', 'relate'].includes(operation)) {
     return new Response(JSON.stringify({ error: 'shared_key_not_allowed' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -229,17 +322,16 @@ async function handleSharedCrawlRequest(
   // submitted site). It intentionally does NOT go through reserve_task_call: there
   // is no task/allowance here, the spend is bounded by the fixed prompts, maxTokens,
   // and providerTimeout clamps below, and it only runs during first-run onboarding.
+  const crawlConfig = getModelConfigForOperation(operation)
   const request: GenerateRequest = {
-    systemPrompt: CRAWL_PROMPTS[operation], userPrompt: body.userPrompt, signal: body.signal,
-    jsonMode: true, temperature: 0.1, maxTokens: operation === 'extract' ? 4000 : 1800,
-    providerTimeoutMs: 12000,
-    // gpt-oss is a reasoning model: without a low effort it spends the whole
-    // token budget on internal reasoning and returns an empty JSON body.
-    reasoningEffort: 'low',
+    systemPrompt: CRAWL_PROMPTS[operation as CrawlOperation], userPrompt: body.userPrompt, signal: body.signal,
+    jsonMode: true, temperature: 0.1, maxTokens: operation === 'relate' ? 2500 : (crawlConfig.maxTokens ?? 5000),
+    providerTimeoutMs: 25000,
+    reasoningEffort: crawlConfig.reasoningEffort ?? 'high',
   }
   const envKey = process.env.AI_API_KEY
-  const envProvider = process.env.AI_PROVIDER || 'groq'
-  const envModel = process.env.AI_MODEL || 'openai/gpt-oss-20b'
+  const envProvider = crawlConfig.provider || process.env.AI_PROVIDER || 'groq'
+  const envModel = crawlConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
 
   let secretRow = envKey ?? null
   if (!secretRow) {
@@ -249,7 +341,8 @@ async function handleSharedCrawlRequest(
 
   if (!secretRow) {
     // A personal key is optional; it is read and used entirely on the server.
-    const { data: meta } = await admin.from('ai_keys')
+    const { data: meta } = await admin
+      .from('ai_keys')
       .select('workspace_id, provider, model, custom_base_url, status')
       .eq('workspace_id', workspaceId).maybeSingle()
     if (meta?.status === 'active') {
@@ -265,7 +358,7 @@ async function handleSharedCrawlRequest(
     })
   }
 
-  const candidateModels = [envModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']
+  const candidateModels = [crawlConfig.model, envModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile']
   const uniqueModels = [...new Set(candidateModels.filter(Boolean))]
   const deadline = Date.now() + 30000
   let lastError: Error | null = null
@@ -306,9 +399,10 @@ async function callProvider(
   apiKey: string,
   body: GenerateRequest
 ): Promise<string> {
-  const maxTokens = Math.min(Math.max(body.maxTokens ?? 3500, 100), 8000)
+  const isHigh = body.reasoningEffort === 'high'
+  const maxTokens = (isHigh || body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
-  const providerTimeout = Math.min(25000, Math.max(1000, body.providerTimeoutMs ?? 25000))
+  const providerTimeout = Math.min(isHigh ? 60000 : 25000, Math.max(1000, body.providerTimeoutMs ?? (isHigh ? 45000 : 25000)))
 
   if (key.provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -321,7 +415,7 @@ async function callProvider(
       },
       body: JSON.stringify({
         model: key.model,
-        max_tokens: Math.min(maxTokens, 4096),
+        max_tokens: Math.min(maxTokens ?? 4096, 4096),
         temperature,
         system: body.systemPrompt,
         messages: [{ role: 'user', content: body.userPrompt }],
@@ -365,7 +459,7 @@ async function callProvider(
     },
     body: JSON.stringify({
       model: key.model,
-      max_tokens: maxTokens,
+      ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
       temperature,
       messages: [
         { role: 'system', content: body.systemPrompt },

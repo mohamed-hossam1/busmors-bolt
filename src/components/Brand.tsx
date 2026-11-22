@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { Link } from '@/shared/i18n'
 
 export default function Brand({ light = false, compact = false, href = '/' }: { light?: boolean; compact?: boolean; href?: string }) {
   const className = `inline-flex shrink-0 items-center gap-2.5 ${light ? 'text-white' : 'text-ink-900'}`
@@ -9,6 +9,6 @@ export default function Brand({ light = false, compact = false, href = '/' }: { 
     </>
   )
   return href.startsWith('#')
-    ? <a href={href} aria-label="Busmora home" className={className}>{content}</a>
-    : <Link href={href} aria-label="Busmora home" className={className}>{content}</Link>
+    ? <a href={href} dir="ltr" aria-label="Busmora home" className={className}>{content}</a>
+    : <Link href={href} dir="ltr" aria-label="Busmora home" className={className}>{content}</Link>
 }

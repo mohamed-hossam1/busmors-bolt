@@ -51,6 +51,7 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
     category: c.category, title: c.title, summary: c.summary, properties: c.properties,
     source: 'crawler', source_detail: c.source_url, confidence: c.confidence,
     status: 'approved', approval_state: 'approved',
+    verification_state: c.verification_state || (c.properties?.extracted_by === 'heuristic' ? 'unverified' : 'source_supported'),
   })))
   if (rows.length) {
     const { error } = await supabase.from('brain_nodes').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
@@ -100,6 +101,14 @@ async function saveCompatible(url: string, candidates: ExtractedCandidate[], rel
     .update({ company_url: url, crawl_status: { pages_read: pagesRead, nodes_count: nodesCount, edges_count: edgesCount, finished: true } })
     .eq('workspace_id', workspace).select('workspace_id').abortSignal(AbortSignal.timeout(30000))
   if (settingsError || !completedSettings?.length) throw storageError('Knowledge items were saved, but completion could not be confirmed. Please retry')
+  const profile = candidates.find((c) => c.category === 'company_profile' && c.title.trim().length > 0)
+  if (profile) {
+    try {
+      await supabase.from('workspaces').update({ name: profile.title }).eq('id', workspace).abortSignal(AbortSignal.timeout(10000))
+    } catch {
+      // non-fatal workspace name sync
+    }
+  }
   const { error: auditError } = await supabase.from('audit_log').insert({ workspace_id: workspace, actor_id: workspace,
     action: 'crawler_knowledge_saved', entity_type: 'brain_nodes', details: { count: nodesCount, edges: edgesCount, url, mode: 'add_only' } })
     .abortSignal(AbortSignal.timeout(30000))
@@ -116,5 +125,16 @@ export async function saveCrawlKnowledge(websiteUrl: string, candidates: Extract
   if (error?.code === 'PGRST202') return saveCompatible(url, candidates, relations, pagesRead, workspaceId)
   if (error) throw storageError(error.message)
   if (!data || !Number.isInteger(data.nodes_count) || !Number.isInteger(data.edges_count)) throw storageError('Saving returned an invalid result')
+  const profile = candidates.find((c) => c.category === 'company_profile' && c.title.trim().length > 0)
+  if (profile) {
+    const ws = workspaceId || (await supabase.auth.getUser()).data.user?.id
+    if (ws) {
+      try {
+        await supabase.from('workspaces').update({ name: profile.title }).eq('id', ws).abortSignal(AbortSignal.timeout(10000))
+      } catch {
+        // non-fatal workspace name sync
+      }
+    }
+  }
   return { nodesCount: data.nodes_count, edgesCount: data.edges_count }
 }

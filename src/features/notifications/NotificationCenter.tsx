@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Skeleton from '../../components/Skeleton'
+import { useCopy } from '../../hooks/useCopy'
 
 interface NotificationRow {
   id: string
@@ -14,20 +15,23 @@ interface NotificationRow {
   created_at: string
 }
 
-function formatTime(iso: string) {
+type Copy = ReturnType<typeof useCopy>['t']
+
+function formatTime(iso: string, t: Copy) {
   const date = new Date(iso)
   const diff = Date.now() - date.getTime()
   const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1) return t('justNow')
+  if (minutes < 60) return t('minutesAgo', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t('hoursAgo', { count: hours })
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
+  if (days < 7) return t('daysAgo', { count: days })
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export default function NotificationCenter() {
+  const { t } = useCopy()
   const { session } = useAuth()
   const workspaceId = session?.user.id ?? null
   const [items, setItems] = useState<NotificationRow[]>([])
@@ -91,7 +95,7 @@ export default function NotificationCenter() {
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
+        aria-label={unread > 0 ? t('notificationsUnread', { count: unread }) : t('notifications')}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className="notification-bell"
@@ -106,14 +110,14 @@ export default function NotificationCenter() {
       {open && (
         <div className="card absolute end-0 z-50 mt-2 flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden shadow-xl">
           <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-4 py-3">
-            <p className="text-sm font-semibold text-ink-900">Notifications</p>
+            <p className="text-sm font-semibold text-ink-900">{t('notifications')}</p>
             <button
               type="button"
               onClick={markAllRead}
               disabled={marking || unread === 0}
               className="rounded-full px-2.5 py-1 text-xs font-medium text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {marking ? 'Marking…' : 'Mark all read'}
+              {marking ? t('marking') : t('markAllRead')}
             </button>
           </div>
 
@@ -127,7 +131,7 @@ export default function NotificationCenter() {
                 <Skeleton height="0.75rem" width="90%" />
               </div>
             ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-ink-500">You're all caught up.</p>
+              <p className="px-4 py-8 text-center text-sm text-ink-500">{t('allCaughtUp')}</p>
             ) : (
               <ul className="divide-y divide-ink-100">
                 {items.map((item) => (
@@ -136,7 +140,7 @@ export default function NotificationCenter() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-ink-900">{item.title}</p>
                       {item.body && <p className="mt-0.5 text-xs leading-relaxed text-ink-600">{item.body}</p>}
-                      <p className="mt-1 text-[11px] text-ink-400">{formatTime(item.created_at)}</p>
+                      <p className="mt-1 text-[11px] text-ink-400">{formatTime(item.created_at, t)}</p>
                     </div>
                   </li>
                 ))}

@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import type { ExtractedCandidate } from './crawlContent'
-export const DEFAULT_CRAWL_PAGES = 10
+export const DEFAULT_CRAWL_PAGES = 5
 export type { CrawledPage, ExtractedCandidate } from './crawlContent'
 
 export interface CrawlProgressEvent {

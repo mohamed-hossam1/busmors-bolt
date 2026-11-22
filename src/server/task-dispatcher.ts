@@ -1,14 +1,17 @@
 import 'server-only'
 import { executeTask, type TaskBackend } from './task-executor'
 import type { ExecutionTask } from '../features/tasks/types'
-export async function dispatchTasks(backend: TaskBackend, budgetMs = 240000) {
+export async function dispatchTasks(backend: TaskBackend, budgetMs = 300000) {
  const deadline = Date.now() + budgetMs
  while (Date.now() < deadline) {
   // Publishing runs through its own reconciliation path (C26), never the generic runner.
   const queued = (await backend.list()).filter(task => task.status === 'queued' && (task.type as string) !== 'publishing').sort((a, b) => a.created_at.localeCompare(b.created_at))
   if (!queued.length) return
+  // Research shares one workspace allowance, so it runs alone; other intents stay parallel.
+  const research = queued.filter(task => task.type === 'marketing_research')
+  const batch = research.length ? research.slice(0, 1) : queued.slice(0, 2)
   let admitted = 0
-  await Promise.all(queued.slice(0, 2).map(async candidate => {
+  await Promise.all(batch.map(async candidate => {
    const task = await backend.rpc<ExecutionTask | null>('admit_task', { p_task_id: candidate.id, p_runner_id: crypto.randomUUID() })
    if (!task) return
    admitted++

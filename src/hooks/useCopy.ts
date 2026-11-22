@@ -1,4 +1,7 @@
-import { t } from '../lib/i18n'
+import { useI18n } from '../context/I18nContext'
 
-// Central English product copy; no locale state or language selection.
-export function useCopy() { return { t } }
+// Product copy lives in the active locale dictionary (src/app/[lang]/dictionaries).
+export function useCopy() {
+  const { t } = useI18n()
+  return { t }
+}

@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import {
-  ArrowRight,
   Brain,
   Check,
   CheckCircle2,
@@ -161,7 +160,7 @@ export default function Onboarding() {
     setError(null)
     if (!userId) {
       setSaveState('error')
-      setError('Please sign in again to save.')
+      setError(t('signInAgainError'))
       return null
     }
     const { data, error: rpcError } = await supabase.rpc('save_business_draft', {
@@ -176,9 +175,9 @@ export default function Onboarding() {
         const fresh = await fetchDraft()
         if (fresh) applyRow(fresh)
         setConflict(false)
-        setError('This draft was updated in another session and has been reloaded. Please apply your change again.')
+        setError(t('draftUpdatedElsewhere'))
       } else {
-        setError(rpcError.message || 'Your changes could not be saved. Please try again.')
+        setError(rpcError.message || t('saveFailed'))
       }
       return null
     }
@@ -200,7 +199,7 @@ export default function Onboarding() {
   const confirmDraft = async () => {
     const problems = validateBusiness(form)
     if (problems.length) {
-      setError('Please complete the required fields before confirming.')
+      setError(t('completeRequiredFields'))
       setPhase('manual')
       return
     }
@@ -216,9 +215,9 @@ export default function Onboarding() {
       setSaveState('error')
       if (confirmError.message?.includes('STALE_VERSION')) {
         setConflict(true)
-        setError('This draft changed while confirming. Reload to continue.')
+        setError(t('draftChangedWhileConfirming'))
       } else {
-        setError(confirmError.message || 'Confirmation failed. Please try again.')
+        setError(confirmError.message || t('confirmationFailed'))
       }
       return
     }
@@ -238,27 +237,27 @@ export default function Onboarding() {
 
     const raw = url.trim()
     if (!raw) {
-      setError('Enter your company website to continue.')
+      setError(t('enterWebsiteToContinue'))
       return
     }
     if (raw.includes('@')) {
-      setError('Please enter your website URL (e.g. busmora.com), not an email address.')
+      setError(t('enterUrlNotEmail'))
       return
     }
     const normalized = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
     try {
       const parsed = new URL(normalized)
       if (!parsed.hostname || !parsed.hostname.includes('.') || parsed.username || parsed.password) {
-        setError('Please enter a valid website address (e.g. wesam.ai or company.com)')
+        setError(t('validWebsiteAddress'))
         return
       }
     } catch {
-      setError('Please enter a valid website address (e.g. wesam.ai or company.com)')
+      setError(t('validWebsiteAddress'))
       return
     }
 
     if (!userId) {
-      setError('Please sign in to continue.')
+      setError(t('signInToContinue'))
       return
     }
 
@@ -269,7 +268,7 @@ export default function Onboarding() {
     setQualityNotice('')
     setConflict(false)
     setCrawlStep('crawling')
-    setProgressStatus('Connecting to website and discovering pages...')
+    setProgressStatus(t('connectingToWebsite'))
 
     // C08: snapshot the owner's current draft at request start. When the crawl
     // returns we merge extracted fields through mergeWebsiteFields so edits made
@@ -287,10 +286,10 @@ export default function Onboarding() {
         if (stage === 'read') {
           setPagesRead(read)
           setCrawlStep('crawling')
-          setProgressStatus(read > 0 ? `Reading website (${read} useful pages)...` : 'Discovering website structure and pages...')
+          setProgressStatus(read > 0 ? t('readingWebsite', { read }) : t('discoveringWebsite'))
         } else if (stage === 'extract') {
           setCrawlStep('ai_analysis')
-          setProgressStatus('Finding business information supported by your website...')
+          setProgressStatus(t('findingBusinessInfo'))
         }
       })
 
@@ -310,16 +309,16 @@ export default function Onboarding() {
         if (event.stage === 'extract') {
           setCrawlStep('ai_analysis')
           if (event.read) setPagesRead(event.read)
-          setProgressStatus(event.message ?? 'Finding business information supported by your website...')
+          setProgressStatus(t('findingBusinessInfo'))
         } else if (event.stage === 'save') {
           setCrawlStep('linking')
           if (event.read) setPagesRead(event.read)
-          setProgressStatus(event.message ?? 'Saving your business knowledge...')
+          setProgressStatus(t('savingBusinessKnowledge'))
         }
       })
 
       if (!result.success) {
-        throw new Error(result.error || 'The website could not be fully read or saved.')
+        throw new Error(result.error || t('couldNotReadWebsite'))
       }
 
       if (result.warning) {
@@ -336,7 +335,7 @@ export default function Onboarding() {
       setPhase('done')
     } catch (err) {
       await supabase.rpc('set_onboarding_state', { p_state: 'awaiting_url', p_crawl_status: { finished: false } })
-      setError(err instanceof Error ? err.message : 'The website could not be fully read or saved. Your current fields are kept; continue manually or retry.')
+      setError(err instanceof Error ? err.message : t('couldNotReadWebsiteKeepFields'))
       setCrawlStep('idle')
     } finally {
       setBusy(false)
@@ -348,33 +347,35 @@ export default function Onboarding() {
 
   const title =
     phase === 'choose'
-      ? 'Let’s get to know your business.'
+      ? t('onboardTitleChoose')
       : phase === 'website'
         ? busy
-          ? 'Getting to know your business.'
-          : 'Add your website'
+          ? t('onboardTitleGettingToKnow')
+          : t('onboardTitleAddWebsite')
         : phase === 'manual'
-          ? 'Tell us about your business'
-          : 'Your business is ready.'
+          ? t('onboardTitleManual')
+          : t('onboardTitleReady')
   const subtitle =
     phase === 'choose'
-      ? 'Choose how to set up your business. Your Marketing Director starts with this context.'
+      ? t('onboardSubtitleChoose')
       : phase === 'website'
         ? busy
-          ? 'We’re turning your website into a starting point for your Marketing Director.'
-          : 'Add your website so your Marketing Director starts with context about your company.'
+          ? t('onboardSubtitleTurningWebsite')
+          : t('onboardSubtitleAddWebsite')
         : phase === 'manual'
-          ? 'Add your details yourself. You can save a draft and finish later.'
-          : 'Your setup is saved. Choose how you’d like to continue.'
+          ? t('onboardSubtitleManual')
+          : t('onboardSubtitleSaved')
 
   return (
     <AuthLayout
       title={title}
       subtitle={subtitle}
       eyebrow={
-        <div className="flex items-center gap-2 text-xs font-medium text-primary-700">
-          <CheckCircle2 size={16} />
-          <span>{phase === 'done' ? 'Ready to explore' : 'Workspace created'}<span className="mx-2 text-ink-300">/</span>Your business</span>
+        <div className="inline-flex items-center gap-2 rounded-full border border-primary-200/80 bg-primary-50/70 px-3 py-1 text-xs font-medium text-primary-800 shadow-2xs">
+          <CheckCircle2 size={14} className="text-primary-600" />
+          <span>{phase === 'done' ? t('readyToExplore') : t('workspaceCreated')}</span>
+          <span className="text-primary-300">·</span>
+          <span className="text-ink-600">{t('yourBusiness')}</span>
         </div>
       }
       panel={<BusinessContextPanel />}
@@ -388,9 +389,9 @@ export default function Onboarding() {
 
       {conflict && phase !== 'choose' && phase !== 'website' && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          <p>This draft changed in another session. Reload to see the latest version before continuing.</p>
+          <p>{t('draftChangedReload')}</p>
           <button type="button" onClick={() => void reloadAfterConflict()} className="mt-2 font-semibold underline">
-            Reload draft
+            {t('reloadDraft')}
           </button>
         </div>
       )}
@@ -404,10 +405,9 @@ export default function Onboarding() {
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Globe size={20} /></span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-ink-900">Website</span>
-              <span className="mt-0.5 block text-xs leading-5 text-ink-500">Read your public website and turn it into an editable draft.</span>
+              <span className="block text-sm font-semibold text-ink-900">{t('websiteOptionTitle')}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-500">{t('websiteOptionDesc')}</span>
             </span>
-            <ArrowRight size={18} className="shrink-0 text-ink-400" />
           </button>
           <button
             type="button"
@@ -416,10 +416,9 @@ export default function Onboarding() {
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><PenLine size={20} /></span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-ink-900">Manual</span>
-              <span className="mt-0.5 block text-xs leading-5 text-ink-500">Enter your business details yourself.</span>
+              <span className="block text-sm font-semibold text-ink-900">{t('manualOptionTitle')}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-500">{t('manualOptionDesc')}</span>
             </span>
-            <ArrowRight size={18} className="shrink-0 text-ink-400" />
           </button>
           <button
             type="button"
@@ -429,10 +428,10 @@ export default function Onboarding() {
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ink-100 text-ink-400"><Share2 size={20} /></span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2 text-sm font-semibold text-ink-500">Social import
-                <span className="rounded-full bg-ink-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-600">Coming soon</span>
+              <span className="flex items-center gap-2 text-sm font-semibold text-ink-500">{t('socialImport')}
+                <span className="rounded-full bg-ink-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-600">{t('comingSoon')}</span>
               </span>
-              <span className="mt-0.5 block text-xs leading-5 text-ink-400">Import from your social profiles.</span>
+              <span className="mt-0.5 block text-xs leading-5 text-ink-400">{t('socialImportDesc')}</span>
             </span>
           </button>
         </div>
@@ -445,27 +444,27 @@ export default function Onboarding() {
               <span role="status" aria-live="polite" className="font-medium text-ink-900">{progressStatus}</span>
               <span className="shrink-0 tabular-nums text-primary-600">{progressPercent}%</span>
             </div>
-            <div role="progressbar" aria-label="Building your Business Brain" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-primary-100">
+            <div role="progressbar" aria-label={t('buildingBrain')} aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-primary-100">
               <div className="h-full rounded-full bg-primary-500 transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${progressPercent}%` }} />
             </div>
             <ol className="mt-6 space-y-5">
               {[
-                { label: 'Read your website', detail: `${pagesRead} of up to ${DEFAULT_CRAWL_PAGES} pages`, icon: Globe },
-                { label: 'Organize business knowledge', detail: 'Company, offerings and audience', icon: Brain },
-                { label: 'Connect the details', detail: 'Save your business context', icon: Network },
+                { label: t('crawlStepRead'), detail: t('crawlReadDetail', { read: pagesRead, total: DEFAULT_CRAWL_PAGES }), icon: Globe },
+                { label: t('crawlStepOrganize'), detail: t('crawlStepOrganizeDetail'), icon: Brain },
+                { label: t('crawlStepConnect'), detail: t('crawlStepConnectDetail'), icon: Network },
               ].map(({ label, detail, icon: Icon }, index) => (
                 <li key={label} className="flex items-center gap-3">
                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${index <= activeStep ? 'bg-primary-50 text-primary-600' : 'bg-ink-50 text-ink-400'}`}>
                     {index < activeStep ? <Check size={16} /> : <Icon size={16} className={index === activeStep ? 'motion-safe:animate-pulse' : ''} />}
                   </span>
                   <div><p className={`text-sm font-medium ${index <= activeStep ? 'text-ink-900' : 'text-ink-500'}`}>{label}</p><p className="mt-1 text-xs text-ink-500">{detail}</p></div>
-                  {index === activeStep && <span className="ms-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500 motion-safe:animate-pulse" aria-label="In progress" />}
+                  {index === activeStep && <span className="ms-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500 motion-safe:animate-pulse" aria-label={t('inProgress')} />}
                 </li>
               ))}
             </ol>
             {currentUrl && <p className="mt-5 truncate border-t border-ink-100 pt-4 text-xs text-ink-500" dir="ltr" title={currentUrl}>{currentUrl}</p>}
           </div>
-          <p className="text-center text-xs leading-5 text-ink-500">Keep this page open while we gather your business context.</p>
+          <p className="text-center text-xs leading-5 text-ink-500">{t('keepPageOpen')}</p>
         </div>
       ) : (
         <form onSubmit={startCrawl} noValidate className="space-y-6">
@@ -491,21 +490,21 @@ export default function Onboarding() {
                 aria-describedby={error ? 'website-hint website-error' : 'website-hint'}
               />
             </div>
-            <p id="website-hint" className="mt-2 text-xs leading-5 text-ink-500">Use your main website. We’ll read up to {DEFAULT_CRAWL_PAGES} relevant public pages.</p>
+            <p id="website-hint" className="mt-2 text-xs leading-5 text-ink-500">{t('websiteHint', { pages: DEFAULT_CRAWL_PAGES })}</p>
           </div>
 
           {error && <p id="website-error" role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
 
           <div className="flex items-start gap-3 rounded-2xl border border-primary-200/60 bg-primary-50/60 p-4">
             <Brain size={19} className="mt-0.5 shrink-0 text-primary-600" aria-hidden="true" />
-            <p className="text-xs leading-6 text-ink-600">Business knowledge is saved automatically. You can review, edit and add to it anytime.</p>
+            <p className="text-xs leading-6 text-ink-600">{t('businessKnowledgeSaved')}</p>
           </div>
 
           <div>
-            <button type="submit" className="btn-primary w-full">Build my Business Brain<ArrowRight size={16} /></button>
+            <button type="submit" className="btn-primary w-full">{t('buildBrain')}</button>
             <div className="mt-3 flex items-center justify-center gap-2">
               <button type="button" onClick={() => { setPath('manual'); setPhase('manual') }} className="flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-primary-600 transition hover:text-primary-700">
-                Complete manually
+                {t('completeManually')}
               </button>
               <span className="text-ink-300">·</span>
               <button type="button" onClick={() => router.push('/brain')} className="flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-ink-600 transition hover:text-primary-600">{t('skipForNow')}</button>
@@ -522,11 +521,11 @@ export default function Onboarding() {
           <BusinessForm value={form} onChange={setForm} />
           {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{error}</p>}
           <div className="flex items-center justify-between text-xs text-ink-500">
-            <span>{saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : 'Draft'}</span>
-            <button type="button" onClick={() => { setPhase('choose'); setError(null) }} className="font-medium text-ink-500 hover:text-primary-600">Back</button>
+            <span>{saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : t('status_draft')}</span>
+            <button type="button" onClick={() => { setPhase('choose'); setError(null) }} className="font-medium text-ink-500 hover:text-primary-600">{t('back')}</button>
           </div>
           <div className="space-y-3">
-            <button type="submit" className="btn-primary w-full">Finish setup<ArrowRight size={16} /></button>
+            <button type="submit" className="btn-primary w-full">{t('finishSetup')}</button>
             <button type="button" onClick={() => void saveManualDraft()} disabled={saveState === 'saving'} className="btn-secondary w-full">
               {saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : t('save')}
             </button>
@@ -539,8 +538,8 @@ export default function Onboarding() {
           {summary.pages > 0 && (
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {[
-                { label: 'Pages read', value: summary.pages, icon: FileText },
-                { label: 'Facts collected', value: summary.items, icon: Brain },
+                { label: t('pagesReadLabel'), value: summary.pages, icon: FileText },
+                { label: t('factsCollected'), value: summary.items, icon: Brain },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded-2xl border border-ink-200 bg-white px-2 py-5 text-center">
                   <Icon size={18} className="mx-auto text-primary-500" />
@@ -553,12 +552,11 @@ export default function Onboarding() {
           <div className="space-y-3">
             <button type="button" onClick={() => router.push('/employee')} className="btn-primary w-full">
               <MessageCircle size={18} />
-              Contact the Director
-              <ArrowRight size={16} />
+              {t('contactDirector')}
             </button>
             <button type="button" onClick={() => router.push('/settings')} className="btn-secondary w-full">
               <CreditCard size={18} />
-              Select a Plan
+              {t('selectPlan')}
             </button>
           </div>
         </div>
@@ -568,31 +566,32 @@ export default function Onboarding() {
 }
 
 function BusinessContextPanel() {
+  const { t } = useCopy()
   return (
     <>
       <div className="relative z-10 ">
         <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-cosmic-raised px-4 py-2 text-xs text-stage-muted">
           <Brain size={14} className="text-primary-300" />
-          Your Business Brain
+          {t('businessBrainTitle')}
         </span>
         <h2 className="mt-8 text-[clamp(2.25rem,3vw,3.5rem)] font-normal leading-[1.08] tracking-[-.05em]">
-          Good direction.<br />Starts with context.
+          {t('goodDirection')}<br />{t('startsWithContext')}
         </h2>
         <p className="mt-5 max-w-sm text-sm leading-7 text-stage-muted">
-          One place for what makes your business yours. A stronger starting point for every conversation.
+          {t('contextPanelDesc')}
         </p>
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[.035] px-4 py-5 xl:px-6">
           <div className="mx-auto flex w-fit items-center gap-2.5 rounded-xl border border-primary-300/30 bg-primary-500/15 px-4 py-3 text-sm font-medium text-white">
             <Brain size={18} className="text-primary-300" />
-            Business Brain
+            {t('businessBrain')}
           </div>
           <div className="mx-auto h-5 w-px bg-primary-300/30" aria-hidden="true" />
           <div className="mx-auto h-4 w-[68%] rounded-t-lg border-x border-t border-primary-300/30" aria-hidden="true" />
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {[
-              { label: 'Company', icon: BriefcaseBusiness },
-              { label: 'Audience', icon: Users },
-              { label: 'Offerings', icon: Sparkles },
+              { label: t('companyLabel'), icon: BriefcaseBusiness },
+              { label: t('audienceLabel'), icon: Users },
+              { label: t('offeringsLabel'), icon: Sparkles },
             ].map(({ label, icon: Icon }) => (
               <div key={label} className="flex min-w-0 flex-col items-center gap-2 rounded-xl border border-white/10 bg-cosmic-raised/70 px-2 py-3 text-[11px] text-stage-muted xl:text-xs">
                 <Icon size={17} className="text-primary-300" />
@@ -604,7 +603,7 @@ function BusinessContextPanel() {
       </div>
       <div className="relative z-10 flex items-center gap-2 border-t border-white/10 pt-5 text-xs leading-5 text-stage-muted">
         <ShieldCheck size={16} className="shrink-0 text-primary-300" />
-        Your business. A foundation you can build on.
+        {t('foundationLine')}
       </div>
     </>
   )

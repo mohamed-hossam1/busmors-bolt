@@ -1,6 +1,8 @@
 import 'server-only'
 import type { AiCallResult } from '../lib/agents'
-import type { ExecutionTask, RouteDecision, TaskCheckpoint, TaskContext, TaskOutput } from '../features/tasks/types'
+import type { ExecutionTask, ResearchRunResult, RouteDecision, TaskCheckpoint, TaskContext, TaskOutput } from '../features/tasks/types'
+import { isResearchMode, type ResearchMode } from '../features/research/contracts'
+import { explicitResearchRequest, inferResearchMode, routeRequest } from '../features/research/orchestrator/orchestrator'
 import { isSubstantialReply, replyTitle, sectionForTask } from '../lib/deliverableRouting'
 import { postsMarkdown, scheduleTable } from '../lib/deliverableMarkdown'
 import { localToInstant } from '../lib/calendar'
@@ -10,12 +12,14 @@ export interface TaskBackend {
  list():Promise<ExecutionTask[]>
  context(task:ExecutionTask):Promise<TaskContext>
  ai(task:ExecutionTask,operation:string,prompt:string,signal:AbortSignal):Promise<AiCallResult>
+ /** Marketing research runs the Director and persists cited sources, claims and the PDF report. */
+ research?(task:ExecutionTask,signal:AbortSignal):Promise<ResearchRunResult>
 }
 export class TaskFailure extends Error {
  code:string;retryable:boolean
  constructor(code:string,message:string,retryable=false){super(message);this.code=code;this.retryable=retryable}
 }
-const intentNames=['simple_answer','market_research','competitor_analysis','content_creation','campaign_planning','performance_diagnosis']
+const intentNames=['simple_answer','marketing_research','content_creation','campaign_planning','performance_diagnosis']
 export function parseRoute(text:string):RouteDecision {
  let value:RouteDecision
  try{value=JSON.parse(text)}catch{throw new TaskFailure('invalid_output','The Director returned an unreadable response. Retry this task.')}
@@ -30,9 +34,10 @@ export function parseRoute(text:string):RouteDecision {
   if(Number.isFinite(quantity))value.quantity=Math.min(12,Math.max(1,quantity))
   if(value.question&&Array.isArray(value.question.options))value.question.options=value.question.options.filter(option=>typeof option==='string'&&option.trim()&&option.length<=200).slice(0,8)
  }
+ const researchMode=value&&typeof value==='object'&&isResearchMode((value as unknown as Record<string,unknown>).researchMode)?(value.researchMode as ResearchMode):'standard'
  if(!value||!['reply','clarify','task'].includes(value.mode)||typeof value.reply!=='string'||value.reply.length>12000||(value.mode==='reply'&&!value.reply.trim())||!intentNames.includes(value.intent)||!Number.isInteger(value.quantity)||value.quantity<1||value.quantity>12
   ||(value.mode==='clarify'&&(!value.question||typeof value.question.label!=='string'||!value.question.label.trim()||value.question.label.length>500||!Array.isArray(value.question.options)||value.question.options.length>8||value.question.options.some(option=>typeof option!=='string'||!option.trim()||option.length>200))))throw new TaskFailure('invalid_output','The Director returned an incomplete response. Retry this task.')
- return value
+ return value.intent==='marketing_research'?{...value,researchMode}:value
 }
 // The router model sometimes answers a drafting or diagnosis request inline
 // (mode 'reply') while labelling the correct intent. Inline answers create no
@@ -142,14 +147,29 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
    // eligible context again before another model call, retaining output-only
    // checkpoints so a save retry never regenerates finished work.
    if(task.checkpoint.phase!=='persist'){
-    const context=await step('orchestrator','Load confirmed business context',()=>backend.context(task)) as TaskContext
+    const context=await backend.context(task) as TaskContext
     await checkpoint({...task.checkpoint,context,contextRefs:context.facts.map(fact=>({nodeId:fact.id,version:fact.version}))})
    }
    const prompt=()=>JSON.stringify({request:task.user_request,now:new Date().toISOString(),context:task.checkpoint.context,answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
    const routePrompt=()=>JSON.stringify({request:task.user_request,context:routeContext(task.checkpoint.context),answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
    const timezone=()=>task.checkpoint.context?.region?.timezone||'UTC'
    if(task.checkpoint.phase==='route'){
-    const route=promoteTaskIntent(await step('orchestrator','Route the request',async()=>parseRoute(await call('route',routePrompt()))) as RouteDecision,task.checkpoint.answers?.length??0,task.user_request)
+    // Route A/B and the scope guardrails run first without polluting user-facing canvas.
+    const facts=task.checkpoint.context?.facts??[]
+    const guard=routeRequest({
+     request:task.user_request,
+     hasBrainContext:facts.length>0,
+     brainFacts:facts.map(fact=>fact.summary),
+    })
+    if(guard.route==='refuse'||guard.route==='out_of_scope'){
+     await checkpoint({...task.checkpoint,route:{mode:'reply',reply:guard.message,intent:'simple_answer',quantity:1},phase:'persist',output:{reply:guard.message,posts:[]}})
+     return
+    }
+    // An explicit research request must not depend on a small model choosing a task.
+    const forced=guard.route==='research'&&explicitResearchRequest(task.user_request)
+    const route:RouteDecision=forced
+     ?{mode:'task',reply:'',intent:'marketing_research',quantity:1,researchMode:inferResearchMode(task.user_request)}
+     :promoteTaskIntent(await step('orchestrator','Route the request',async()=>parseRoute(await call('route',routePrompt()))) as RouteDecision,task.checkpoint.answers?.length??0,task.user_request)
     if(route.mode==='clarify'){
      await checkpoint({...task.checkpoint,route})
      await backend.rpc('await_task_input',{p_task_id:task.id,p_run_id:task.run_id,p_label:route.question!.label,p_options:route.question!.options.slice(0,6)})
@@ -167,8 +187,15 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     const route=task.checkpoint.route!
     let output:TaskOutput
     let partial=false
-    if(['market_research','competitor_analysis'].includes(route.intent))throw new TaskFailure('research_unavailable','Public research is not configured yet. No sources have been retrieved. Your question is saved for retry after setup.')
-    if(route.intent==='content_creation'||route.intent==='campaign_planning'){
+     if(route.intent==='marketing_research'){
+      const runner=backend.research
+      if(!runner)throw new TaskFailure('research_unavailable','Public research is not configured on this server. No sources have been retrieved.')
+      // The Director owns its own subagent budget; the runner records a visible step
+      // per specialist so the Canvas and the task trace show the real sequence.
+      const result=await runner(task,signal) as ResearchRunResult
+      output={reply:result.reply,posts:[],document:result.document,sourceRefs:result.research.sourceIds,limitations:result.research.coverageGaps,research:result.research}
+      partial=result.partial
+     }else if(route.intent==='content_creation'||route.intent==='campaign_planning'){
      const campaign=route.intent==='campaign_planning'
      const draft=await step(campaign?'campaign_planner':'content_writer',campaign?'Create the campaign brief and drafts':'Write the requested Post drafts',async()=>parsePosts(await call(campaign?'campaign':'copy',prompt()),route.quantity,timezone(),new Date())) as ReturnType<typeof parsePosts>
      // A complete brief is required only to persist a document. A missing brief or
@@ -197,6 +224,8 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
      if(saved)task.checkpoint={...task.checkpoint,outputRefs:saved}
     }
    }catch(error){
+    // Server-side detail for operators; the owner sees the stable message below.
+    console.error('[task-executor]', task.id, task.checkpoint.phase, error)
     if(signal.aborted){
      // Abort must release the lease now; otherwise the task looks "running" until
      // recover_tasks reaps it ~120s later. Persist the same interrupted state the

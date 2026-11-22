@@ -1,28 +1,42 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, type FormEvent } from 'react'
+import { Link } from '@/shared/i18n'
+import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
 import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthLayout'
+import { useAuth } from '../../context/AuthContext'
 
 export default function ResetPassword() {
   const { t } = useCopy()
+  const { session, loading } = useAuth()
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const { error, notice, setNotice, busy, run } = useAuthError()
+
+  useEffect(() => {
+    if (session) {
+      router.replace('/employee')
+    }
+  }, [session, router])
+
+  if (session) {
+    return null
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     void run(async () => {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?flow=recovery` })
-      if (error) return ('Unable to request a reset. Try again shortly.')
+      if (error) return t('resetRequestError')
       setNotice(t('resetSent'))
       return null
     })
   }
 
   return (
-    <AuthLayout title={('Reset password')} subtitle={('We will send a reset link to your email.')}>
+    <AuthLayout title={t('resetPasswordTitle')} subtitle={t('resetPasswordSubtitle')}>
       <form onSubmit={submit} className="space-y-4">
         <AuthField label={t('email')} type="email" value={email} onChange={setEmail} />
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}

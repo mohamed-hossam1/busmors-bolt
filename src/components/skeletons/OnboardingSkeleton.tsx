@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonCircle } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function OnboardingSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="grid min-h-[100dvh] bg-ink-50 lg:grid-cols-2 animate-fade-in" aria-label="Loading onboarding…">
+    <div className="grid min-h-[100dvh] bg-ink-50 lg:grid-cols-2 animate-fade-in" aria-label={t('loadingOnboarding')}>
       {/* Left Column */}
       <div className="flex min-w-0 flex-col px-6 py-7 sm:px-12 lg:px-16">
         {/* Brand Logo Placeholder */}
@@ -49,20 +51,20 @@ export default function OnboardingSkeleton() {
       {/* Right Column (Dark Cosmic Panel on Desktop) */}
       <aside className="auth-brand-panel relative mx-6 my-12 mt-20 hidden w-full min-w-0 max-w-2xl flex-col justify-between overflow-hidden rounded-[32px] border border-white/10 bg-cosmic-card p-10 text-white lg:flex lg:w-[calc(100%_-_3rem)] xl:p-14">
         <div className="space-y-6">
-          <SkeletonBox className="h-8 w-44 rounded-full bg-white/10" />
+          <SkeletonBox dark className="h-8 w-44 rounded-full" />
           <div className="space-y-3 pt-4">
-            <SkeletonBox className="h-12 w-72 rounded-2xl bg-white/10" />
-            <SkeletonBox className="h-12 w-60 rounded-2xl bg-white/10" />
+            <SkeletonBox dark className="h-12 w-72 rounded-2xl" />
+            <SkeletonBox dark className="h-12 w-60 rounded-2xl" />
           </div>
           <div className="space-y-2 pt-2">
-            <SkeletonBox className="h-4 w-80 rounded-md bg-white/10" />
-            <SkeletonBox className="h-4 w-64 rounded-md bg-white/10" />
+            <SkeletonBox dark className="h-4 w-80 rounded-md" />
+            <SkeletonBox dark className="h-4 w-64 rounded-md" />
           </div>
         </div>
 
         <div className="flex items-center justify-between border-t border-white/10 pt-5">
-          <SkeletonBox className="h-4 w-48 rounded-md bg-white/10" />
-          <SkeletonBox className="h-5 w-5 rounded-md bg-white/10" />
+          <SkeletonBox dark className="h-4 w-48 rounded-md" />
+          <SkeletonBox dark className="h-5 w-5 rounded-md" />
         </div>
       </aside>
     </div>

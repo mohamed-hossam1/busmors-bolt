@@ -1,12 +1,15 @@
 'use client'
 
 import React from 'react'
-import { SkeletonBox, SkeletonHeader } from './SkeletonPrimitives'
+import { Network, Scan, RotateCcw, GitBranch, Search } from 'lucide-react'
+import { SkeletonBox } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function BrainSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="workspace-page animate-fade-in" aria-label="Loading knowledge brain…">
-      <div className="mx-auto max-w-5xl">
+    <div className="workspace-page animate-fade-in" aria-label={t('loadingKnowledgeBrain')}>
+      <div className="mx-auto max-w-none">
         {/* Header with Buttons */}
         <header className="brain-page-header">
           <div className="flex items-center gap-3">
@@ -24,7 +27,7 @@ export default function BrainSkeleton() {
           </div>
         </header>
 
-        {/* Filter and Search Bar */}
+        {/* Filter and Search Bar (list view controls) */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-ink-200/80 shadow-2xs">
           <div className="flex items-center gap-2">
             <SkeletonBox className="h-8 w-20 rounded-lg" />
@@ -34,35 +37,103 @@ export default function BrainSkeleton() {
           <SkeletonBox className="h-8 w-full md:w-56 rounded-lg" />
         </div>
 
-        {/* Cards Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="card flex flex-col justify-between p-5 bg-white border border-ink-100 rounded-2xl shadow-2xs space-y-4 min-h-[220px]"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <SkeletonBox className="h-5 w-24 rounded-full" />
-                  <SkeletonBox className="h-4 w-12 rounded-md" />
-                </div>
-                <div className="space-y-1.5 mb-3">
-                  <SkeletonBox className="h-4 w-full rounded-md" />
-                  <SkeletonBox className="h-4 w-4/5 rounded-md" />
-                </div>
-                <div className="space-y-1.5">
-                  <SkeletonBox className="h-3 w-full rounded-md" />
-                  <SkeletonBox className="h-3 w-2/3 rounded-md" />
+        {/* Knowledge Map */}
+        <div className="brain-map">
+          {/* Toolbar */}
+          <div className="brain-map-toolbar">
+            <div className="flex shrink-0 items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Network size={18} /></span>
+              <div className="space-y-1.5">
+                <SkeletonBox className="h-3.5 w-32 rounded-md" />
+                <SkeletonBox className="h-3 w-40 rounded-md" />
+              </div>
+            </div>
+
+            <div className="flex items-center rounded-lg border border-ink-200 bg-ink-50/70 p-0.5">
+              <SkeletonBox className="h-7 w-20 rounded-md" />
+              <SkeletonBox className="h-7 w-20 rounded-md" />
+              <SkeletonBox className="h-7 w-12 rounded-md" />
+            </div>
+
+            <div className="brain-map-tools">
+              <div className="brain-map-search">
+                <Search size={15} className="shrink-0 text-ink-400" />
+                <SkeletonBox className="h-3.5 w-28 rounded-md" />
+              </div>
+              <div className="brain-map-tool"><GitBranch size={15} className="text-ink-400" /></div>
+              <div className="brain-map-tool"><Scan size={16} className="text-ink-400" /></div>
+              <div className="brain-map-tool"><RotateCcw size={15} className="text-ink-400" /></div>
+            </div>
+          </div>
+
+          {/* Category pills */}
+          <div className="brain-map-categories">
+            {[64, 88, 72, 96, 80, 72, 88, 68].map((w, i) => (
+              <SkeletonBox key={i} className="h-7 rounded-full shrink-0" style={{ width: w }} />
+            ))}
+          </div>
+
+          {/* Canvas */}
+          <div className="brain-map-body">
+            <div className="brain-map-canvas relative overflow-hidden">
+              {/* Central hub */}
+              <div className="absolute left-1/2 top-1/2 z-10 w-44 -translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-hub">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20"><SkeletonBox className="h-4 w-4 rounded-md bg-white/40" /></span>
+                  <div className="min-w-0 flex-1 space-y-1.5 ps-2.5">
+                    <SkeletonBox className="h-3 w-full rounded-md bg-white/40" />
+                    <SkeletonBox className="h-2.5 w-2/3 rounded-md bg-white/30" />
+                  </div>
                 </div>
               </div>
 
-              {/* Action Buttons Footer */}
-              <div className="mt-auto pt-3 border-t border-ink-100/60 flex items-center gap-2">
-                <SkeletonBox className="h-8 flex-1 rounded-lg" />
-                <SkeletonBox className="h-8 w-16 rounded-lg" />
+              {/* Category nodes around hub */}
+              <div className="absolute left-[16%] top-[26%] w-28 -translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-category-node"><SkeletonBox className="h-3 w-20 rounded-full" /></div>
+              </div>
+              <div className="absolute right-[16%] top-[24%] w-28 translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-category-node"><SkeletonBox className="h-3 w-20 rounded-full" /></div>
+              </div>
+              <div className="absolute left-[13%] bottom-[24%] w-28 -translate-x-1/2 translate-y-1/2">
+                <div className="brain-map-category-node"><SkeletonBox className="h-3 w-20 rounded-full" /></div>
+              </div>
+              <div className="absolute right-[13%] bottom-[26%] w-28 translate-x-1/2 translate-y-1/2">
+                <div className="brain-map-category-node"><SkeletonBox className="h-3 w-20 rounded-full" /></div>
+              </div>
+
+              {/* Knowledge cards scattered */}
+              <div className="absolute left-[20%] top-[52%] h-[68px] w-[150px] -translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-node flex-col items-stretch justify-center gap-2">
+                  <SkeletonBox className="h-3 w-full rounded-md" />
+                  <SkeletonBox className="h-2.5 w-2/3 rounded-md" />
+                </div>
+              </div>
+              <div className="absolute left-[30%] top-[74%] h-[68px] w-[150px] -translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-node flex-col items-stretch justify-center gap-2">
+                  <SkeletonBox className="h-3 w-full rounded-md" />
+                  <SkeletonBox className="h-2.5 w-3/4 rounded-md" />
+                </div>
+              </div>
+              <div className="absolute right-[22%] top-[54%] h-[68px] w-[150px] translate-x-1/2 -translate-y-1/2">
+                <div className="brain-map-node flex-col items-stretch justify-center gap-2">
+                  <SkeletonBox className="h-3 w-full rounded-md" />
+                  <SkeletonBox className="h-2.5 w-1/2 rounded-md" />
+                </div>
+              </div>
+              <div className="absolute right-[30%] bottom-[20%] h-[68px] w-[150px] translate-x-1/2 translate-y-1/2">
+                <div className="brain-map-node flex-col items-stretch justify-center gap-2">
+                  <SkeletonBox className="h-3 w-full rounded-md" />
+                  <SkeletonBox className="h-2.5 w-2/3 rounded-md" />
+                </div>
               </div>
             </div>
-          ))}
+          </div>
+
+          {/* Footer */}
+          <div className="brain-map-footer">
+            <SkeletonBox className="h-3 w-48 rounded-md" />
+            <SkeletonBox className="hidden sm:block h-3 w-40 rounded-md" />
+          </div>
         </div>
       </div>
     </div>

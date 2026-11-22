@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonHeader } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function RoadmapSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="workspace-page animate-fade-in" aria-label="Loading roadmap…">
+    <div className="workspace-page animate-fade-in" aria-label={t('loadingRoadmap')}>
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <SkeletonHeader

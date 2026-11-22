@@ -29,6 +29,7 @@ import BrainGraph from '../components/brain/BrainGraph'
 import NodeEditor from '../components/brain/NodeEditor'
 import KnowledgeEvidence, { KnowledgeLabels } from '../components/brain/KnowledgeEvidence'
 import ProposalReview from '../components/brain/ProposalReview'
+import ResearchProposalReview, { type ResearchProposalRow } from '../components/brain/ResearchProposalReview'
 import RelationshipEditor from '../components/brain/RelationshipEditor'
 import { brainError, saveBrainItem } from '../lib/brainApi'
 import { organizeBrainWithAi } from '../lib/crawl'
@@ -70,10 +71,11 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
   const [evidence,setEvidence] = useState<BrainNode|null>(null)
   const [relationships,setRelationships] = useState(false)
   const [proposals,setProposals] = useState<BrainProposal[]>(initial.proposals)
+  const [researchProposals,setResearchProposals] = useState<ResearchProposalRow[]>([])
   const [nodes, setNodes] = useState<BrainNode[]>(initial.nodes)
   const [edges, setEdges] = useState<BrainEdge[]>(initial.edges)
   const [audit, setAudit] = useState<AuditEntry[]>(initial.audit)
-  const [view, setView] = useState<'list' | 'graph'>('list')
+  const [view, setView] = useState<'list' | 'graph'>('graph')
   const [editing, setEditing] = useState<BrainNode | 'new' | null>(null)
   const [showAudit, setShowAudit] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -99,19 +101,21 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       supabase.from('brain_edges').select('*'),
       supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(50),
       supabase.from('brain_proposals').select('*').eq('status','pending').order('created_at',{ascending:false}),
+      supabase.from('research_proposals').select('*').order('created_at',{ascending:false}).limit(50),
     ])
-    if(results.some(result=>result.error)) { setPageError('Some Brain records could not be loaded. Retry to see current knowledge.');setLoading(false);return }
+    if(results.some(result=>result.error)) { setPageError(t('brainLoadError'));setLoading(false);return }
     setNodes((results[0].data??[]) as BrainNode[])
     setEdges((results[1].data??[]) as BrainEdge[])
     setAudit((results[2].data??[]) as AuditEntry[])
     setProposals((results[3].data??[]) as BrainProposal[])
+    setResearchProposals((results[4].data??[]) as ResearchProposalRow[])
     setPageError('');setLoading(false)
   }
 
 
   const candidates = useMemo(() => nodes.filter((n) => n.status === 'candidate' && !proposals.some(p=>p.node_id===n.id)), [nodes,proposals])
   const approved = useMemo(() => nodes.filter((n) => n.status === 'approved'), [nodes])
-  const pendingCount = proposals.length + candidates.length
+  const pendingCount = proposals.length + candidates.length + researchProposals.filter(proposal => proposal.status === 'pending').length
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((n) => {
@@ -143,7 +147,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
 
   const setStatus = async (node: BrainNode, status: BrainNode['status']) => {
     try { await saveBrainItem(node,node.title,node.summary,node.category,node.properties,status);await load() }
-    catch(error) { setPageError(error instanceof Error?error.message:'Could not save this decision.') }
+    catch(error) { setPageError(error instanceof Error?error.message:t('couldNotSaveDecision')) }
   }
 
   const decideProposal = async (proposal: BrainProposal, decision: 'approved' | 'rejected') => {
@@ -157,7 +161,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       if (rpcErr) throw brainError(rpcErr)
       await load()
     } catch (err) {
-      setPageError(err instanceof Error ? err.message : 'Could not save this decision.')
+      setPageError(err instanceof Error ? err.message : t('couldNotSaveDecision'))
     }
   }
 
@@ -179,14 +183,14 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       await load()
     } catch (err) {
       await load()
-      setPageError(err instanceof Error ? err.message : 'Could not approve all pending items.')
+      setPageError(err instanceof Error ? err.message : t('couldNotApproveAll'))
     } finally {
       setLoading(false)
     }
   }
 
   const rejectAllPending = async () => {
-    if (!confirm('Reject all pending items?')) return
+    if (!confirm(t('confirmRejectAll'))) return
     try {
       setLoading(true)
       for (const p of proposals) {
@@ -204,7 +208,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       await load()
     } catch (err) {
       await load()
-      setPageError(err instanceof Error ? err.message : 'Could not reject all pending items.')
+      setPageError(err instanceof Error ? err.message : t('couldNotRejectAll'))
     } finally {
       setLoading(false)
     }
@@ -230,7 +234,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       // The deletion trigger records the actor, cleans proposals and holds dependent Posts atomically.
       void load()
     } catch {
-      setDeleteError('Could not delete this knowledge card. Please try again.')
+      setDeleteError(t('deleteKnowledgeError'))
     } finally {
       setDeletingId(null)
     }
@@ -279,29 +283,29 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
   const handleReorganize = async () => {
     const raw = reorganizeUrl.trim()
     if (!raw) {
-      setReorganizeError('Please enter a website address')
+      setReorganizeError(t('enterWebsiteAddress'))
       return
     }
 
     const { data: sessionData } = await supabase.auth.getSession()
     const userId = sessionData.session?.user.id
     if (!userId) {
-      setReorganizeError('Not authenticated')
+      setReorganizeError(t('notAuthenticated'))
       return
     }
 
     const normalized = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
     setReorganizing(true)
     setReorganizeError(null)
-    setReorganizeStatus('Connecting to website and reading pages...')
+    setReorganizeStatus(t('connectingToWebsite'))
 
     const res = await organizeBrainWithAi(normalized, userId, (statusOrEvent: any) => {
-      const text = typeof statusOrEvent === 'string' ? statusOrEvent : (statusOrEvent?.message ?? 'Connecting to website and reading pages...')
+      const text = typeof statusOrEvent === 'string' ? statusOrEvent : (statusOrEvent?.message ?? t('connectingToWebsite'))
       setReorganizeStatus(text)
     })
 
     if (!res.success) {
-      setReorganizeError(res.error || 'Failed to reorganize Business Brain')
+      setReorganizeError(res.error || t('reorganizeFailed'))
       setReorganizing(false)
     } else {
       setReorganizing(false)
@@ -322,7 +326,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
           </div>
         )}
 
-        {pageError&&<div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p>{pageError}</p><button className="mt-2 underline" onClick={()=>void load()}>Reload Brain</button></div>}
+        {pageError&&<div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p>{pageError}</p><button className="mt-2 underline" onClick={()=>void load()}>{t('reloadBrain')}</button></div>}
         {evidence&&<KnowledgeEvidence node={evidence} onClose={()=>setEvidence(null)}/>}
         {relationships&&<RelationshipEditor nodes={nodes} edges={edges} onClose={()=>setRelationships(false)} onChanged={load}/>}
         {deleteError && !pendingDelete && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{deleteError}</p>}
@@ -331,7 +335,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
             <span className="brain-page-heading"><BrainIcon size={23} /></span>
             <div>
               <h1 className="workspace-heading">{t('navBrain')}</h1>
-              <p className="workspace-description">Your business knowledge, connected.</p>
+              <p className="workspace-description">{t('brainDescription')}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
@@ -355,7 +359,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                 <Network size={15} /> {t('graphView')}
               </button>
             </div>
-            <button className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5" onClick={()=>setRelationships(true)}><Network size={15}/>Relationships</button>
+            <button className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5" onClick={()=>setRelationships(true)}><Network size={15}/>{t('relationships')}</button>
             <button
               onClick={openReorganizeModal}
               className="btn-secondary px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 text-primary-700 border-primary-200 hover:bg-primary-50"
@@ -511,6 +515,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
             </div>
 
             {(filterTab==='all'||filterTab==='candidate')&&<ProposalReview proposals={proposals.filter(p=>(selectedCategory==='all'||p.diff.category===selectedCategory)&&(!searchQuery||`${p.diff.title} ${p.diff.summary}`.toLowerCase().includes(searchQuery.toLowerCase())))} nodes={nodes} onChanged={load}/>}
+            {filterTab==='all'&&<ResearchProposalReview proposals={researchProposals} onChanged={load}/>}
             {/* Completely Empty State */}
             {candidates.length === 0 && approved.length === 0 && proposals.length === 0 && (
               <div className="card p-8 text-center text-sm text-ink-500">
@@ -598,7 +603,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                   </div>
                   {filteredApproved.length > 0 && (
                     <span className="text-xs text-ink-400">
-                      {approvedByCategory.size} {approvedByCategory.size === 1 ? 'category' : 'categories'}
+                       {approvedByCategory.size} {approvedByCategory.size === 1 ? t('category') : t('categories')}
                     </span>
                   )}
                 </div>
@@ -654,7 +659,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                                   {node.source_detail || node.source}
                                 </span>
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <button onClick={()=>setEvidence(node)} className="rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50" aria-label={`Evidence for ${node.title}`}>Evidence</button>
+                                  <button onClick={()=>setEvidence(node)} className="rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50" aria-label={t('evidenceFor', { title: node.title })}>{t('evidence')}</button>
                                   <button
                                     onClick={() => setEditing(node)}
                                     className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900 transition-colors"
@@ -696,7 +701,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       {/* Reorganize with AI Modal */}
       {showReorganizeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm animate-fade-in">
-          <div role="dialog" aria-modal="true" aria-label="Organize Business Brain" className="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-ink-200 max-h-[90dvh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label={t('organizeBusinessBrain')} className="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-ink-200 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center gap-2.5 mb-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
                 <Sparkles size={18} />
@@ -821,9 +826,9 @@ function CandidateCard({
             type="button"
             onClick={onEvidence}
             className="shrink-0 rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50"
-            aria-label={`Evidence for ${node.title}`}
+             aria-label={t('evidenceFor', { title: node.title })}
           >
-            Evidence
+            {t('evidence')}
           </button>
         </div>
       </div>

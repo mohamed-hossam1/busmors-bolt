@@ -14,12 +14,11 @@ export type DeliverableType = Deliverable['type']
  * | campaign_planning, brief, no times       | Yes                                 | general                                   | Brief markdown                                     |
  * | campaign_planning without a brief        | No offer                            | —                                         | (Posts are still saved as drafts.)                 |
  * | performance_diagnosis                    | Yes                                 | performance_diagnosis                     | The diagnosis markdown                             |
- * | market_research / competitor_analysis    | Not reachable yet                   | research_report / competitor_analysis     | Future                                             |
+ * | marketing_research                       | Saved by save_research_result       | research_report                           | The research report (auto-saved with its sources)  |
  */
 export function sectionForTask(intent: TaskIntent, postsWithProposedTimes: number): DeliverableType {
   switch (intent) {
-    case 'market_research': return 'research_report'        // future; research is not implemented yet
-    case 'competitor_analysis': return 'competitor_analysis' // future
+    case 'marketing_research': return 'research_report' // research saves its own deliverable via save_research_result
     case 'performance_diagnosis': return 'performance_diagnosis'
     case 'campaign_planning': return postsWithProposedTimes > 0 ? 'content_calendar' : 'general'
     case 'content_creation': return 'content_posts'

@@ -47,8 +47,45 @@ export const DISCOVERY_GOALS: DiscoveryGoalDefinition[] = [
   },
 ]
 
-export function goalDefinition(goal: string): DiscoveryGoalDefinition | undefined {
-  return DISCOVERY_GOALS.find((item) => item.value === goal)
+export const DISCOVERY_GOALS_AR: DiscoveryGoalDefinition[] = [
+  {
+    value: 'acquire_first_customers',
+    label: 'كسب أول عملاء',
+    description: 'إيجاد مسار واقعي للوصول إلى أول عملاء يدفعون مقابل خدمتك.',
+  },
+  {
+    value: 'grow_customers',
+    label: 'تنمية العملاء من المسار الحالي',
+    description: 'تطوير وتحسين الأسلوب الذي يجلب عملاء بالفعل الآن.',
+  },
+  {
+    value: 'convert_inquiries',
+    label: 'تحويل المزيد من الاستفسارات إلى عملاء',
+    description: 'معالجة العقبات بين إبداء الاهتمام وإتمام الشراء الفعلي.',
+  },
+  {
+    value: 'launch_offer',
+    label: 'إطلاق عرض جديد',
+    description: 'تجهيز خطة إطلاق تناسب طاقتك الاستيعابية وإمكانياتك الفعلية.',
+  },
+  {
+    value: 'repeat_referral',
+    label: 'زيادة الشراء المتكرر والترشيحات',
+    description: 'خلق سبب وتوقيت مناسب لعودة العملاء وترشيحك للآخرين.',
+  },
+  {
+    value: 'custom',
+    label: 'هدف آخر',
+    description: 'صف النتيجة المرجوة بأسلوبك وكلماتك الخاصة.',
+  },
+]
+
+export function getDiscoveryGoals(locale?: string): DiscoveryGoalDefinition[] {
+  return locale === 'ar' ? DISCOVERY_GOALS_AR : DISCOVERY_GOALS
+}
+
+export function goalDefinition(goal: string, locale?: string): DiscoveryGoalDefinition | undefined {
+  return getDiscoveryGoals(locale).find((item) => item.value === goal) ?? DISCOVERY_GOALS.find((item) => item.value === goal)
 }
 
 export function eligibleBrainFacts(facts: BrainNode[]): BrainNode[] {
@@ -297,7 +334,177 @@ export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuesti
     placeholder: 'For example: five qualified conversations and two paid pilots.',
   })
 
+  if (context.locale === 'ar') {
+    return plan.map((item) => ({
+      ...item,
+      schema: localizeQuestionSchema(item.question_key, item.schema, 'ar'),
+    }))
+  }
+
   return plan
+}
+
+interface QuestionLocalization {
+  label: string
+  why: string
+  placeholder?: string
+  options?: Record<string, { label: string; detail?: string }>
+}
+
+export const QUESTION_TRANSLATIONS_AR: Record<string, QuestionLocalization> = {
+  company_one_liner: {
+    label: 'في جملة واحدة، ماذا تبيع ولمن تقدم خدماتك؟',
+    why: 'لا تحتوي ذاكرة مشروعك على ملف تعريفي مؤكد بعد، لذا يساعد هذا في ربط الخطة بنشاطك الفعلي.',
+    placeholder: 'مثال: استوديو خزف محلي يصنع أدوات المائدة اليومية للمنازل.',
+  },
+  custom_goal: {
+    label: 'ما النتيجة التي تريد تحقيقها؟',
+    why: 'وضوح النتيجة المرجوة يضمن ربط كل الخطوات اللاحقة بأثر حقيقي بدلاً من مجرد أنشطة.',
+    placeholder: 'صف النتيجة التي تريدها بأسلوبك وكلماتك الخاصة.',
+  },
+  no_website_route: {
+    label: 'في ظل عدم ربط موقع إلكتروني، أين يتجه العميل المستعد للشراء كخطوة تالية؟',
+    why: 'تكون الخطة مفيدة فقط عندما يجد العميل المهتم خطوة تالية حقيقية للتواصل أو الشراء.',
+    options: {
+      'Direct messages or WhatsApp': { label: 'رسائل مباشرة أو واتساب', detail: 'استخدم حساباً تتابعه وتجيب عليه بانتظام.' },
+      'A social profile': { label: 'الملف الشخصي على مواقع التواصل', detail: 'وجّه الأشخاص إلى الحساب الذي تنشط عليه فعلاً.' },
+      'Phone or in person': { label: 'الهاتف أو زيارة المكان', detail: 'استخدم رقماً أو موقعاً متاحاً للرد.' },
+      'A marketplace listing': { label: 'صفحة متجر أو منصة بيع', detail: 'استخدم منصة تقبل الطلبات الحقيقية.' },
+      'No route yet': { label: 'لا يوجد مسار محدد بعد', detail: 'ستسجل الخطة هذا كأمر غير محدد حالياً.' },
+    },
+  },
+  priority_audience: {
+    label: 'من هو العميل ذو الأولوية القصوى لهذا الهدف؟',
+    why: 'العملاء المختلفون يحتاجون إلى أدلة وقنوات وعروض مختلفة.',
+    options: {
+      'People who already know us': { label: 'أشخاص يعرفوننا بالفعل', detail: 'جهات اتصال حالية، عملاء سابقون، أو متابعون.' },
+      'A specific local customer group': { label: 'فئة محلية محددة من العملاء', detail: 'مجموعة يمكنك تسميتها والوصول إليها مباشرة.' },
+      'A new customer segment': { label: 'شريحة عملاء جديدة تماماً', detail: 'فئة لم يسبق لك خدمتهم من قبل.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  lead_offer: {
+    label: 'أي عرض أو خدمة يجب أن تقود خطة العمل؟',
+    why: 'تحتاج الخطة إلى منتج أو خدمة واضحة للتركيز عليها قبل تحديد القنوات والأدلة.',
+    options: {
+      'Main service or product': { label: 'المنتج أو الخدمة الأساسية', detail: 'التركيز على ما هو موجود ويعمل بالفعل.' },
+      'A new or revised offer': { label: 'عرض جديد أو مطوّر', detail: 'صياغة العرض جيداً قبل البدء في ترويجه.' },
+      'A low-risk starter offer': { label: 'عرض تمهيدي منخفض المخاطر', detail: 'تسهيل عملية الشراء الأولى لتشجيع التجربة.' },
+      'Not settled yet': { label: 'لم يتم الاستقرار عليه بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  truthful_proof: {
+    label: 'ما الإثبات الحقيقي الذي يمكننا عرضه لدعم هذا العرض؟',
+    why: 'تعتمد الخطة فقط على أدلة حقيقية يمكنك إثباتها وتجنب أي ادعاءات غير مدعومة.',
+    options: {
+      'Owner testimonials': { label: 'آراء وتجارب عملاء حقيقيين', detail: 'كلمات حقيقية من عملائك يمكنك اقتباسها بإذنهم.' },
+      'Samples or before/after': { label: 'نماذج أعمال أو صور قبل/بعد', detail: 'أعمال فعلية يمكنك عرضها دون افتعال نتائج.' },
+      'Experience or credentials': { label: 'الخبرة والمؤهلات السابقة', detail: 'خلفية مهنية أو اعتمادات قابلة للتحقق.' },
+      'A clear guarantee or policy': { label: 'ضمان أو سياسة واضحة', detail: 'وعد محدد يمكنك الالتزام به فعلياً.' },
+      'Nothing usable yet': { label: 'لا يوجد إثبات جاهز حالياً', detail: 'لن تقوم الخطة باختلاق أدلة غير موجودة.' },
+    },
+  },
+  practical_constraint: {
+    label: 'ما هو القيد أو التحدي العملي الأهم بالنسبة لك الآن؟',
+    why: 'تجاهل القيود الواقعية ينتج خطة عمل لن تستطيع إكمالها أو الالتزام بها.',
+    options: {
+      'Time': { label: 'الوقت المتاح', detail: 'إبقاء حجم العمل صغيراً ومناسباً لإكماله.' },
+      'Budget': { label: 'الميزانية', detail: 'تجنب افتراض نفقات مالية غير متوفرة.' },
+      'Delivery capacity': { label: 'طاقة التنفيذ والتسليم', detail: 'عدم الوعد بأكثر مما تستطيع إنجازه.' },
+      'Approvals or licences': { label: 'الموافقات أو التراخيص', detail: 'تحديد الموافقات الخارجية المطلوبة قبل البدء.' },
+      'No major limit right now': { label: 'لا توجد قيود كبيرة حالياً', detail: 'مع مراعاة الإجابات الأخرى.' },
+    },
+  },
+  first_customer_route: {
+    label: 'من أين يُتوقع أن يأتي أول العملاء؟',
+    why: 'خطة العملاء الأوائل يجب أن تبدأ بمسار يمكنك الوصول إليه عملياً.',
+    options: {
+      'People I already know': { label: 'أشخاص أعرفهم بالفعل', detail: 'معارف وتواصل سابق.' },
+      'Local community or partners': { label: 'المجتمع المحلي أو الشركاء', detail: 'مجموعات أو جيران أو أنشطة تجارية مكملة.' },
+      'Social content': { label: 'محتوى مواقع التواصل', detail: 'حضور عام ومنتظم على منصة تستخدمها بالفعل.' },
+      'Paid promotion': { label: 'الإعلانات الممولة', detail: 'فقط في حال وجود ميزانية مخصصة لذلك.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  growth_motion: {
+    label: 'أي أسلوب نمو يجب اختباره أولاً في الخطة؟',
+    why: 'اختبار مسار واحد والتركيز عليه أكثر فائدة من تشتيت الجهد بين خمسة مسارات.',
+    options: {
+      'Repeat purchase': { label: 'تكرار الشراء', detail: 'تشجيع العميل الحالي على الشراء مجدداً.' },
+      'Referrals': { label: 'الترشيحات والإحالات', detail: 'طلب ترشيح معارف من العملاء الراضين.' },
+      'Higher average order': { label: 'رفع متوسط قيمة الطلب', detail: 'زيادة القيمة الشرائية في كل معاملة.' },
+      'A new customer segment': { label: 'شريحة عملاء جديدة', detail: 'الوصول إلى فئة لم تخدمها بعد.' },
+      'Paid acquisition': { label: 'اكتساب العملاء المدفوع', detail: 'فقط في حال وجود ميزانية حقيقية.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  inquiry_response: {
+    label: 'أين يحدث التعثر الأكبر في مسار الاستفسارات؟',
+    why: 'تحسين التحويل يجب أن يستهدف نقطة التعثر الفعلية بدلاً من إجراءات عامة.',
+    options: {
+      'Slow replies': { label: 'بطء الرد والتأخر', detail: 'الخطوة التالية لا تتم بالسرعة الكافية.' },
+      'Unclear pricing': { label: 'عدم وضوح الأسعار', detail: 'يصعب على العميل معرفة ما إذا كان السعر مناسباً.' },
+      'Weak qualification': { label: 'ضعف تأهيل الاستفسارات', detail: 'استهلاك الوقت مع من لا يستطيع الشراء.' },
+      'Not enough proof': { label: 'قلة الأدلة والإثباتات', detail: 'العملاء مهتمون ولكن غير مقتنعين تماماً.' },
+      'Too many steps': { label: 'كثرة الخطوات المطلوبة', detail: 'المسار يطلب الكثير من العميل قبل الشراء.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  launch_scope: {
+    label: 'ما هو حجم وطريقة الإطلاق الأنسب لطاقتك الاستيعابية؟',
+    why: 'الإطلاق الذي يتناسب مع طاقتك الفعلية يحمي تجربة العميل وجودة الخدمة.',
+    options: {
+      'Small pilot first': { label: 'إطلاق تجريبي صغير أولاً', detail: 'التجربة مع مجموعة محدودة قبل التوسع.' },
+      'Full launch': { label: 'إطلاق كامل وشامل', detail: 'أنت جاهز للتنفيذ بالطاقة الكاملة المعلنة.' },
+      'Waitlist first': { label: 'قائمة انتظار أولاً', detail: 'التحقق من حجم الطلب قبل بدء التنفيذ.' },
+      'Bundle with an existing offer': { label: 'دمجه مع عرض حالي', detail: 'ربط العرض الجديد بمنتج أو خدمة مثبتة بالفعل.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  repeat_trigger: {
+    label: 'متى يجب أن تبدأ جهود تكرار الشراء أو طلب الترشيح؟',
+    why: 'وجود توقيت محدد يجعل المتابعة جزءاً من رحلة العميل بدلاً من حملة عشوائية.',
+    options: {
+      'After the first purchase': { label: 'عقب الشراء الأول مباشرة', detail: 'المتابعة بينما التجربة ما زالت حاضرة في ذهنه.' },
+      'A fixed time later': { label: 'بعد فترة زمنية محددة', detail: 'استخدام فاصل زمني واقعي يناسب طبيعة الخدمة.' },
+      'Around a seasonal moment': { label: 'في مناسبة أو موسم معين', detail: 'ربط التواصل بمناسبة أو حدث حقيقي.' },
+      'When a customer asks': { label: 'عندما يسأل أو يستفسر العميل', detail: 'تسهيل الخطوة التالية في لحظة اهتمامه.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر مفتوح للبحث.' },
+    },
+  },
+  custom_first_step: {
+    label: 'ما هي أول نتيجة مفيدة تحتاج إلى تحقيقها؟',
+    why: 'الخطة التمهيدية تحتاج إلى نتيجة أولى حقيقية، حتى عندما يكون الهدف مخصصاً.',
+    placeholder: 'صف أول نتيجة مفيدة وملموسة، وليس التحول الكامل.',
+  },
+  success_signal: {
+    label: 'ما الذي سيُعتبر دليلاً على التقدم الحقيقي في الأسابيع الثمانية القادمة؟',
+    why: 'تحديد إشارة النجاح يسمح للخطة بفصل التقدم الفعلي عن مجرد الانشغال بأنشطة.',
+    placeholder: 'مثال: 5 محادثات مع عملاء مؤهلين وتجربتين مدفوعتين.',
+  },
+}
+
+export function localizeQuestionSchema(questionKey: string, schema: DiscoveryQuestionSchema, locale: string): DiscoveryQuestionSchema {
+  if (locale !== 'ar') return schema
+  const tr = QUESTION_TRANSLATIONS_AR[questionKey]
+  if (!tr) return schema
+
+  return {
+    ...schema,
+    label: tr.label,
+    why: tr.why,
+    placeholder: tr.placeholder ?? schema.placeholder,
+    options: schema.options?.map((opt) => {
+      if (opt.source === 'brain') return opt
+      const optTr = tr.options?.[opt.value]
+      if (!optTr) return opt
+      return {
+        ...opt,
+        label: optTr.label,
+        detail: optTr.detail ?? opt.detail,
+      }
+    }),
+  }
 }
 
 export function planToRpc(plan: PlannedQuestion[]) {

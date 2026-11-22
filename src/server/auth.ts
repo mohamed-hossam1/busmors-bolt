@@ -2,6 +2,8 @@ import 'server-only'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createServerSupabase } from './supabase'
+import { getRequestLocale } from './locale'
+import { localizePath } from '../lib/i18n'
 import type { WorkspaceSettings } from '../lib/types'
 export const getIdentity = cache(async () => {
  const supabase = await createServerSupabase()
@@ -11,7 +13,7 @@ export const getIdentity = cache(async () => {
 })
 export const requireWorkspace = cache(async (setup = true) => {
  const identity = await getIdentity()
- if (!identity) redirect('/signin')
+ if (!identity) redirect(localizePath('/signin', await getRequestLocale()))
  const { data: settings, error } = await identity.supabase.rpc('bootstrap_workspace')
  if (error || settings?.workspace_id !== identity.user.id) throw new Error('Workspace could not be loaded.')
  if (setup && settings.onboarding_state !== 'complete') {
@@ -22,7 +24,7 @@ export const requireWorkspace = cache(async (setup = true) => {
    if (count && count > 0) {
     await identity.supabase.rpc('set_onboarding_state', { p_state: 'complete' })
    } else {
-    redirect('/onboarding')
+    redirect(localizePath('/onboarding', await getRequestLocale()))
    }
   }
  }

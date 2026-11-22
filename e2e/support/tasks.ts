@@ -6,6 +6,7 @@ import { waitForHydration } from './browser'
 export interface StoredTask {
   id: string
   type: string
+  research_mode: string | null
   status: string
   user_request: string
   checkpoint: Record<string, unknown>

@@ -189,13 +189,13 @@ export interface WorkspaceSettings {
   country: string
   currency: string
   timezone: string
-  ui_language: 'en'
-  conversation_language: 'en'
+  ui_language: 'en' | 'ar'
+  conversation_language: 'en' | 'ar'
   content_register: import('./contracts').ContentRegister
   target_market: string
   confirmed_intake_version: number | null
   company_url: string | null
-  language: 'en'
+  language: 'en' | 'ar'
   onboarding_state: 'awaiting_url' | 'crawling' | 'review_pending' | 'complete'
   crawl_status: { pages_read?: number; pages_total?: number; finished?: boolean }
   brand_colors: { primary: string; accent: string }

@@ -2,7 +2,8 @@
 import { getIdentity } from './auth'
 import { getPublishingProvider } from './publishing/provider'
 import { defaultPublishDeps, publishPost, type PublishMode, type PublishResult } from './publishing/publish-core'
-import { t, type TranslationKey } from '../lib/i18n'
+import type { TranslationKey } from '../lib/i18n'
+import { serverTranslator, type ServerTranslate } from './server-copy'
 
 export interface PublishingStatus {
  configured: boolean
@@ -34,7 +35,7 @@ const RPC_ERRORS: [string, TranslationKey][] = [
  ['NOT_FOUND', 'errPostMissing'],
 ]
 
-function rpcError(message: string | undefined): string {
+function rpcError(t: ServerTranslate, message: string | undefined): string {
  const found = RPC_ERRORS.find(([code]) => message?.includes(code))
  return t(found ? found[1] : 'errPostSave')
 }
@@ -44,7 +45,7 @@ function validArgs(postId: string, expectedVersion: number) {
 }
 
 /** Owner-safe error for a send that did not end as confirmed/scheduled. */
-function resultError(result: PublishResult): string | undefined {
+function resultError(t: ServerTranslate, result: PublishResult): string | undefined {
  if (result.state === 'confirmed' || result.state === 'scheduled') return undefined
  if (result.state === 'failed' || result.state === 'uncertain') return t(('publishError_' + result.code) as TranslationKey)
  if (result.state === 'already_attempted') return t('errAlreadyAttempted')
@@ -57,16 +58,16 @@ function resultError(result: PublishResult): string | undefined {
  * The owner confirmed Publish now or Schedule. Authorizes the exact version shown in the
  * dialog (and for 'schedule' the chosen instant), then sends it to Facebook once.
  */
-async function send(postId: string, expectedVersion: number, mode: PublishMode, instantIso: string | null): Promise<{ result?: PublishResult; error?: string }> {
+async function send(t: ServerTranslate, postId: string, expectedVersion: number, mode: PublishMode, instantIso: string | null): Promise<{ result?: PublishResult; error?: string }> {
  if (!getPublishingProvider()) return { error: t('publishingNotConfigured') }
  const identity = await getIdentity()
  if (!identity) return { error: t('signInAgain') }
  const { data: settings } = await identity.supabase.from('workspace_settings').select('timezone').eq('workspace_id', identity.user.id).maybeSingle()
  const { error } = await identity.supabase.rpc('authorize_post_publish', { p_post_id: postId, p_expected_version: expectedVersion, p_mode: mode, p_instant: instantIso, p_zone: settings?.timezone || 'UTC' })
- if (error) return { error: rpcError(error.message) }
+ if (error) return { error: rpcError(t, error.message) }
  try {
   const result = await publishPost(defaultPublishDeps(), postId, mode)
-  return { result, error: resultError(result) }
+  return { result, error: resultError(t, result) }
  } catch {
   return { error: t('errPublishUnavailable') }
  }
@@ -74,30 +75,34 @@ async function send(postId: string, expectedVersion: number, mode: PublishMode, 
 
 /** Publish now: the exact approved version is published immediately. */
 export async function publishNow(postId: string, expectedVersion: number): Promise<{ result?: PublishResult; error?: string }> {
+ const t = await serverTranslator()
  if (!validArgs(postId, expectedVersion)) return { error: t('errPostSave') }
- return send(postId, expectedVersion, 'now', null)
+ return send(t, postId, expectedVersion, 'now', null)
 }
 
 /** Schedule: sent to Facebook now as a scheduled post; Facebook publishes it at instantIso (15 minutes to 29 days ahead). */
 export async function schedulePost(postId: string, expectedVersion: number, instantIso: string): Promise<{ result?: PublishResult; error?: string }> {
+ const t = await serverTranslator()
  if (!validArgs(postId, expectedVersion) || typeof instantIso !== 'string' || Number.isNaN(Date.parse(instantIso))) return { error: t('errPostSave') }
- return send(postId, expectedVersion, 'schedule', new Date(instantIso).toISOString())
+ return send(t, postId, expectedVersion, 'schedule', new Date(instantIso).toISOString())
 }
 
 /** "I reviewed it, keep this text" for Brain-context holds. */
 export async function resolveContextHolds(postId: string, expectedVersion: number): Promise<{ error?: string }> {
+ const t = await serverTranslator()
  if (!validArgs(postId, expectedVersion)) return { error: t('errPostSave') }
  const identity = await getIdentity()
  if (!identity) return { error: t('signInAgain') }
  const { error } = await identity.supabase.rpc('resolve_context_holds', { p_post_id: postId, p_expected_version: expectedVersion })
- return error ? { error: rpcError(error.message) } : {}
+ return error ? { error: rpcError(t, error.message) } : {}
 }
 
 /** After a failed or unconfirmed send: a new version, back to Approved. Never sends. */
 export async function preparePostRetry(postId: string, expectedVersion: number): Promise<{ error?: string }> {
+ const t = await serverTranslator()
  if (!validArgs(postId, expectedVersion)) return { error: t('errPostSave') }
  const identity = await getIdentity()
  if (!identity) return { error: t('signInAgain') }
  const { error } = await identity.supabase.rpc('prepare_post_retry', { p_post_id: postId, p_expected_version: expectedVersion })
- return error ? { error: rpcError(error.message) } : {}
+ return error ? { error: rpcError(t, error.message) } : {}
 }

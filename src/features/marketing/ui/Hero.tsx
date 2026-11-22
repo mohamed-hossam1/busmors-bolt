@@ -118,7 +118,7 @@ function HeroCurves() {
   );
 }
 
-export default function Hero() {
+export default function Hero({ isAuthenticated = false }: { isAuthenticated?: boolean } = {}) {
   const t = useTranslations("Marketing");
   const root = useRef<HTMLElement>(null);
   const curves = useRef<HTMLDivElement>(null);
@@ -176,11 +176,11 @@ export default function Hero() {
           <h1 className="max-w-full [text-wrap:balance] text-[clamp(2.25rem,1rem+4.8vw,7.75rem)] font-normal leading-[1.12] tracking-[-0.045em] text-white xl:leading-[1]">{t("Hero.marketingDirection")}<br />{t("Hero.builtAroundYou")}</h1>
           <p className="mt-[18px] max-w-[65ch] [text-wrap:pretty] text-[clamp(1rem,.9rem+.35vw,1.35rem)] font-normal leading-[1.5] text-white/95">{t("Hero.yourAIMarketingDirectorUnderstandYourPrioritiesPrepareThe")}</p>
           <MarketingCta
-            href={ROUTES.MARKETING.DEMO}
+            href={isAuthenticated ? "/employee" : ROUTES.MARKETING.DEMO}
             size="lg"
             className="mt-[33px]"
           >
-            {t("Hero.startFreeTrial")}
+            {isAuthenticated ? t("Navbar.dashboard") : t("Hero.startFreeTrial")}
           </MarketingCta>
           <div className="mt-10 flex max-w-[690px] flex-col items-center xl:mt-[96px]">
             <p className="text-[clamp(.88rem,.94vw,1.12rem)] leading-[1.45] tracking-[.006em] text-stage-muted">{t("Hero.startWithYourBusinessChooseAUsefulNextStep")}{" "}<br className="hidden sm:block" />{t("Hero.reviewTheWorkBeforeAnythingGoesLive")}</p>
