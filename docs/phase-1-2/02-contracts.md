@@ -138,7 +138,7 @@ Step events use unique **instance IDs**, so two calls to the same specialist are
 
 Canvas belongs to selected conversation → selected Task. Default to its latest relevant active Task. Provide task history within the conversation, a graph, a chronological list, source/result links, and exact clarification links. Late responses from another Task cannot update the active Canvas. No fabricated percentages, tool names, sources, or reasoning transcripts.
 
-Chat message kinds: `text`, `text_response`, `structured_form`, `task_status`, `deliverable_card`, `knowledge_notification`, `budget_extension_request`, `error`, `post_reference`. Migrate legacy `form`; do not lose existing messages. A Post reference links to Scheduling, not a duplicate document.
+Chat message kinds: `text`, `text_response`, `structured_form`, `task_status`, `deliverable_card`, `knowledge_notification`, `budget_extension_request`, `error`, `post_reference`, `deliverable_offer`. Migrate legacy `form`; do not lose existing messages. A Post reference links to Scheduling, not a duplicate document.
 
 ## 8. AI, research, and usage
 

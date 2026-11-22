@@ -132,6 +132,11 @@ export async function generateAi(req: Request) {
     body.jsonMode = !['chat','diagnose','analyze'].includes(body.operation)
     body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : 3500,100), body.operation === 'route' ? 800 : 6000)
     body.providerTimeoutMs = 25000
+    // gpt-oss models reason before answering. At the default effort the hidden
+    // reasoning can exhaust a small output cap, the JSON is cut off, and Groq
+    // rejects it (400 json_validate_failed). Routing, clarifying and short chat
+    // answers do not need deep reasoning; low effort also saves per-minute tokens.
+    body.reasoningEffort = ['route', 'clarify', 'chat'].includes(body.operation) ? 'low' : undefined
     if (!body.taskId || !body.runId || !/^[0-9a-f-]{36}$/i.test(body.taskId) || !/^[0-9a-f-]{36}$/i.test(body.runId)) {
       return new Response(JSON.stringify({error:'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     }

@@ -33,6 +33,7 @@ import { useTaskRunner } from '../features/tasks/TaskRunnerProvider'
 import AgentCanvas, { type CanvasPreviewPost } from '../components/chat/AgentCanvas'
 import { PostPreviewCard } from '../components/chat/PostPreview'
 import MarkdownContent from '../components/chat/MarkdownContent'
+import DeliverableOfferCard from '../components/chat/DeliverableOfferCard'
 import { forgetCanvasLayout, readActiveConversation, saveActiveConversation } from '../lib/chatCanvasStorage'
 
 export default function EmployeePage() {
@@ -98,8 +99,12 @@ export default function EmployeePage() {
       return !existsInServer
     })
 
+    // One task result is inserted in a single transaction, so its messages share
+    // created_at. Break ties in the order save_task_result writes them: Post
+    // references, the reply, then the save-to-Deliverables offer last.
+    const sameTimeRank = (m: ChatMessage) => (m.type === 'post_reference' ? 0 : m.type === 'deliverable_offer' ? 2 : 1)
     const combined = [...otherMsgs, ...pendingOptimistic].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || sameTimeRank(a) - sameTimeRank(b)
     )
 
     if (greetingMsg) {
@@ -751,6 +756,7 @@ function MessageBubble({
       <div className="animate-fade-up rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-600">{msg.content}</div>
     )
   }
+  if (msg.type === 'deliverable_offer') return <DeliverableOfferCard msg={msg} />
   if (msg.type === 'deliverable_card' && msg.payload) {
     const previewPosts = (Array.isArray(msg.payload.posts) ? msg.payload.posts : []) as CanvasPreviewPost[]
     const title = String(msg.payload.title ?? t('deliverablesTitle'))

@@ -1,6 +1,8 @@
 import 'server-only'
 import type { AiCallResult } from '../lib/agents'
 import type { ExecutionTask, RouteDecision, TaskCheckpoint, TaskContext, TaskOutput } from '../features/tasks/types'
+import { isSubstantialReply, replyTitle, sectionForTask } from '../lib/deliverableRouting'
+import { postsMarkdown, scheduleTable } from '../lib/deliverableMarkdown'
 
 export interface TaskBackend {
  rpc<T>(name:string,args:Record<string,unknown>):Promise<T>
@@ -20,6 +22,19 @@ export function parseRoute(text:string):RouteDecision {
   ||(value.mode==='clarify'&&(!value.question||typeof value.question.label!=='string'||!value.question.label.trim()||value.question.label.length>500||!Array.isArray(value.question.options)||value.question.options.length>8||value.question.options.some(option=>typeof option!=='string'||!option.trim()||option.length>200))))throw new TaskFailure('invalid_output','The Director returned an incomplete response. Retry this task.')
  return value
 }
+// The router model sometimes answers a drafting or diagnosis request inline
+// (mode 'reply') while labelling the correct intent. Inline answers create no
+// draft Posts and skip the diagnosis step, so these intents always run as a
+// task. Research intents stay as routed: research is not implemented yet.
+// A request gets at most one clarification: once the owner has answered (or
+// skipped) a question, the router must proceed instead of asking again, which
+// otherwise loops and spends the task allowance on routing alone.
+const generatedIntents=['content_creation','campaign_planning','performance_diagnosis']
+export function promoteTaskIntent(route:RouteDecision,answered=0):RouteDecision {
+ if(route.mode==='reply'&&generatedIntents.includes(route.intent))return {...route,mode:'task'}
+ if(route.mode==='clarify'&&answered>0){const {question:_question,...rest}=route;return {...rest,mode:'task'}}
+ return route
+}
 export function parsePosts(text:string,quantity:number):{title?:string;content?:string;posts:TaskOutput['posts'];partial:boolean} {
  let value:Record<string,unknown>
  try{value=JSON.parse(text)}catch{throw new TaskFailure('invalid_output','The drafts could not be read. Retry to generate complete drafts.')}
@@ -36,12 +51,29 @@ export function parsePosts(text:string,quantity:number):{title?:string;content?:
  // is still a hard failure; some valid drafts but fewer than requested is a partial
  // result the caller persists with checkpoint.partial set.
  if(!posts.length)throw new TaskFailure('invalid_output','The response did not contain any complete drafts. Nothing has been saved as a Post.')
+ // save_task_result accepts at most 12 posts, a 1-200 character title and an 80000 character brief.
+ if(posts.length>12){dropped+=posts.length-12;posts.length=12}
  const partial=dropped>0||posts.length!==quantity
- return {title:typeof value.title==='string'?value.title:undefined,content:typeof value.content==='string'?value.content:undefined,posts,partial}
+ const title=typeof value.title==='string'&&value.title.trim()?value.title.trim().slice(0,200):undefined
+ const content=typeof value.content==='string'&&value.content.trim()?value.content.slice(0,80000):undefined
+ return {title,content,posts,partial}
+}
+const RATE_LIMIT_RETRY_MS=15000
+// Routing only decides reply/clarify/task, the intent and clarification options,
+// so it gets a compact view: short fact summaries without properties and the
+// last few messages. Generation keeps the full context. contextRefs (used for
+// dependency tracking) are unchanged because they come from the full context.
+export function routeContext(context:TaskContext|undefined){
+ if(!context)return undefined
+ return {
+  facts:context.facts.map(fact=>({category:fact.category,title:fact.title,summary:fact.summary.slice(0,240)})),
+  history:context.history.slice(-6).map(message=>({role:message.role,content:message.content.slice(0,400)})),
+  region:context.region,
+ }
 }
 export function aiFailure(result:AiCallResult):TaskFailure {
  const code=result.reason??result.error??'provider_error'
- const message=code==='no_active_key'?'The Director has no configured model. Configure the managed model or add an optional key in Settings.':code==='invalid_key'?'The model credential was rejected. Check the AI settings.':code==='budget_exhausted'?'This task reached its model allowance. Saved progress is available for review.':result.error==='unauthorized'?'Your session expired. Sign in again to resume this task.':'The model request failed. Saved progress is kept; retry when the connection is available.'
+ const message=code==='no_active_key'?'The Director has no configured model. Configure the managed model or add an optional key in Settings.':code==='invalid_key'?'The model credential was rejected. Check the AI settings.':code==='budget_exhausted'?'This task reached its model allowance. Saved progress is available for review.':result.error==='unauthorized'?'Your session expired. Sign in again to resume this task.':code==='provider_error_429'?'The AI provider\'s per-minute limit was reached. Saved progress is kept; retry in a minute.':'The model request failed. Saved progress is kept; retry when the connection is available.'
  return new TaskFailure(code,message,!!result.retryable)
 }
 
@@ -64,7 +96,10 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     check();result=await backend.ai(task,operation,prompt,signal);check()
     if(result.ok)return result.text
     if(!result.retryable||attempt===1)throw aiFailure(result)
-    await new Promise<void>(resolve=>{const timer=setTimeout(resolve,700);signal.addEventListener('abort',()=>{clearTimeout(timer);resolve()},{once:true})})
+    // A per-minute token limit (429) does not clear in 700 ms; wait long enough
+    // for part of the window to reset before the single retry.
+    const delay=result.reason==='provider_error_429'?RATE_LIMIT_RETRY_MS:700
+    await new Promise<void>(resolve=>{const timer=setTimeout(resolve,delay);signal.addEventListener('abort',()=>{clearTimeout(timer);resolve()},{once:true})})
    }
    throw aiFailure(result)
   }
@@ -77,15 +112,19 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
     await checkpoint({...task.checkpoint,context,contextRefs:context.facts.map(fact=>({nodeId:fact.id,version:fact.version}))})
    }
    const prompt=()=>JSON.stringify({request:task.user_request,context:task.checkpoint.context,answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
+   const routePrompt=()=>JSON.stringify({request:task.user_request,context:routeContext(task.checkpoint.context),answers:task.checkpoint.answers??[],quantity:task.checkpoint.route?.quantity})
+   const timezone=()=>task.checkpoint.context?.region?.timezone||'UTC'
    if(task.checkpoint.phase==='route'){
-    const route=await step('orchestrator','Route the request',async()=>parseRoute(await call('route',prompt()))) as RouteDecision
+    const route=promoteTaskIntent(await step('orchestrator','Route the request',async()=>parseRoute(await call('route',routePrompt()))) as RouteDecision,task.checkpoint.answers?.length??0)
     if(route.mode==='clarify'){
      await checkpoint({...task.checkpoint,route})
      await backend.rpc('await_task_input',{p_task_id:task.id,p_run_id:task.run_id,p_label:route.question!.label,p_options:route.question!.options.slice(0,6)})
      return
     }
-    if(route.mode==='reply')await checkpoint({...task.checkpoint,route,phase:'persist',output:{reply:route.reply,posts:[]}})
-    else await checkpoint({...task.checkpoint,route,phase:'generate'},route.intent)
+    if(route.mode==='reply'){
+     const document=isSubstantialReply(route.reply)?{document:{title:replyTitle(route.reply,task.user_request),content:route.reply,type:'general' as const}}:{}
+     await checkpoint({...task.checkpoint,route,phase:'persist',output:{reply:route.reply,posts:[],...document}})
+    }else await checkpoint({...task.checkpoint,route,phase:'generate'},route.intent)
    }
    if(task.checkpoint.phase==='generate'){
     const route=task.checkpoint.route!
@@ -100,18 +139,24 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
      // rather than discarding the work and recording a hard failure.
      const hasBrief=!!(draft.title&&draft.content)
      partial=draft.partial||(campaign&&!hasBrief)
-     const document=campaign&&hasBrief?{document:{title:draft.title!,content:draft.content!,type:'general' as const}}:{}
-     output={reply:`${draft.posts.length} draft ${draft.posts.length===1?'Post is':'Posts are'} ready for your review in Scheduling. No publication or schedule has been approved.`,posts:draft.posts,...document}
+     const timed=draft.posts.filter(post=>post.proposedAt).length
+     const document=!campaign
+      ?{document:{title:('Post drafts: '+task.user_request.trim().slice(0,80)).slice(0,200),content:postsMarkdown(draft.posts,timezone()),type:'content_posts' as const}}
+      :hasBrief?{document:{title:draft.title!,content:draft.content!+(timed?'\n\n'+scheduleTable(draft.posts,timezone()):''),type:sectionForTask('campaign_planning',timed)}}:{}
+     output={reply:`${draft.posts.length} draft ${draft.posts.length===1?'Post is':'Posts are'} ready for your review in Calendar & Publishing. Nothing has been approved or published.`,posts:draft.posts,...document}
     }else{
      const diagnosis=route.intent==='performance_diagnosis'
      const text=await step(diagnosis?'performance':'orchestrator',diagnosis?'Prepare a business diagnosis':'Answer the request',()=>call(diagnosis?'diagnose':'chat',prompt())) as string
-     output={reply:diagnosis?'Your diagnosis is saved in Documents for review.':text,posts:[],...(diagnosis?{document:{title:task.user_request.slice(0,150),content:text,type:'performance_diagnosis' as const}}:{})}
+     const document=diagnosis
+      ?{document:{title:task.user_request.slice(0,150),content:text,type:sectionForTask('performance_diagnosis',0)}}
+      :isSubstantialReply(text)?{document:{title:replyTitle(text,task.user_request),content:text,type:'general' as const}}:{}
+     output={reply:diagnosis?'Your diagnosis is ready. Choose whether to save it to Deliverables.':text,posts:[],...document}
     }
     await checkpoint({...task.checkpoint,phase:'persist',output,...(partial?{partial:true}:{})})
    }
     if(task.checkpoint.phase==='persist'){
      check()
-     const saved=await backend.rpc<{taskId:string;documentId:string|null;postIds:string[];messageIds:string[]}>('save_task_result',{p_task_id:task.id,p_run_id:task.run_id,p_result:task.checkpoint.output,p_partial:!!task.checkpoint.partial})
+     const saved=await backend.rpc<{taskId:string;documentId:string|null;offerId:string|null;postIds:string[];messageIds:string[]}>('save_task_result',{p_task_id:task.id,p_run_id:task.run_id,p_result:task.checkpoint.output,p_partial:!!task.checkpoint.partial})
      if(saved)task.checkpoint={...task.checkpoint,outputRefs:saved}
     }
    }catch(error){

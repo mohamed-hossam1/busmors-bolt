@@ -63,6 +63,7 @@ export type MessageType =
   | 'form'
   | 'task_status'
   | 'deliverable_card'
+  | 'deliverable_offer'
   | 'knowledge_notification'
   | 'error'
 
