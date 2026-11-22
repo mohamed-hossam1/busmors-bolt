@@ -34,12 +34,16 @@ import { useTaskRunner } from '../features/tasks/TaskRunnerProvider'
 import AgentCanvas, { type CanvasPreviewPost } from '../components/chat/AgentCanvas'
 import { PostPreviewCard } from '../components/chat/PostPreview'
 import MarkdownContent from '../components/chat/MarkdownContent'
+import DeliverableOfferCard from '../components/chat/DeliverableOfferCard'
+import FacebookPostPreview from '../components/publishing/FacebookPostPreview'
+import { usePreviewPageName } from '../hooks/usePreviewPageName'
 import { forgetCanvasLayout, readActiveConversation, saveActiveConversation } from '../lib/chatCanvasStorage'
 
 export default function EmployeePage() {
   const { t } = useCopy()
   const { settings } = useAuth()
   const tz = settings?.timezone ?? 'UTC'
+  const pageName = usePreviewPageName()
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -99,8 +103,12 @@ export default function EmployeePage() {
       return !existsInServer
     })
 
+    // One task result is inserted in a single transaction, so its messages share
+    // created_at. Break ties in the order save_task_result writes them: Post
+    // references, the reply, then the save-to-Deliverables offer last.
+    const sameTimeRank = (m: ChatMessage) => (m.type === 'post_reference' ? 0 : m.type === 'deliverable_offer' ? 2 : 1)
     const combined = [...otherMsgs, ...pendingOptimistic].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || sameTimeRank(a) - sameTimeRank(b)
     )
 
     if (greetingMsg) {
@@ -490,6 +498,8 @@ export default function EmployeePage() {
             <MessageBubble
               key={msg.id}
               msg={msg}
+              pageName={pageName}
+              tz={tz}
               onSubmitForm={submitForm}
               onDownload={downloadDeliverable}
               onOpenFull={(title, content) => setViewingDeliverable({ title, content })}
@@ -731,11 +741,15 @@ export default function EmployeePage() {
 
 function MessageBubble({
   msg,
+  pageName,
+  tz,
   onSubmitForm,
   onDownload,
   onOpenFull,
 }: {
   msg: ChatMessage
+  pageName: string
+  tz: string
   onSubmitForm: (msg: ChatMessage, values: Record<string, string | string[]>) => Promise<void>
   onDownload: (title: string, content: string) => void
   onOpenFull: (title: string, content: string) => void
@@ -749,13 +763,14 @@ function MessageBubble({
       </div>
     )
   }
-  if(msg.type==='post_reference')return <Link className="card block p-4 text-sm text-primary-800 hover:border-primary-400" href={`/scheduling?post=${encodeURIComponent(String(msg.payload?.postId??''))}`}><span className="font-semibold">{t('draftPostReviewScheduling')}</span><p className="mt-2 line-clamp-3 text-ink-600">{String(msg.payload?.caption??msg.content)}</p></Link>
+  if(msg.type==='post_reference')return <Link className="card block p-4 text-sm text-primary-800 hover:border-primary-400" href={`/scheduling?post=${encodeURIComponent(String(msg.payload?.postId??''))}`}><span className="font-semibold">{t('draftPostReviewScheduling')}</span><div className="mt-3"><FacebookPostPreview compact pageName={pageName} caption={String(msg.payload?.caption??msg.content)} timeLabelKind={msg.payload?.proposedFor?'proposed':'draft'} time={typeof msg.payload?.proposedFor==='string'?msg.payload.proposedFor:null} timezone={tz} /></div></Link>
   if(msg.type==='task_status')return <p className="rounded-xl bg-ink-100 p-3 text-sm text-ink-600">{msg.content}</p>
   if (msg.type === 'error') {
     return (
       <div className="animate-fade-up rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-600">{msg.content}</div>
     )
   }
+  if (msg.type === 'deliverable_offer') return <DeliverableOfferCard msg={msg} />
   if (msg.type === 'deliverable_card' && msg.payload) {
     const previewPosts = (Array.isArray(msg.payload.posts) ? msg.payload.posts : []) as CanvasPreviewPost[]
     const title = String(msg.payload.title ?? t('deliverablesTitle'))

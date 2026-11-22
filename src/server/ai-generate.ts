@@ -152,6 +152,11 @@ export async function generateAi(req: Request) {
       body.maxTokens = undefined
     } else {
       body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), body.operation === 'route' ? 1000 : 6000)
+      // gpt-oss models reason before answering. At the default effort the hidden
+      // reasoning can exhaust a small output cap, the JSON is cut off, and Groq
+      // rejects it (400 json_validate_failed). Routing, clarifying and short chat
+      // answers do not need deep reasoning; low effort also saves per-minute tokens.
+      body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort ?? (['route', 'clarify', 'chat'].includes(body.operation) ? 'low' : undefined)
     }
     if (opConfig.temperature !== undefined && body.temperature === undefined) {
       body.temperature = opConfig.temperature
@@ -196,13 +201,27 @@ export async function generateAi(req: Request) {
     // Byte count is deliberately conservative when a tokenizer/usage is unavailable.
     // reserve_task_call rejects a limit outside 1..50000 (INVALID_CALL); clamp so an
     // oversized prompt surfaces as a real budget/validation error, not run_not_active.
-    const tokenLimit=Math.min(50000,new TextEncoder().encode(body.systemPrompt+body.userPrompt).length+(body.maxTokens ?? 8000)+256)
+    // One token per byte overstated prompts about 3-4x (gpt-oss averages ~4 bytes
+    // per English token and >=3 for Arabic/emoji), and a failed call is charged its
+    // full reservation, so two failures could exhaust a 16k allowance on routing
+    // alone. bytes/3 still stays above real token counts for practical text.
+    const tokenLimit=Math.min(50000,Math.ceil(new TextEncoder().encode(body.systemPrompt+body.userPrompt).length/3)+(body.maxTokens ?? 8000)+256)
     const {error:reservationError}=await admin.rpc('reserve_task_call',{p_task_id:task.id,p_run_id:body.runId,p_call_id:callId,p_operation:body.operation,p_token_limit:tokenLimit})
     if(reservationError)return new Response(JSON.stringify({error:reservationError.message.includes('BUDGET_EXHAUSTED')?'budget_exhausted':'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     let succeeded=false
     try {
       const generated=await callProvider(key,plaintextKey,body)
-      if(!validateOutput(body.operation,generated))throw new Error('invalid_output')
+      if(!validateOutput(body.operation,generated)){
+        // Development aid: log only the response's shape (field names and value
+        // types), never its content, so a rejected format can be identified.
+        if(process.env.NODE_ENV!=='production'){
+          let shape='unparseable'
+          // mode/intent are fixed codes (not user content), so their values are kept.
+          try{shape=JSON.stringify(JSON.parse(generated),(key,value)=>key&&typeof value!=='object'?(typeof value==='number'||key==='mode'||key==='intent'?value:typeof value):value).slice(0,600)}catch{/* keep 'unparseable' */}
+          console.warn('[ai-generate] invalid_output',body.operation,shape)
+        }
+        throw new Error('invalid_output')
+      }
       succeeded=true
       return new Response(JSON.stringify({text:generated,usage:body.usage??null,callId}),{status:200,headers:{...corsHeaders,'Content-Type':'application/json'}})
     } finally {

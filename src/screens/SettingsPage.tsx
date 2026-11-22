@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
 import AccountPreferences from '../components/settings/AccountPreferences'
 import { SettingsSkeleton } from '../components/skeletons'
+import FacebookConnectionCard from '../components/settings/FacebookConnectionCard'
 import { useCopy } from '../hooks/useCopy'
 
 const PROVIDERS = [
@@ -313,6 +314,7 @@ function SettingsContent() {
             </>
           )}
         </section>
+        <FacebookConnectionCard />
       </div>
     </div>
   )

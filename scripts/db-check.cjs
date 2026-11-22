@@ -1,24 +1,39 @@
 #!/usr/bin/env node
-// Runs a self-contained .sql check against DATABASE_URL (hosted Supabase/Postgres).
-// Usage: node scripts/db-check.cjs <path-to-sql>
-const { execFileSync } = require('node:child_process')
+// Runs one self-contained .sql check in a disposable database on the LOCAL PostgreSQL from LOCAL_PG_URL. Never uses DATABASE_URL.
+// Usage: node scripts/db-check.cjs <sql-file>
+// Exit codes: 0 pass, 1 a migration or check failed, 2 setup problem.
 const path = require('node:path')
 
-const file = process.argv[2]
-if (!file) {
-  console.error('usage: node scripts/db-check.cjs <sql-file>')
-  process.exit(2)
+async function main() {
+  const file = process.argv[2]
+  if (!file) {
+    console.error('usage: node scripts/db-check.cjs <sql-file>')
+    process.exit(2)
+  }
+  const pg = await import('./local-pg.mjs')
+  const rel = path.relative(pg.repoRoot, path.resolve(file)).split(path.sep).join('/')
+  const conn = pg.localConnection()
+  let code = 0
+  try {
+    pg.withDisposableDb(conn, (db) => {
+      try {
+        pg.buildSchema(conn, db, 'empty')
+        pg.runFile(conn, db, rel)
+      } catch (error) {
+        if (error instanceof pg.SetupError) throw error
+        pg.say(`FAIL: ${rel}${error.file && error.file !== rel ? ` (at ${error.file})` : ''}`, process.stderr)
+        pg.say(pg.redact(error.message), process.stderr)
+        code = 1
+        return
+      }
+      pg.say(`PASS: ${rel}`)
+    })
+  } catch (error) {
+    pg.say(pg.redact(error.message), process.stderr)
+    code = error instanceof pg.SetupError ? 2 : 1
+  }
+  pg.say(`Full log: ${pg.logPath}`)
+  process.exit(code)
 }
-const url = process.env.DATABASE_URL
-if (!url) {
-  console.error('DATABASE_URL is not set')
-  process.exit(2)
-}
-try {
-  const out = execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-f', path.resolve(file)], {
-    stdio: ['ignore', 'inherit', 'inherit'],
-  })
-  if (out) process.stdout.write(out)
-} catch {
-  process.exit(1)
-}
+
+main()
