@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonCircle } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function EmployeeSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden bg-ink-50/50 animate-fade-in" aria-label="Loading chat and canvas…">
+    <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden bg-ink-50/50 animate-fade-in" aria-label={t('loadingChatAndCanvas')}>
       {/* Left Chat Column */}
       <div className="flex flex-1 flex-col border-e border-ink-100 bg-white">
         {/* Chat Top Header */}

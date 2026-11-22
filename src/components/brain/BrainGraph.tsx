@@ -94,6 +94,7 @@ const CustomCategoryNode = memo(function CustomCategoryNode({ data, selected }: 
 
 // 3. Leaf Knowledge Item Node (Sleek minimalist capsule)
 const CustomBrainNode = memo(function CustomBrainNode({ data, selected }: NodeProps<BrainNodeData>) {
+  const { t } = useCopy()
   const { node, categoryLabel, connectionCount } = data
   const config = CATEGORY_CONFIG[node.category]
   const Icon = config.icon
@@ -131,13 +132,13 @@ const CustomBrainNode = memo(function CustomBrainNode({ data, selected }: NodePr
         {isPending && (
           <span
             className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"
-            title="Pending proposal awaiting review"
+            title={t('pendingProposalAwaitingReview')}
           />
         )}
         {connectionCount > 0 && (
           <span
             className="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-600"
-            title={`${connectionCount} connections`}
+            title={t('connectionsCount', { count: connectionCount })}
           >
             <GitBranch size={9} />
             <span>{connectionCount}</span>
@@ -281,8 +282,8 @@ function BrainGraphView({
       height: BRAIN_HUB_HEIGHT,
       style: { width: BRAIN_HUB_WIDTH, height: BRAIN_HUB_HEIGHT },
       data: {
-        title: layout.hubNode ? layout.hubNode.title : 'Business Brain',
-        subtitle: `${filteredNodes.length} knowledge items`,
+        title: layout.hubNode ? layout.hubNode.title : t('businessBrain'),
+        subtitle: t('knowledgeItemsCount', { count: filteredNodes.length }),
       },
     })
 
@@ -319,7 +320,7 @@ function BrainGraphView({
         selected: node.id === selectedId,
         width: BRAIN_CARD_WIDTH,
         height: BRAIN_CARD_HEIGHT,
-        ariaLabel: `${node.title}. ${t(`cat_${node.category}` as never)}. Open knowledge details.`,
+        ariaLabel: `${node.title}. ${t(`cat_${node.category}` as never)}. ${t('openKnowledgeDetails')}`,
         style: cardStyle,
         data: nodeData.get(node.id)!,
       })
@@ -488,13 +489,13 @@ function BrainGraphView({
   const matchingProposal = selectedNode ? proposals?.find((p) => p.node_id === selectedNode.id) : null
 
   return (
-    <section className="brain-map" aria-label="Business knowledge map">
+    <section className="brain-map" aria-label={t('businessKnowledgeMap')}>
       <div className="brain-map-toolbar">
         <div className="flex shrink-0 items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Network size={18} /></span>
           <div>
-            <h2 className="text-sm font-semibold text-ink-900">Knowledge map</h2>
-            <p className="mt-0.5 text-[11px] text-ink-500">{statusNodes.length} visible · {crossEdges.length} connections</p>
+            <h2 className="text-sm font-semibold text-ink-900">{t('knowledgeMap')}</h2>
+            <p className="mt-0.5 text-[11px] text-ink-500">{t('mapVisibleConnections', { nodes: statusNodes.length, connections: crossEdges.length })}</p>
           </div>
         </div>
 
@@ -509,7 +510,7 @@ function BrainGraphView({
             }`}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            <span>Approved</span>
+            <span>{t('status_approved')}</span>
             <span className={`text-[10px] px-1 rounded-full ${statusFilter === 'approved' ? 'bg-primary-50 text-primary-700 font-bold' : 'bg-ink-100 text-ink-600'}`}>
               {approvedCount}
             </span>
@@ -525,7 +526,7 @@ function BrainGraphView({
             }`}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${statusFilter === 'candidate' ? 'bg-white' : 'bg-amber-500'}`} />
-            <span>Pending</span>
+            <span>{t('pending')}</span>
             <span className={`text-[10px] px-1 rounded-full font-bold ${
               statusFilter === 'candidate' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
             }`}>
@@ -542,7 +543,7 @@ function BrainGraphView({
                 : 'text-ink-600 hover:text-ink-900'
             }`}
           >
-            <span>All</span>
+            <span>{t('all')}</span>
             <span className="text-[10px] px-1 rounded-full bg-ink-100 text-ink-600">
               {nodes.length}
             </span>
@@ -552,19 +553,19 @@ function BrainGraphView({
         <div className="brain-map-tools">
           <label className="brain-map-search">
             <Search size={15} className="shrink-0 text-ink-400" />
-            <input aria-label="Search knowledge" value={query} placeholder="Search knowledge…" onChange={(event) => { setQuery(event.target.value); setSelectedId(null) }} />
-            {query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button>}
+            <input aria-label={t('searchKnowledge')} value={query} placeholder={t('searchKnowledgePlaceholder')} onChange={(event) => { setQuery(event.target.value); setSelectedId(null) }} />
+            {query && <button type="button" aria-label={t('clearSearch')} onClick={() => setQuery('')}><X size={14} /></button>}
           </label>
-          <button type="button" className={`brain-map-tool ${showConnections ? 'is-active' : ''}`} aria-pressed={showConnections} onClick={() => setShowConnections(!showConnections)} title="Show or hide cross-connections">
-            <GitBranch size={15} /><span className="hidden sm:inline">Connections</span>
+          <button type="button" className={`brain-map-tool ${showConnections ? 'is-active' : ''}`} aria-pressed={showConnections} onClick={() => setShowConnections(!showConnections)} title={t('showHideConnections')}>
+            <GitBranch size={15} /><span className="hidden sm:inline">{t('connections')}</span>
           </button>
-          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.18, duration: 250, maxZoom: 1 })} title="Fit all visible cards" aria-label="Fit map to view"><Scan size={16} /></button>
-          <button type="button" className="brain-map-tool" onClick={() => { setPositions({}); setSelectedId(null); setLayoutVersion((version) => version + 1) }} title="Reset card positions" aria-label="Reset map layout"><RotateCcw size={15} /></button>
+          <button type="button" className="brain-map-tool" onClick={() => fitView({ padding: 0.18, duration: 250, maxZoom: 1 })} title={t('fitAllVisibleCards')} aria-label={t('fitMapToView')}><Scan size={16} /></button>
+          <button type="button" className="brain-map-tool" onClick={() => { setPositions({}); setSelectedId(null); setLayoutVersion((version) => version + 1) }} title={t('resetCardPositions')} aria-label={t('resetMapLayout')}><RotateCcw size={15} /></button>
         </div>
       </div>
 
-      <div className="brain-map-categories" role="group" aria-label="Filter knowledge by category">
-        <button type="button" className={`brain-map-category ${category === 'all' ? 'is-active' : ''}`} aria-pressed={category === 'all'} onClick={() => { setCategory('all'); setSelectedId(null) }}>All <span>{statusNodes.length}</span></button>
+      <div className="brain-map-categories" role="group" aria-label={t('filterKnowledgeByCategory')}>
+        <button type="button" className={`brain-map-category ${category === 'all' ? 'is-active' : ''}`} aria-pressed={category === 'all'} onClick={() => { setCategory('all'); setSelectedId(null) }}>{t('all')} <span>{statusNodes.length}</span></button>
         {BRAIN_CATEGORY_ORDER.filter((item) => categoryCounts.has(item)).map((item) => {
           const config = CATEGORY_CONFIG[item]
           return <button type="button" key={item} className={`brain-map-category ${category === item ? 'is-active' : ''}`} aria-pressed={category === item} onClick={() => { setCategory(item); setSelectedId(null) }}>
@@ -586,14 +587,14 @@ function BrainGraphView({
           {statusFilter === 'candidate' && statusNodes.length > 0 && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-xl bg-amber-500/95 text-white px-3.5 py-1.5 text-xs shadow-md backdrop-blur-xs">
               <AlertCircle size={14} className="shrink-0" />
-              <span>Previewing <strong>{statusNodes.length} pending proposals</strong> awaiting your review</span>
+              <span>{t('previewing')} <strong>{t('pendingProposalsCount', { count: statusNodes.length })}</strong> {t('awaitingYourReview')}</span>
               {onSwitchToList && (
                 <button
                   type="button"
                   onClick={onSwitchToList}
                   className="ms-2 rounded-md bg-white/20 hover:bg-white/30 px-2 py-0.5 text-[11px] font-semibold text-white transition-colors"
                 >
-                  Review list
+                  {t('reviewList')}
                 </button>
               )}
             </div>
@@ -637,9 +638,9 @@ function BrainGraphView({
                     <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                       <AlertCircle size={28} />
                     </span>
-                    <h3 className="text-base font-bold text-ink-900">Your Knowledge Map starts here</h3>
+                    <h3 className="text-base font-bold text-ink-900">{t('knowledgeMapStartsHere')}</h3>
                     <p className="mt-2 text-sm leading-relaxed text-ink-600">
-                      You have <strong className="text-amber-800">{pendingCount} pending suggestions</strong> extracted from your website awaiting your approval. Once approved, they will form your confirmed Knowledge Map.
+                      {t('youHave')} <strong className="text-amber-800">{t('pendingSuggestions', { count: pendingCount })}</strong> {t('knowledgeMapStartsDesc')}
                     </p>
                     <div className="mt-5 flex flex-wrap justify-center gap-2">
                       {onSwitchToList && (
@@ -648,7 +649,7 @@ function BrainGraphView({
                           onClick={onSwitchToList}
                           className="btn-primary text-xs flex items-center gap-1.5"
                         >
-                          <List size={14} /> Review & Approve ({pendingCount})
+                          <List size={14} /> {t('reviewAndApprove', { count: pendingCount })}
                         </button>
                       )}
                       <button
@@ -656,7 +657,7 @@ function BrainGraphView({
                         onClick={() => setStatusFilter('candidate')}
                         className="btn-secondary text-xs text-amber-800 border-amber-300 hover:bg-amber-50 flex items-center gap-1.5"
                       >
-                        <Network size={14} /> Preview on Map
+                        <Network size={14} /> {t('previewOnMap')}
                       </button>
                       {onApproveAllProposals && (
                         <button
@@ -664,7 +665,7 @@ function BrainGraphView({
                           onClick={() => void onApproveAllProposals()}
                           className="btn-secondary text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 flex items-center gap-1.5"
                         >
-                          <CheckCircle2 size={14} /> Approve All Now
+                          <CheckCircle2 size={14} /> {t('approveAllNow')}
                         </button>
                       )}
                     </div>
@@ -675,16 +676,16 @@ function BrainGraphView({
                       {statusNodes.length ? <Search size={23} /> : <Network size={23} />}
                     </span>
                     <h3 className="text-base font-semibold text-ink-900">
-                      {statusNodes.length ? 'No matching knowledge' : 'No knowledge items in this view'}
+                      {statusNodes.length ? t('noMatchingKnowledge') : t('noKnowledgeItemsInView')}
                     </h3>
                     <p className="mt-2 max-w-xs mx-auto text-sm leading-relaxed text-ink-500">
                       {statusNodes.length
-                        ? 'Try a different search or explore another category.'
-                        : 'Add or approve knowledge to see how your business connects.'}
+                        ? t('tryDifferentSearch')
+                        : t('addOrApproveKnowledge')}
                     </p>
                     {statusNodes.length > 0 && (
                       <button type="button" onClick={clearFilters} className="btn-secondary mt-4 text-xs">
-                        Clear filters
+                        {t('clearFilters')}
                       </button>
                     )}
                   </>
@@ -696,20 +697,20 @@ function BrainGraphView({
 
         {/* 1. Knowledge Item Inspector */}
         {selectedNode && (
-          <aside className="brain-map-inspector" aria-label="Knowledge details">
+          <aside className="brain-map-inspector" aria-label={t('knowledgeDetails')}>
             <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
-              <span className="text-xs font-semibold text-ink-500">KNOWLEDGE DETAILS</span>
-              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close knowledge details"><X size={16} /></button>
+              <span className="text-xs font-semibold text-ink-500">{t('knowledgeDetailsHeading')}</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label={t('closeKnowledgeDetails')}><X size={16} /></button>
             </div>
             <div key={selectedNode.id} className="min-h-0 flex-1 overflow-y-auto p-5">
               {selectedNode.status === 'candidate' && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
                   <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
                     <AlertCircle size={15} className="text-amber-600" />
-                    <span>Pending Review</span>
+                    <span>{t('pendingReviewTitle')}</span>
                   </div>
                   <p className="mt-1 text-xs text-amber-700 leading-relaxed">
-                    This item is proposed knowledge extracted from your website. Approve it to confirm it as business truth.
+                    {t('pendingReviewBody')}
                   </p>
                   <div className="mt-3 flex items-center gap-2">
                     <button
@@ -731,7 +732,7 @@ function BrainGraphView({
                       className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs inline-flex items-center gap-1 shadow-xs"
                     >
                       <CheckCircle2 size={12} />
-                      <span>Approve</span>
+                      <span>{t('approve')}</span>
                     </button>
                     <button
                       type="button"
@@ -752,7 +753,7 @@ function BrainGraphView({
                       className="btn-secondary px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 border-red-200 inline-flex items-center gap-1"
                     >
                       <X size={12} />
-                      <span>Reject</span>
+                      <span>{t('reject')}</span>
                     </button>
                   </div>
                 </div>
@@ -762,35 +763,35 @@ function BrainGraphView({
               <h3 className="mt-4 text-lg font-semibold leading-snug text-ink-900" dir="auto">{selectedNode.title}</h3>
               <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600" dir="auto">{selectedNode.summary}</p>
               <KnowledgeLabels node={selectedNode}/>
-              {onEvidence && <button className="mt-3 text-sm text-primary-700 underline" onClick={() => onEvidence(selectedNode)}>View evidence and versions</button>}
+              {onEvidence && <button className="mt-3 text-sm text-primary-700 underline" onClick={() => onEvidence(selectedNode)}>{t('viewEvidenceAndVersions')}</button>}
               <div className="mt-5 rounded-xl bg-ink-50/70 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">Source</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500">{t('source')}</p>
                 <p className="mt-1 break-words text-xs leading-relaxed text-ink-600" dir="auto">{selectedNode.source_detail || selectedNode.source}</p>
               </div>
               <div className="mb-3 mt-6 flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-ink-900">Connections</h4><span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700">{connections.length}</span>
+                <h4 className="text-xs font-semibold text-ink-900">{t('connections')}</h4><span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700">{connections.length}</span>
               </div>
               <div className="space-y-2">
                 {connections.map((edge) => {
                   const other = statusNodes.find((node) => node.id === (edge.source === selectedNode.id ? edge.target : edge.source))
                   if (!other) return null
                   return <button type="button" key={edge.id} className="brain-map-connection" onClick={() => { setCategory('all'); setQuery(''); setSelectedId(other.id) }}>
-                    <span className="min-w-0 flex-1"><span className="block text-[10px] text-primary-700">{edge.label}{edge.inferred ? ' · Suggested' : ''}</span><span className="mt-1 block text-xs font-medium leading-relaxed text-ink-800" dir="auto">{other.title}</span></span><ArrowUpRight size={14} className="shrink-0 text-ink-400" />
+                    <span className="min-w-0 flex-1"><span className="block text-[10px] text-primary-700">{edge.label}{edge.inferred ? t('suggestedLabel') : ''}</span><span className="mt-1 block text-xs font-medium leading-relaxed text-ink-800" dir="auto">{other.title}</span></span><ArrowUpRight size={14} className="shrink-0 text-ink-400" />
                   </button>
                 })}
-                {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">No cross-connections for this item yet.</p>}
+                {connections.length === 0 && <p className="text-xs leading-relaxed text-ink-500">{t('noCrossConnections')}</p>}
               </div>
             </div>
-            {onEditNode && <div className="border-t border-ink-100 p-4"><button type="button" className="btn-primary w-full text-xs" onClick={() => { setSelectedId(null); onEditNode(selectedNode) }}><Pencil size={14} />{t('edit')} knowledge</button></div>}
+            {onEditNode && <div className="border-t border-ink-100 p-4"><button type="button" className="btn-primary w-full text-xs" onClick={() => { setSelectedId(null); onEditNode(selectedNode) }}><Pencil size={14} />{t('editKnowledge')}</button></div>}
           </aside>
         )}
 
         {/* 2. Category Node Inspector */}
         {!selectedNode && selectedCategory && (
-          <aside className="brain-map-inspector" aria-label="Category details">
+          <aside className="brain-map-inspector" aria-label={t('categoryDetails')}>
             <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
-              <span className="text-xs font-semibold text-ink-500">CATEGORY OVERVIEW</span>
-              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close category details"><X size={16} /></button>
+              <span className="text-xs font-semibold text-ink-500">{t('categoryOverview')}</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label={t('closeCategoryDetails')}><X size={16} /></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <div className="flex items-center gap-2.5">
@@ -802,12 +803,12 @@ function BrainGraphView({
                 </span>
                 <div>
                   <h3 className="text-base font-bold text-ink-900">{t(`cat_${selectedCategory}` as never)}</h3>
-                  <p className="text-xs text-ink-500">{filteredNodes.filter((n) => n.category === selectedCategory).length} items in map</p>
+                  <p className="text-xs text-ink-500">{t('itemsInMapCount', { count: filteredNodes.filter((n) => n.category === selectedCategory).length })}</p>
                 </div>
               </div>
 
               <div className="mt-6 space-y-2">
-                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">Knowledge in this branch</h4>
+                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">{t('knowledgeInThisBranch')}</h4>
                 {filteredNodes.filter((n) => n.category === selectedCategory).map((item) => (
                   <button
                     key={item.id}
@@ -817,7 +818,7 @@ function BrainGraphView({
                   >
                     <span className="text-xs font-medium text-ink-900 truncate" dir="auto">{item.title}</span>
                     {item.status === 'candidate' && (
-                      <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-1.5 py-0.2 rounded-full shrink-0">Pending</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-1.5 py-0.2 rounded-full shrink-0">{t('pending')}</span>
                     )}
                   </button>
                 ))}
@@ -829,7 +830,7 @@ function BrainGraphView({
                   onClick={() => { setCategory(selectedCategory); setSelectedId(null) }}
                   className="btn-secondary w-full text-xs"
                 >
-                  Filter map to {t(`cat_${selectedCategory}` as never)}
+                  {t('filterMapTo', { category: t(`cat_${selectedCategory}` as never) })}
                 </button>
               </div>
             </div>
@@ -838,10 +839,10 @@ function BrainGraphView({
 
         {/* 3. Business Hub Inspector */}
         {!selectedNode && !selectedCategory && selectedHub && (
-          <aside className="brain-map-inspector" aria-label="Brain details">
+          <aside className="brain-map-inspector" aria-label={t('brainDetails')}>
             <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
-              <span className="text-xs font-semibold text-ink-500">BUSINESS BRAIN</span>
-              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label="Close brain details"><X size={16} /></button>
+              <span className="text-xs font-semibold text-ink-500">{t('businessBrainHeading')}</span>
+              <button type="button" onClick={() => setSelectedId(null)} className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-50 hover:text-ink-900" aria-label={t('closeBrainDetails')}><X size={16} /></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <div className="flex items-center gap-2.5">
@@ -849,15 +850,15 @@ function BrainGraphView({
                   <Building2 size={20} />
                 </span>
                 <div>
-                  <h3 className="text-base font-bold text-ink-900">Knowledge Map Hub</h3>
-                  <p className="text-xs text-ink-500">{statusNodes.length} confirmed knowledge cards</p>
+                  <h3 className="text-base font-bold text-ink-900">{t('knowledgeMapHub')}</h3>
+                  <p className="text-xs text-ink-500">{t('confirmedKnowledgeCardsCount', { count: statusNodes.length })}</p>
                 </div>
               </div>
               <p className="mt-4 text-xs text-ink-600 leading-relaxed">
-                This mind-map visually connects your business profile, offerings, audience, and goals into a unified knowledge graph.
+                {t('knowledgeMapHubDesc')}
               </p>
               <div className="mt-6 space-y-2">
-                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">Categories</h4>
+                <h4 className="text-xs font-semibold text-ink-700 uppercase tracking-wider">{t('categoriesHeading')}</h4>
                 {BRAIN_CATEGORY_ORDER.filter((cat) => categoryCounts.has(cat)).map((cat) => {
                   const config = CATEGORY_CONFIG[cat]
                   const CatIcon = config.icon
@@ -878,8 +879,8 @@ function BrainGraphView({
       </div>
 
       <footer className="brain-map-footer">
-        <span className="flex items-center gap-1.5"><MousePointer2 size={12} />{selectedId ? 'Click any card to inspect details' : 'Select a card to explore its connections'}</span>
-        <span className="hidden sm:inline">Drag to arrange · Scroll to zoom</span>
+        <span className="flex items-center gap-1.5"><MousePointer2 size={12} />{selectedId ? t('clickAnyCardToInspect') : t('selectCardToExplore')}</span>
+        <span className="hidden sm:inline">{t('dragToArrangeScrollToZoom')}</span>
       </footer>
     </section>
   )

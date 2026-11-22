@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonHeader } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function SettingsSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="workspace-page animate-fade-in" aria-label="Loading settings…">
+    <div className="workspace-page animate-fade-in" aria-label={t('loadingSettings')}>
       <div className="mx-auto max-w-4xl space-y-6">
         {/* Header */}
         <SkeletonHeader />

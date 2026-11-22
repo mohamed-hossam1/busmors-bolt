@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { Link } from '@/shared/i18n'
 import ReactFlow, {
   Background,
   Controls,
@@ -19,33 +19,30 @@ import 'reactflow/dist/style.css'
 import {
   User,
   Sparkles,
-  Compass,
-  Target,
-  PenTool,
-  Calendar,
-  BarChart3,
   Bot,
+  Wrench,
+  BookOpen,
+  ShieldCheck,
+  FileText,
   Check,
   AlertCircle,
   Loader2,
   Network,
-  Clock,
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
+  X,
 } from 'lucide-react'
 import type { AgentEvent } from '../../lib/types'
+import { useCopy } from '../../hooks/useCopy'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
 import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
-import { useAuth } from '../../context/AuthContext'
-import { formatWorkspaceTime } from '../../lib/region'
+import { buildAgentGraph, type CanvasNode, type CanvasNodeKind, type PersistedEvent } from '../../features/research/canvas/graph'
 
 export type CanvasPreviewPost = PostPreviewData
 const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
 
 function PreviewNode({ data }: { data: { posts: CanvasPreviewPost[] } }) {
   return (
-    <div className="w-64 sm:w-72 space-y-2 cursor-grab">
+    <div className="w-64 space-y-2 cursor-grab">
       {data.posts.map((p, i) => (
         <PostPreviewCard key={i} post={p} compact />
       ))}
@@ -53,118 +50,70 @@ function PreviewNode({ data }: { data: { posts: CanvasPreviewPost[] } }) {
   )
 }
 
-interface AgentNodeData {
-  id: string
-  label: string
-  isActive: boolean
-  isDone: boolean
-  isError: boolean
-  toolLabel?: string
+interface AgentNodeData extends CanvasNode {
+  selected: boolean
+  onSelect: (id: string) => void
 }
 
-function getAgentIcon(id: string) {
-  switch (id) {
-    case 'user':
-      return <User size={15} className="text-primary-700" />
-    case 'orchestrator':
-      return <Sparkles size={15} className="text-primary-600" />
-    case 'market_research':
-      return <Compass size={15} className="text-cyan-600" />
-    case 'competitor_analysis':
-      return <Target size={15} className="text-amber-600" />
-    case 'content_writer':
-      return <PenTool size={15} className="text-purple-600" />
-    case 'campaign_planner':
-      return <Calendar size={15} className="text-indigo-600" />
-    case 'performance':
-      return <BarChart3 size={15} className="text-rose-600" />
-    default:
-      return <Bot size={15} className="text-ink-600" />
-  }
+const NODE_ICON: Record<CanvasNodeKind, typeof Bot> = {
+  user: User,
+  director: Sparkles,
+  subagent: Bot,
+  tool: Wrench,
+  skill: BookOpen,
+  auditor: ShieldCheck,
+  synthesis: FileText,
 }
 
-function CustomAgentNode({ data }: NodeProps<AgentNodeData>) {
-  const { id, label, isActive, isDone, isError, toolLabel } = data
+function statePill(node: CanvasNode, t: ReturnType<typeof useCopy>['t']) {
+  if (node.state === 'running') return <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold text-primary-800"><Loader2 size={10} className="animate-spin" />{t('stateRunning')}</span>
+  if (node.state === 'completed') return <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"><Check size={10} />{t('stateDone')}</span>
+  if (node.state === 'failed') return <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"><AlertCircle size={10} />{t('stateFailed')}</span>
+  if (node.state === 'partial') return <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{t('statePartial')}</span>
+  return <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-semibold text-ink-600">{t('stateQueued')}</span>
+}
 
-  const borderClass = isError
-    ? 'border-red-400 bg-red-50/70 shadow-sm'
-    : isActive
-      ? 'border-primary-500 bg-white ring-2 ring-primary-400/30 shadow-md shadow-primary-500/15'
-      : isDone
-        ? 'border-emerald-400/90 bg-white shadow-sm'
-        : 'border-ink-200 bg-white shadow-xs'
-
+function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
+  const { t } = useCopy()
+  const { selected, onSelect } = data
+  const Icon = NODE_ICON[data.kind] ?? Bot
+  const border = data.state === 'failed'
+    ? 'border-red-400 bg-red-50/70'
+    : data.state === 'partial'
+      ? 'border-amber-400 bg-amber-50/70'
+      : data.state === 'completed'
+        ? 'border-emerald-300 bg-white'
+        : selected || data.state === 'running'
+          ? 'border-primary-400 bg-white ring-2 ring-primary-400/20'
+          : 'border-ink-200 bg-white'
+  const circle = data.kind === 'director' || data.kind === 'tool' || data.kind === 'skill'
   return (
-    <div className={`relative min-w-[170px] max-w-[220px] rounded-xl border p-2.5 transition-all cursor-grab ${borderClass}`}>
-      {/* ReactFlow Connection Handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500"
-      />
-
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-ink-100/70">
-            {getAgentIcon(id)}
+    <div
+      className={`relative min-w-[150px] cursor-pointer rounded-xl border p-2.5 transition-all ${circle ? 'rounded-full' : ''} ${border}`}
+      onClick={() => onSelect(data.id)}
+    >
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+      <div className="flex items-center gap-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${data.color}1a`, color: data.color }}>
+          <Icon size={14} />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-xs font-bold leading-tight text-ink-900">{data.label}</div>
+          <div className="mt-0.5 flex items-center gap-1">
+            {statePill(data, t)}
+            {data.sources > 0 && <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600">{t('sourcesShort', { count: data.sources })}</span>}
+            {data.consumption.credits > 0 && <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600">{t('creditsShort', { count: data.consumption.credits })}</span>}
           </div>
-          <span className="text-xs font-bold text-ink-900 tracking-tight leading-none">
-            {label}
-          </span>
         </div>
-
-        {/* Status Pill Badge */}
-        {isActive && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold text-primary-800 animate-pulse">
-            <Loader2 size={10} className="animate-spin" />
-            Active
-          </span>
-        )}
-        {isDone && !isActive && (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-            <Check size={10} />
-            Done
-          </span>
-        )}
-        {isError && (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
-            <AlertCircle size={10} />
-            Error
-          </span>
-        )}
       </div>
-
-      {/* Active Sub-Action Pill */}
-      {isActive && toolLabel && (
-        <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-primary-50/80 px-2 py-1 text-[11px] text-primary-900 border border-primary-200/50">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary-600 animate-ping shrink-0" />
-          <span className="truncate">{toolLabel}</span>
-        </div>
-      )}
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500"
-      />
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
     </div>
   )
 }
 
 const nodeTypes = {
-  agentNode: CustomAgentNode,
+  agentNode: CanvasAgentNode,
   postPreview: PreviewNode,
-}
-
-// Clean vertical & horizontal layout
-const AGENT_LAYOUT: Record<string, { x: number; y: number; label: string }> = {
-  user: { x: 250, y: 30, label: 'User' },
-  orchestrator: { x: 250, y: 140, label: 'Orchestrator' },
-  market_research: { x: 70, y: 260, label: 'Market Research' },
-  competitor_analysis: { x: 250, y: 260, label: 'Competitor Analysis' },
-  content_writer: { x: 430, y: 260, label: 'Content Writer' },
-  campaign_planner: { x: 130, y: 380, label: 'Campaign Planner' },
-  performance: { x: 370, y: 380, label: 'Performance' },
 }
 
 export default function AgentCanvas({
@@ -172,7 +121,6 @@ export default function AgentCanvas({
   events,
   running,
   taskId,
-  taskStatus,
   previewPosts = EMPTY_PREVIEWS,
 }: {
   conversationId: string | null
@@ -182,10 +130,9 @@ export default function AgentCanvas({
   taskStatus?: string
   previewPosts?: CanvasPreviewPost[]
 }) {
-  const { settings } = useAuth()
-  const tz = settings?.timezone ?? 'UTC'
+  const { t } = useCopy()
   const [flowNodes, setFlowNodes] = useState<Node[]>([])
-  const [showSteps, setShowSteps] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savedLayout] = useState(() => readCanvasLayout(conversationId))
   const userPositionsRef = useRef({ ...savedLayout.positions })
   const viewportRef = useRef<Viewport | undefined>(savedLayout.viewport)
@@ -193,165 +140,70 @@ export default function AgentCanvas({
     saveCanvasLayout(conversationId, { positions: userPositionsRef.current, viewport: viewportRef.current })
   }, [conversationId])
 
-  const { activeAgents, doneAgents, errorAgents, toolLabels, connections } = useMemo(() => {
-    const active = new Set<string>()
-    const done = new Set<string>()
-    const failed = new Set<string>()
-    const tools = new Map<string, string>()
-    const conns: { from: string; to: string }[] = []
+  const onSelect = useCallback((id: string) => setSelectedId(current => (current === id ? null : id)), [])
 
-    for (const e of events) {
-      const instance=e.instance_id??e.agent_id
-      if (e.event_type === 'agent_started') {
-        active.add(instance)
-        done.delete(instance)
-        failed.delete(instance)
-      }
-      if (e.event_type === 'agent_tool_used') {
-        tools.set(instance, String(e.payload.tool_label ?? ''))
-      }
-      if (e.event_type === 'agent_completed') {
-        active.delete(instance)
-        if (!failed.has(instance)) {
-          done.add(instance)
-        }
-      }
-      if (e.event_type === 'agent_error') {
-        active.delete(instance)
-        done.delete(instance)
-        failed.add(instance)
-      }
-      if (e.event_type === 'flow_connection') {
-        conns.push({ from: String(e.payload.from ?? ''), to: String(e.payload.to ?? '') })
-      }
-    }
-    return { activeAgents: active, doneAgents: done, errorAgents: failed, toolLabels: tools, connections: conns }
-  }, [events])
+  const graph = useMemo(() => buildAgentGraph({
+    events: events as unknown as PersistedEvent[],
+    running,
+  }), [events, running])
 
   useEffect(() => {
-    const present = new Set<string>()
-    for (const e of events) {
-      if (e.agent_id && e.event_type!=='flow_connection') present.add(e.instance_id??e.agent_id)
-      if (e.event_type === 'flow_connection') {
-        const from = String(e.payload.from ?? '')
-        const to = String(e.payload.to ?? '')
-        if (from) present.add(from)
-        if (to) present.add(to)
+    const newNodes: Node[] = graph.nodes.map((node, index) => {
+      const director = graph.directorId !== null && node.id === graph.directorId
+      const position = userPositionsRef.current[node.id] ?? {
+        x: director ? 300 : 60 + (index % 3) * 230,
+        y: director ? 40 : 160 + Math.floor(index / 3) * 130,
       }
-    }
-    const newNodes: Node[] = [...present].map((id,index) => {
-      const event=events.find(event=>(event.instance_id??event.agent_id)===id && event.event_type!=='flow_connection')
-      const agent=event?.agent_id??id
-      const named=AGENT_LAYOUT[agent]??{x:250,y:300,label:agent}
-      const layout=event?.instance_id?{...named,x:230+(index%2)*60,y:40+index*135}:named
-      // A terminal failure leaves the last started step without a completion
-      // event. Show it as failed instead of leaving a misleading neutral node.
-      const stopped = ['failed','interrupted','cancelled'].includes(taskStatus ?? '')
-        && !doneAgents.has(id) && !errorAgents.has(id)
-      const isFailed = errorAgents.has(id) || stopped
-      const isActive = running && activeAgents.has(id) && !isFailed
-      const isDone = doneAgents.has(id) && !isFailed
-      const position = userPositionsRef.current[id] ?? { x: layout.x, y: layout.y }
-
       return {
-        id,
+        id: node.id,
         type: 'agentNode',
         position,
-        data: {
-          id:agent,
-          label: event?.instance_id?String(event.payload.task_summary??layout.label):layout.label,
-          isActive,
-          isDone,
-          isError: isFailed,
-          toolLabel: toolLabels.get(id),
-        },
+        data: { ...node, selected: node.id === selectedId, onSelect } as AgentNodeData,
       }
     })
-
     if (previewPosts.length > 0) {
-      const previewPos = userPositionsRef.current['post-previews'] ?? { x: 250, y: 440 }
       newNodes.push({
         id: 'post-previews',
-        position: previewPos,
+        position: userPositionsRef.current['post-previews'] ?? { x: 300, y: 520 },
         type: 'postPreview',
         data: { posts: previewPosts.slice(0, 4) },
       })
     }
-
-    setFlowNodes((previous) => {
-      const measured = new Map(previous.map((node) => [node.id, node]))
-      return newNodes.map((node) => ({ ...measured.get(node.id), ...node }))
+    setFlowNodes(previous => {
+      const measured = new Map(previous.map(node => [node.id, node]))
+      return newNodes.map(node => ({ ...measured.get(node.id), ...node }))
     })
-  }, [events, running, taskStatus, activeAgents, doneAgents, errorAgents, toolLabels, previewPosts])
+  }, [graph, previewPosts, selectedId, onSelect])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    for (const c of changes) {
-      if (c.type === 'position' && c.position && c.id) {
-        userPositionsRef.current[c.id] = c.position
-      }
+    for (const change of changes) {
+      if (change.type === 'position' && change.position && change.id) userPositionsRef.current[change.id] = change.position
     }
-    setFlowNodes((nds) => applyNodeChanges(changes, nds))
+    setFlowNodes(nodes => applyNodeChanges(changes, nodes))
   }, [])
 
-  // Clean, deduplicated edges with smooth rounded step routing
   const edges: Edge[] = useMemo(() => {
-    const list: Edge[] = []
-    const seenPair = new Set<string>()
+    const seen = new Set<string>()
+    return graph.edges.flatMap(edge => {
+      const key = `${edge.from}->${edge.to}:${edge.kind}`
+      if (seen.has(key)) return []
+      seen.add(key)
+      const from = graph.nodes.find(node => node.id === edge.from)
+      const to = graph.nodes.find(node => node.id === edge.to)
+      const stroke = to?.state === 'failed' ? '#ef4444' : from?.state === 'running' || to?.state === 'running' ? '#6366f1' : to?.state === 'completed' ? '#10b981' : '#cbd5e1'
+      return [{
+        id: edge.id,
+        source: edge.from,
+        target: edge.to,
+        type: 'smoothstep',
+        animated: edge.animated,
+        style: { stroke, strokeWidth: edge.kind === 'delegation' ? 2.4 : 1.6 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
+      }]
+    })
+  }, [graph])
 
-    for (const c of connections) {
-      if (!c.from || !c.to) continue
-      // Deduplicate bidirectional edges to stop pretzel loops
-      const pairKey = [c.from, c.to].sort().join(':::')
-      if (seenPair.has(pairKey)) continue
-      seenPair.add(pairKey)
-
-      const isConnectedToActive = activeAgents.has(c.to) || activeAgents.has(c.from)
-      const isError = errorAgents.has(c.to) || errorAgents.has(c.from)
-      const isDone = doneAgents.has(c.to) || doneAgents.has(c.from)
-
-      const stroke = isError
-        ? '#ef4444'
-        : isConnectedToActive
-          ? '#6535ef'
-          : isDone
-            ? '#10b981'
-            : '#cbd5e1'
-
-      list.push({
-        id: `edge-${c.from}-${c.to}`,
-        source: c.from,
-        target: c.to,
-        type: 'smoothstep', // clean orthogonal rounded lines
-        animated: isConnectedToActive && !isError,
-        style: {
-          stroke,
-          strokeWidth: isConnectedToActive ? 2.5 : 1.75,
-        },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: stroke,
-          width: 14,
-          height: 14,
-        },
-      })
-    }
-
-    return list
-  }, [connections, activeAgents, doneAgents, errorAgents])
-
-  // The detail panel is the chronological record the graph summarizes. One row
-  // per persisted instance keeps the list and the graph in agreement.
-  const recorded = useMemo(() => {
-    const instances = new Map<string, { id: string; first: AgentEvent; last: AgentEvent }>()
-    for (const event of events) {
-      if (event.event_type === 'flow_connection') continue
-      const id = event.instance_id ?? event.agent_id
-      const found = instances.get(id)
-      if (found) found.last = event
-      else instances.set(id, { id, first: event, last: event })
-    }
-    return [...instances.values()]
-  }, [events])
+  const selected = graph.nodes.find(node => node.id === selectedId) ?? null
 
   return (
     <div className="relative h-full w-full" dir="ltr">
@@ -359,7 +211,7 @@ export default function AgentCanvas({
         nodes={flowNodes}
         edges={edges}
         onNodesChange={onNodesChange}
-        nodesDraggable={true}
+        nodesDraggable
         fitView={!savedLayout.viewport}
         fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
         defaultViewport={savedLayout.viewport}
@@ -376,73 +228,52 @@ export default function AgentCanvas({
           onFitView={() => requestAnimationFrame(persistLayout)}
         />
       </ReactFlow>
-      {recorded.length > 0 && (
-        <div className="absolute bottom-3 right-3 z-10 w-[min(22rem,calc(100%-1.5rem))]">
-          <div className="overflow-hidden rounded-xl border border-ink-200 bg-white/95 shadow-card backdrop-blur">
-            <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowSteps((value) => !value)}
-                  aria-expanded={showSteps}
-                  className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-800"
-                >
-                  <Clock size={13} className="shrink-0 text-primary-600" />
-                  <span>Recorded steps</span>
-                  <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold text-ink-600">{recorded.length}</span>
-                  {showSteps ? <ChevronDown size={13} className="shrink-0 text-ink-400" /> : <ChevronUp size={13} className="shrink-0 text-ink-400" />}
-                </button>
-                {/* A partial run finished with usable output: keep the graph, but
-                    flag that only some of the requested work was produced. */}
-                {taskStatus === 'partial' && (
-                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Partial result</span>
-                )}
-              </div>
-              {taskId && (
-                <Link
-                  href={`/employee?task=${encodeURIComponent(taskId)}`}
-                  className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900"
-                >
-                  Open task <ExternalLink size={11} />
-                </Link>
-              )}
+
+      {selected && (
+        <aside className="absolute right-3 top-3 z-10 max-h-[calc(100%-1.5rem)] w-[min(24rem,calc(100%-1.5rem))] overflow-y-auto rounded-xl border border-ink-200 bg-white/95 p-3 shadow-card backdrop-blur" dir="ltr">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-ink-900">{selected.label}</h3>
+              <p className="mt-0.5 text-[11px] text-ink-500">{selected.kind} · {selected.agentId}</p>
             </div>
-            {showSteps && (
-              <ol className="max-h-52 space-y-2 overflow-y-auto p-3">
-                {recorded.map(({ id, first, last }) => {
-                  const label = String(last.payload?.task_summary ?? last.payload?.tool_label ?? last.agent_id)
-                  const detail = String(last.payload?.result_summary ?? last.payload?.error ?? '')
-                  const stopped = last.event_type === 'agent_started' && ['failed','interrupted','cancelled'].includes(taskStatus ?? '')
-                  const failed = last.event_type === 'agent_error' || stopped
-                  const complete = last.event_type === 'agent_completed'
-                  const at = last.event_type === 'agent_started' ? first.created_at : last.created_at
-                  return (
-                    <li key={id} className="flex gap-2 text-xs">
-                      <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${failed ? 'bg-red-500' : complete ? 'bg-emerald-500' : 'bg-primary-500'}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate font-medium text-ink-800">{label}</span>
-                          <time className="shrink-0 text-[10px] text-ink-400" dateTime={at}>
-                            {formatWorkspaceTime(at, tz, { hour: '2-digit', minute: '2-digit', dateStyle: undefined, timeStyle: undefined })}
-                          </time>
-                        </div>
-                        <p className={`truncate text-[11px] ${failed ? 'text-red-600' : 'text-ink-500'}`}>
-                          {detail || (stopped ? 'Stopped before completion' : last.event_type.replaceAll('_', ' '))}
-                        </p>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
+            <button aria-label={t('closeDetailsAriaLabel')} onClick={() => setSelectedId(null)} className="rounded p-1 text-ink-500 hover:bg-ink-100"><X size={14} /></button>
           </div>
-        </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+            {statePill(selected, t)}
+            {selected.startedAt && <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">{t('startedAt', { time: selected.startedAt.slice(11, 19) })}</span>}
+            {selected.endedAt && <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">{t('endedAt', { time: selected.endedAt.slice(11, 19) })}</span>}
+            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">{t('sourceCountLabel', { count: selected.sources })}</span>
+            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">{t('callsCreditsLabel', { calls: selected.consumption.calls, credits: selected.consumption.credits })}</span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-ink-700">{selected.objective}</p>
+          {selected.failureReason && <p className="mt-2 rounded bg-red-50 p-2 text-[11px] text-red-700">{selected.failureReason}</p>}
+          {selected.messages.length > 0 && (
+            <div className="mt-2">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">{t('recordedMessages')}</h4>
+              <ul className="mt-1 space-y-1 text-[11px] leading-5 text-ink-600">
+                {selected.messages.map((message, index) => <li key={index} className="border-l-2 border-ink-200 pl-2">{message}</li>)}
+              </ul>
+            </div>
+          )}
+          {Object.keys(selected.parametersRedacted).length > 0 && (
+            <details className="mt-2 text-[11px] text-ink-600">
+              <summary className="cursor-pointer select-none">{t('redactedParameters')}</summary>
+              <pre className="mt-1 overflow-x-auto rounded bg-ink-50 p-2 text-[10px] text-ink-700">{JSON.stringify(selected.parametersRedacted, null, 2)}</pre>
+            </details>
+          )}
+          {taskId && (
+            <Link href={`/employee?task=${encodeURIComponent(taskId)}`} className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900">
+              {t('openTask')} <ExternalLink size={11} />
+            </Link>
+          )}
+        </aside>
       )}
-      {!running && events.length === 0 && previewPosts.length === 0 && (
+
+      {!running && graph.nodes.length === 0 && previewPosts.length === 0 && (
         <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
           <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-white text-primary-500"><Network size={24} strokeWidth={1.5} /></span>
-          <h2 className="text-base font-semibold text-ink-900">The work will take shape here.</h2>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-600">Ask your Director for help. This canvas will show the recorded specialists, tools, and handoffs for this conversation.</p>
+          <h2 className="text-base font-semibold text-ink-900">{t('canvasEmptyTitle')}</h2>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-600">{t('canvasEmptyHint')}</p>
         </div>
       )}
     </div>

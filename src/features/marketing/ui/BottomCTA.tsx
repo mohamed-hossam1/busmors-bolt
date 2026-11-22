@@ -9,7 +9,7 @@ import { MARKETING_ASSETS } from "../model/assets";
 import { MarketingCta } from "./MarketingCta";
 import BrandOutline from "./BrandOutline";
 
-export default function BottomCTA() {
+export default function BottomCTA({ isAuthenticated = false }: { isAuthenticated?: boolean } = {}) {
   const t = useTranslations("Marketing");
   const root = useRef<HTMLElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -58,11 +58,11 @@ export default function BottomCTA() {
           <h2 className="[text-wrap:balance] text-[clamp(2rem,1rem+3.7vw,5.1rem)] font-normal leading-[1.02] tracking-[-.045em] text-white">{t("BottomCTA.giveYourMarketing")}<br />{t("BottomCTA.aClearNextStep")}</h2>
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-stage-muted sm:text-base">{t("BottomCTA.meetTheIdeaBehindBusmoraBusinessContextUsefulDirection")}</p>
           <MarketingCta
-            href={ROUTES.MARKETING.PROCESS}
+            href={isAuthenticated ? "/employee" : ROUTES.MARKETING.PROCESS}
             size="default"
             className="mt-8"
           >
-            {t("BottomCTA.exploreHowItWorks")}
+            {isAuthenticated ? t("Navbar.dashboard") : t("BottomCTA.exploreHowItWorks")}
           </MarketingCta>
         </div>
         <div className="pointer-events-none absolute inset-x-[8%] bottom-[-3%] h-[240px] sm:h-[340px] [perspective:1300px]">

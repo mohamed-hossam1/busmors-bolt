@@ -1,14 +1,19 @@
 import 'server-only'
 import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
+import { firecrawlScrape } from './research/providers'
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
-export const DEFAULT_CRAWL_PAGES = 10
+export const DEFAULT_CRAWL_PAGES = 5
+/** Per-page ceiling for the Firecrawl escalation; short enough to keep the crawl fast. */
+const FIRECRAWL_PAGE_TIMEOUT = 10000
 export interface CrawlOptions {
   signal?: AbortSignal
   timeoutMs?: number
   budgetMs?: number
   concurrency?: number
   forceRefresh?: boolean
+  /** Reader transport. Defaults to the standard reader; 'firecrawl' bypasses anti-bot. */
+  reader?: 'jina' | 'firecrawl'
 }
 export interface CrawlDiagnostics {
   attempted: number
@@ -47,6 +52,91 @@ function discoverLinks(page: CrawledPage, base: string): string[] {
   return [...links].sort((a, b) => linkPriority(b) - linkPriority(a))
 }
 
+/**
+ * Probes the target website's sitemap.xml to instantly discover high-value canonical pages
+ * (e.g. products, pricing, about) without waiting for recursive link discovery.
+ */
+export async function discoverSitemapLinks(baseUrl: string, signal?: AbortSignal): Promise<string[]> {
+  try {
+    const origin = new URL(baseUrl).origin
+    const candidatePaths = ['/sitemap.xml', '/sitemap_index.xml']
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 3500)
+    const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
+
+    for (const path of candidatePaths) {
+      if (combinedSignal.aborted) break
+      try {
+        const res = await fetch(`${origin}${path}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BusMoraBot/1.0)' },
+          signal: combinedSignal,
+          cache: 'no-store',
+        })
+        if (!res.ok) continue
+        const text = await res.text()
+        const links = new Set<string>()
+
+        // Check for sub-sitemaps (e.g., sitemap_products, sitemap_pages)
+        const subSitemaps: string[] = []
+        for (const match of text.matchAll(/<sitemap>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi)) {
+          const loc = match[1]?.trim()
+          if (loc && /product|page|collection|service/i.test(loc)) subSitemaps.push(loc)
+        }
+
+        if (subSitemaps.length > 0 && !combinedSignal.aborted) {
+          try {
+            const subRes = await fetch(subSitemaps[0], {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BusMoraBot/1.0)' },
+              signal: combinedSignal,
+              cache: 'no-store',
+            })
+            if (subRes.ok) {
+              const subText = await subRes.text()
+              for (const m of subText.matchAll(/<loc>([^<]+)<\/loc>/gi)) {
+                const url = m[1]?.trim()
+                if (url) links.add(url)
+              }
+            }
+          } catch {
+            // continue with main sitemap matches
+          }
+        }
+
+        for (const match of text.matchAll(/<url>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/url>/gi)) {
+          const url = match[1]?.trim()
+          if (url) links.add(url)
+        }
+
+        const valid: string[] = []
+        for (const raw of links) {
+          try {
+            const norm = normalizeSiteUrl(raw, origin)
+            if (sameSite(norm, origin)) {
+              const pathname = decodeURI(new URL(norm).pathname)
+              if (/\.(?:png|jpe?g|gif|webp|avif|svg|pdf|zip|mp4|mp3|css|js|xml)$/i.test(pathname)) continue
+              if (/(?:^|\/)(?:login|signin|signup|sign-in|sign-up|cart|checkout|privacy|terms|legal|cookie|careers?|jobs?|tag)(?:[-_/]|$)/i.test(pathname)) continue
+              valid.push(norm)
+            }
+          } catch {
+            // ignore malformed
+          }
+        }
+
+        clearTimeout(timer)
+        if (valid.length > 0) {
+          return valid.sort((a, b) => linkPriority(b) - linkPriority(a))
+        }
+      } catch {
+        // try next candidate path
+      }
+    }
+    clearTimeout(timer)
+    return []
+  } catch {
+    return []
+  }
+}
+
 function parsePage(raw: string, url: string): CrawledPage | null {
   // The reader's HTTP status does not necessarily describe the target page.
   const marker = raw.indexOf('Markdown Content:')
@@ -55,7 +145,7 @@ function parsePage(raw: string, url: string): CrawledPage | null {
   const markdown = (marker >= 0 ? raw.slice(marker + 'Markdown Content:'.length) : raw).trim()
   const title = metadata.match(/^Title:\s*(.+)$/m)?.[1]?.trim()
   const cleaned = cleanPageForAi(markdown)
-  if (cleaned.length < 80 || /^(?:404\s*)?(?:#{1,6}\s*)?(?:404\b|page not found\b|not found\b|access denied\b|just a moment\b|checking your browser\b)/i.test(cleaned.slice(0, 500)) || /^(?:404\b|page not found\b|access denied\b|just a moment\b)/i.test(title || '')) return null
+  if (cleaned.length < 80 || looksLikeBlockPage(cleaned, title)) return null
   const source = metadata.match(/^URL Source:\s*(https?:\/\/\S+)/m)?.[1]
   let canonical = url
   try {
@@ -68,64 +158,148 @@ function parsePage(raw: string, url: string): CrawledPage | null {
   return { url: canonical, markdown, title }
 }
 
+/**
+ * The reader returns an HTTP error page or a JavaScript/anti-bot challenge as its
+ * body. Such pages carry no usable content and must be rejected so the Firecrawl
+ * fallback can try to bypass the protection instead.
+ */
+function looksLikeBlockPage(cleaned: string, title?: string): boolean {
+  const head = cleaned.slice(0, 500)
+  if (/^(?:404\s*)?(?:#{1,6}\s*)?(?:404\b|page not found\b|not found\b|access denied\b|just a moment\b|checking your browser\b|verify you are human\b|attention required\b|cf-browser-verification\b)/i.test(head)) return true
+  return /^(?:404\s*)?(?:page not found|not found|access denied|just a moment|checking your browser)\b/i.test((title || '').trim())
+}
+
+function extractHtmlText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseFirecrawlPage(markdown: string, title: string, url: string): CrawledPage | null {
+  const cleaned = cleanPageForAi(markdown)
+  if (cleaned.length < 80 || looksLikeBlockPage(cleaned, title)) return null
+  return { url, markdown: markdown.trim(), title: title || undefined }
+}
+
 export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_PAGES, onProgress?: CrawlProgressCallback, options: CrawlOptions = {}): Promise<{ pages: CrawledPage[]; diagnostics: CrawlDiagnostics }> {
-  const maxPages = Math.max(1, Math.min(20, Math.floor(requestedMax) || DEFAULT_CRAWL_PAGES))
+  const maxPages = Math.max(1, Math.min(5, Math.floor(requestedMax) || DEFAULT_CRAWL_PAGES))
   const concurrency = Math.max(1, Math.min(3, Math.floor(options.concurrency ?? 3) || 3))
   const started = Date.now()
   const diagnostics: CrawlDiagnostics = { attempted: 0, failed: 0, duplicates: 0, cached: 0, elapsed_ms: 0, warnings: [] }
-  const queue = [normalizeSiteUrl(baseUrl)]
-  const enqueued = new Set(queue)
+  const queue: string[] = []
+  const enqueued = new Set<string>([normalizeSiteUrl(baseUrl)])
   const fingerprints = new Set<string>()
   const pages: CrawledPage[] = []
   const deadline = new AbortController()
-  // Allow the initial page plus enough parallel batches to attempt the configured page count.
-  const budgetMs = options.budgetMs ?? Math.max(12000, (1 + Math.ceil((maxPages - 1) / concurrency)) * (options.timeoutMs ?? 6000) + 1000)
+
+  const pageTimeout = options.timeoutMs ?? 6000
+  const batches = 1 + Math.ceil((maxPages - 1) / concurrency)
+  const standardBudget = Math.max(16000, batches * (pageTimeout + FIRECRAWL_PAGE_TIMEOUT) + 1000)
+  const budgetMs = options.budgetMs ?? (options.reader === 'firecrawl' ? Math.max(30000, standardBudget + 15000) : standardBudget)
   const budgetTimer = setTimeout(() => deadline.abort(), budgetMs)
   const abort = () => deadline.abort()
   options.signal?.addEventListener('abort', abort, { once: true })
   if (options.signal?.aborted) deadline.abort()
+
+  const readViaJina = async (url: string): Promise<CrawledPage | null> => {
+    if (deadline.signal.aborted) return null
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    deadline.signal.addEventListener('abort', cancel, { once: true })
+    if (deadline.signal.aborted) controller.abort()
+    const timer = setTimeout(cancel, pageTimeout)
+    try {
+      const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain', 'X-Robots-Txt': 'BusMoraBot' }, cache: 'no-store', signal: controller.signal })
+      if (!response.ok) return null
+      return parsePage(await response.text(), url)
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+      deadline.signal.removeEventListener('abort', cancel)
+    }
+  }
+
+  const readViaDirect = async (url: string): Promise<CrawledPage | null> => {
+    if (deadline.signal.aborted) return null
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    deadline.signal.addEventListener('abort', cancel, { once: true })
+    if (deadline.signal.aborted) controller.abort()
+    const timer = setTimeout(cancel, 4500)
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 (compatible; BusMoraBot/1.0)',
+          Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      if (!response.ok) return null
+      const html = await response.text()
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+      const title = titleMatch ? titleMatch[1].trim() : undefined
+      const text = extractHtmlText(html)
+      if (text.length < 80 || looksLikeBlockPage(text, title)) return null
+      return { url, markdown: text, title }
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+      deadline.signal.removeEventListener('abort', cancel)
+    }
+  }
+
+  const readViaFirecrawl = async (url: string): Promise<CrawledPage | null> => {
+    if (deadline.signal.aborted) return null
+    const result = await firecrawlScrape(url, { signal: deadline.signal, timeoutMs: FIRECRAWL_PAGE_TIMEOUT })
+    if (!result.ok) return null
+    return parseFirecrawlPage(result.markdown, result.title, url)
+  }
 
   const read = async (url: string): Promise<CrawledPage | null> => {
     diagnostics.attempted++
     onProgress?.(pages.length, maxPages, url)
     const cached = cache.get(url)
     if (!options.forceRefresh && cached && cached.expires > Date.now()) { diagnostics.cached++; return cached.page }
-    for (let attempt = 0; attempt < 2 && !deadline.signal.aborted; attempt++) {
-      const controller = new AbortController()
-      const cancel = () => controller.abort()
-      deadline.signal.addEventListener('abort', cancel, { once: true })
-      if (deadline.signal.aborted) controller.abort()
-      const timer = setTimeout(cancel, options.timeoutMs ?? 6000)
-      try {
-        const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain' }, cache: 'no-store', signal: controller.signal })
-        if (!response.ok) {
-          if (attempt === 0 && (response.status === 429 || response.status >= 500)) {
-            const seconds = Number(response.headers.get('Retry-After') || 1)
-            if (!Number.isFinite(seconds) || seconds > 2) break
-            await new Promise<void>((resolve) => {
-              const finish = () => { clearTimeout(wait); deadline.signal.removeEventListener('abort', finish); resolve() }
-              const wait = setTimeout(finish, Math.max(250, seconds * 1000))
-              deadline.signal.addEventListener('abort', finish, { once: true })
-              if (deadline.signal.aborted) finish()
-            })
-            continue
-          }
-          break
-        }
-        const page = parsePage(await response.text(), url)
-        if (page) {
-          if (cache.size >= 60) cache.delete(cache.keys().next().value!)
-          cache.set(url, { page, expires: Date.now() + 5 * 60 * 1000 })
-        }
-        return page
-      } catch {
-        if (controller.signal.aborted || deadline.signal.aborted || attempt === 1) break
-      } finally {
-        clearTimeout(timer)
-        deadline.signal.removeEventListener('abort', cancel)
+    let page: CrawledPage | null
+    if (options.reader === 'firecrawl') {
+      page = await readViaFirecrawl(url)
+    } else {
+      page = await readViaJina(url)
+      if (!page && !deadline.signal.aborted) page = await readViaDirect(url)
+      if (!page && !deadline.signal.aborted) page = await readViaFirecrawl(url)
+    }
+    if (page) {
+      if (cache.size >= 60) cache.delete(cache.keys().next().value!)
+      cache.set(url, { page, expires: Date.now() + 5 * 60 * 1000 })
+    }
+    return page
+  }
+
+  // Step 1: Read homepage immediately (zero pre-crawl lag, starts in 0ms)
+  const home = await read(normalizeSiteUrl(baseUrl))
+  if (home) {
+    const fingerprint = cleanPageForAi(home.markdown).replace(/\s+/g, ' ').toLowerCase()
+    fingerprints.add(fingerprint)
+    pages.push(home)
+    onProgress?.(pages.length, maxPages, home.url)
+    for (const link of discoverLinks(home, baseUrl)) {
+      if (!enqueued.has(link) && enqueued.size < maxPages * 4) {
+        enqueued.add(link)
+        queue.push(link)
       }
     }
-    return null
   }
 
   try {
@@ -155,3 +329,4 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     diagnostics.elapsed_ms = Date.now() - started
   }
 }
+

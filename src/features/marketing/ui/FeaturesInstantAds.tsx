@@ -52,7 +52,7 @@ export default function FeaturesInstantAds() {
           </div>
 
           <div className="mt-8 w-full px-4 lg:mt-0 lg:w-[52%] lg:shrink-0 lg:pe-0">
-            <img src={MARKETING_ASSETS.marketingDirector} width={1440} height={960} alt="Marketing Director conversation and the recorded Agent Canvas" loading="lazy" className="rounded-xl border border-white shadow-lg lg:-translate-x-5" />
+            <img src={MARKETING_ASSETS.marketingDirector} width={1440} height={960} alt={t("FeaturesInstantAds.marketingDirectorAlt")} loading="lazy" className="rounded-xl border border-white shadow-lg lg:-translate-x-5" />
           </div>
         </MarketingCard>
 

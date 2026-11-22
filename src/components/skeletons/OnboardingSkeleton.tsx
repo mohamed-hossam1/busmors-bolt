@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonCircle } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function OnboardingSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="grid min-h-[100dvh] bg-ink-50 lg:grid-cols-2 animate-fade-in" aria-label="Loading onboarding…">
+    <div className="grid min-h-[100dvh] bg-ink-50 lg:grid-cols-2 animate-fade-in" aria-label={t('loadingOnboarding')}>
       {/* Left Column */}
       <div className="flex min-w-0 flex-col px-6 py-7 sm:px-12 lg:px-16">
         {/* Brand Logo Placeholder */}

@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { SkeletonBox, SkeletonCircle } from './SkeletonPrimitives'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function AuthSkeleton() {
+  const { t } = useCopy()
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-50 p-6 animate-fade-in" aria-label="Loading authentication…">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-50 p-6 animate-fade-in" aria-label={t('loadingAuthentication')}>
       <div className="card w-full max-w-md p-8 bg-white border border-ink-100 rounded-3xl shadow-card space-y-6">
         {/* Brand Logo & Title */}
         <div className="flex flex-col items-center text-center space-y-3">

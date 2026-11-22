@@ -88,4 +88,5 @@ export interface DiscoveryPlanContext {
   goal: DiscoveryGoal
   hasWebsite: boolean
   facts: BrainNode[]
+  locale?: string
 }

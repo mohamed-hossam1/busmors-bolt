@@ -2,7 +2,7 @@
 
 import { CalendarSkeleton } from '../components/skeletons'
 import { useDialog } from '../hooks/useDialog'
-import Link from 'next/link'
+import { Link } from '@/shared/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, CheckCheck, ChevronLeft, ChevronRight, Clock, Copy, XCircle,
@@ -19,7 +19,7 @@ import type { PlannedPost } from '../lib/types'
 
 type View = 'month' | 'week'
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const WEEKDAY_KEYS = ['weekdaySun', 'weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat'] as const
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 const HOUR_HEIGHT = 48
 
@@ -80,13 +80,13 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
   useEffect(() => {
     if (initial.length) return
     let active = true
-    void recoverPosts().then(posts => { if (active) setPosts(posts) }).catch(() => { if (active) setError('Posts could not be recovered. Please retry.') })
+    void recoverPosts().then(posts => { if (active) setPosts(posts) }).catch(() => { if (active) setError(t('postsRecoverFailed')) })
     return () => { active = false }
   }, [initial])
 
   const load = async () => {
     try { setPosts(await loadPosts()); setError('') }
-    catch { setError('Posts could not be loaded. Please retry.') }
+    catch { setError(t('postsLoadFailed')) }
     finally { setLoading(false) }
   }
   const changePosts = async (ids: string[], change: { status?: PlannedPost['status']; caption?: string }) => {
@@ -95,7 +95,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
       const result = await updatePosts(ids, change)
       if (result.error) { setError(result.error); return false }
       await load(); return true
-    } catch { setError('Posts could not be saved. Please retry.'); return false }
+    } catch { setError(t('postsSaveFailed')); return false }
     finally { setBusy(false) }
   }
 
@@ -164,7 +164,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="brain-page-heading"><CalendarDays size={22} /></span>
-            <div><h1 className="workspace-heading">{t('calendarTitle')}</h1><p className="workspace-description">A clear view of what’s next. You make the final call.</p></div>
+            <div><h1 className="workspace-heading">{t('calendarTitle')}</h1><p className="workspace-description">{t('calendarDescription')}</p></div>
           </div>
           <div className="flex flex-wrap gap-2">
             {pending.length > 0 && (
@@ -181,8 +181,8 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
         </header>
 
         <div className="mb-6 grid grid-cols-3 gap-3 sm:gap-4">{[
-          { label: 'All posts', value: posts.length }, { label: 'To review', value: pending.length }, { label: 'Approved', value: approvedCount },
-        ].map((stat) => <div key={stat.label} className="stat-card"><p className="text-xs text-ink-600">{stat.label}</p><p className="mt-2 text-2xl font-semibold tracking-tight">{stat.value}</p></div>)}</div>
+          { id: 'all', label: t('calendarStatAll'), value: posts.length }, { id: 'review', label: t('calendarStatToReview'), value: pending.length }, { id: 'approved', label: t('status_approved'), value: approvedCount },
+        ].map((stat) => <div key={stat.id} className="stat-card"><p className="text-xs text-ink-600">{stat.label}</p><p className="mt-2 text-2xl font-semibold tracking-tight">{stat.value}</p></div>)}</div>
 
         {posts.length === 0 && (
               <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-dashed border-ink-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -191,11 +191,11 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
                     <CalendarDays size={18} strokeWidth={1.7} />
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-ink-900">Your calendar is ready.</p>
-                    <p className="mt-1 text-sm leading-relaxed text-ink-600">Ask your Marketing Director to prepare posts. Drafts will appear here for you to review.</p>
+                    <p className="text-sm font-semibold text-ink-900">{t('calendarReadyTitle')}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-ink-600">{t('calendarReadyHint')}</p>
                   </div>
                 </div>
-                <Link href="/employee" className="btn-primary shrink-0 px-4 py-2 text-xs sm:text-sm">Talk to your Director</Link>
+                <Link href="/employee" className="btn-primary shrink-0 px-4 py-2 text-xs sm:text-sm">{t('talkToDirector')}</Link>
               </div>
             )}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -314,9 +314,9 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-3 sm:p-4" onClick={() => setEditing(null)}>
-          <div role="dialog" aria-modal="true" aria-label="Edit post" className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label={t('editPost')} className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 font-bold text-base sm:text-lg">{t('edit')}</h3>
-            <textarea value={editText} onChange={(e) => setEditText(e.target.value)} aria-label="Post caption" rows={5} className="input-field resize-none" />
+            <textarea value={editText} onChange={(e) => setEditText(e.target.value)} aria-label={t('postCaptionLabel')} rows={5} className="input-field resize-none" />
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setEditing(null)} className="btn-secondary flex-1 sm:flex-initial">
                 {t('cancel')}
@@ -349,8 +349,8 @@ function MonthGrid({
     <div className="overflow-x-auto">
       <div className="min-w-[620px] overflow-hidden rounded-2xl border border-ink-200 bg-ink-100">
         <div className="grid grid-cols-7 gap-px bg-ink-100">
-          {WEEKDAYS.map((label) => (
-            <div key={label} className="bg-ink-50 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-ink-500">{label}</div>
+          {WEEKDAY_KEYS.map((key) => (
+            <div key={key} className="bg-ink-50 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-ink-500">{t(key as never)}</div>
           ))}
         </div>
 
@@ -419,6 +419,7 @@ function WeekGrid({
   tz: string
   onSelect: (key: string) => void
 }) {
+  const { t } = useCopy()
   return (
     <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white">
       <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-ink-100 bg-ink-50/70">
@@ -435,7 +436,7 @@ function WeekGrid({
               aria-pressed={isSelected}
               className={`flex flex-col items-center gap-0.5 border-s border-ink-100 py-2 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-300 ${isSelected ? 'bg-primary-50' : ''}`}
             >
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{weekdayLabel(key)}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{t(WEEKDAY_KEYS[weekdayOf(key)] as never)}</span>
               <span className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? 'bg-primary-500 text-white' : 'text-ink-800'}`}>
                 {Number(key.slice(8))}
               </span>
@@ -490,11 +491,6 @@ function WeekGrid({
       </div>
     </div>
   )
-}
-
-function weekdayLabel(key: string) {
-  const index = weekdayOf(key)
-  return WEEKDAYS[index].slice(0, 3)
 }
 
 function PostChip({ post, tz, onSelect }: { post: PlannedPost; tz: string; onSelect: () => void }) {

@@ -3,6 +3,8 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowUpRight, Brain, ShieldCheck } from 'lucide-react'
 import Brand from '../Brand'
+import LanguageSwitcher from '../LanguageSwitcher'
+import { useCopy } from '../../hooks/useCopy'
 
 export default function AuthLayout({
   children,
@@ -20,26 +22,32 @@ export default function AuthLayout({
   alignTop?: boolean
 }) {
   const isTop = alignTop || Boolean(panel)
+  const { t } = useCopy()
 
   return (
     <div className="grid min-h-[100dvh] bg-ink-50 lg:grid-cols-2">
-      <div className="flex min-w-0 flex-col px-6 py-7 sm:px-12 lg:px-16">
-        <div className="flex items-center justify-between gap-4"><Brand /></div>
-        <div className={`mx-auto flex w-full max-w-md flex-1 flex-col ${isTop ? 'justify-start' : 'justify-center'} py-12 sm:py-16`}>
-          {eyebrow && <div className="mb-6">{eyebrow}</div>}
-          <h1 className="text-3xl font-semibold tracking-[-.04em] text-ink-900 sm:text-4xl">{title}</h1>
-          <p className="mt-3 text-sm leading-relaxed text-ink-600">{subtitle}</p>
-          <div className="mt-8">{children}</div>
+      <div className="flex min-w-0 flex-col px-6 py-6 sm:px-10 lg:px-14">
+        <header className="mx-auto flex w-full max-w-md items-center justify-between gap-4 pb-2">
+          <Brand />
+          <LanguageSwitcher />
+        </header>
+        <div className={`mx-auto flex w-full max-w-md flex-1 flex-col ${isTop ? 'justify-start pt-6 sm:pt-8' : 'justify-center py-6 sm:py-10'}`}>
+          {eyebrow && <div className="mb-4">{eyebrow}</div>}
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">{title}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-ink-600">{subtitle}</p>
+          <div className="mt-6 sm:mt-8">{children}</div>
         </div>
-        <p className="text-xs text-ink-600">{('Busmora · Your business at the center.')}</p>
+        <footer className="mx-auto mt-auto w-full max-w-md pt-4">
+          <p className="text-xs text-ink-500">{t('authFooterTagline')}</p>
+        </footer>
       </div>
-      <aside className={`auth-brand-panel relative mx-6 my-12 mt-20 hidden w-full min-w-0 max-w-2xl flex-col gap-12 ${isTop ? 'self-start lg:sticky lg:top-12' : 'self-center'} justify-self-center overflow-hidden rounded-[32px] border border-white/10 bg-cosmic-card p-10 text-white lg:flex lg:w-[calc(100%_-_3rem)] xl:p-14`}>
+      <aside className={`auth-brand-panel relative mx-6 my-6 hidden w-full min-w-0 max-w-2xl flex-col gap-10 ${isTop ? 'self-start lg:sticky lg:top-8' : 'self-center'} justify-self-center overflow-hidden rounded-[32px] border border-white/10 bg-cosmic-card p-8 text-white lg:flex lg:w-[calc(100%_-_3rem)] xl:p-12`}>
         {panel ?? <>
-        <div className="relative z-10"><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-cosmic-raised px-4 py-2 text-xs text-stage-muted"><Brain size={14} className="text-primary-300" />{('Your AI Marketing Director')}</span>
-          <h2 className="mt-10 text-[clamp(2.5rem,4vw,4rem)] font-normal leading-[1.08] tracking-[-.05em]">{('Marketing direction.')}<br />{('Built around you.')}</h2>
-          <p className="mt-5 max-w-sm text-sm leading-7 text-stage-muted">{('One shared understanding of your business. A useful next step. Work you can review and make your own.')}</p>
+        <div className="relative z-10"><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-cosmic-raised px-4 py-2 text-xs text-stage-muted"><Brain size={14} className="text-primary-300" />{t('yourAiMarketingDirector')}</span>
+          <h2 className="mt-8 text-[clamp(2.25rem,3.5vw,3.75rem)] font-normal leading-[1.08] tracking-[-.05em]">{t('marketingDirection')}<br />{t('builtAroundYou')}</h2>
+          <p className="mt-4 max-w-sm text-sm leading-7 text-stage-muted">{t('oneSharedUnderstanding')}</p>
         </div>
-        <div className="relative z-10 flex items-center justify-between gap-4 border-t border-white/10 pt-5 text-xs text-stage-muted"><span className="flex items-center gap-2"><ShieldCheck size={16} />{('Your context. Your decisions.')}</span><ArrowUpRight size={20} className="text-primary-300" /></div>
+        <div className="relative z-10 flex items-center justify-between gap-4 border-t border-white/10 pt-5 text-xs text-stage-muted"><span className="flex items-center gap-2"><ShieldCheck size={16} />{t('yourContextYourDecisions')}</span><ArrowUpRight size={20} className="text-primary-300 rtl:-scale-x-100" /></div>
         </>}
       </aside>
     </div>
@@ -54,18 +62,19 @@ export function AuthField(props: {
   placeholder?: string
   autoComplete?: string
 }) {
+  const isLtrField = props.type === 'email' || props.type === 'password'
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm text-ink-700">
+      <span className="mb-1.5 block text-sm font-medium text-ink-700">
         <span className="text-red-500">*</span> {props.label}
       </span>
       <input
         type={props.type}
-        dir={props.type === 'email' ? 'ltr' : undefined}
+        dir={isLtrField ? 'ltr' : undefined}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
-        className="input-field"
+        className={`input-field ${isLtrField ? 'text-left placeholder:text-start' : ''}`}
         autoComplete={props.autoComplete ?? (props.type === 'email' ? 'email' : props.type === 'password' ? 'current-password' : 'organization')}
         required
       />
@@ -74,6 +83,7 @@ export function AuthField(props: {
 }
 
 export function useAuthError() {
+  const { t } = useCopy()
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -86,7 +96,7 @@ export function useAuthError() {
       const err = await fn()
       if (err) setError(err)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setError(err instanceof Error ? err.message : t('errorGeneric'))
     } finally {
       setBusy(false)
     }

@@ -11,4 +11,7 @@ export default async function globalSetup() {
   verifyRequiredSchema()
   await createAccount('primary', true)
   await createAccount('intruder', true)
+  // Research consumes the shared free-tier allowance, so each research scenario gets its own workspace.
+  await createAccount('research_a', true)
+  await createAccount('research_b', true)
 }

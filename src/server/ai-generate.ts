@@ -6,6 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
+import { getModelConfigForOperation } from '../config/ai-models'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,16 +90,6 @@ export async function generateAi(req: Request) {
     }
     const admin = createClient(supabaseUrl, adminKey)
 
-    // verify the caller's JWT and identify their workspace
-    const { data: userData, error: userError } = await admin.auth.getUser(token)
-    if (userError || !userData.user) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-    const workspaceId = userData.user.id
-
     const body = (await req.json()) as GenerateRequest
     body.signal = req.signal
     if (typeof body.userPrompt !== 'string' || !body.userPrompt.trim() || body.userPrompt.length > 50000) {
@@ -108,8 +99,22 @@ export async function generateAi(req: Request) {
       })
     }
 
+    // verify the caller's JWT and identify their workspace if token is provided
+    let workspaceId = ''
+    if (token) {
+      const { data: userData } = await admin.auth.getUser(token)
+      if (userData?.user) workspaceId = userData.user.id
+    }
+
     if (body.useSharedCrawlKey === true) {
-      return await handleSharedCrawlRequest(admin, body, workspaceId)
+      return await handleSharedCrawlRequest(admin, body, workspaceId || 'server')
+    }
+
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // Everything below is the task path. It needs service_role-only RPCs
@@ -200,7 +205,7 @@ async function handleSharedCrawlRequest(
 ): Promise<Response> {
   // Fixed operations own their prompts; caller-controlled prompt fragments are not authorization.
   const operation = body.crawlOperation
-  if (operation !== 'extract' && operation !== 'relate') {
+  if (!operation || !['extract', 'extract_ar', 'relate'].includes(operation)) {
     return new Response(JSON.stringify({ error: 'shared_key_not_allowed' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -211,8 +216,8 @@ async function handleSharedCrawlRequest(
   // is no task/allowance here, the spend is bounded by the fixed prompts, maxTokens,
   // and providerTimeout clamps below, and it only runs during first-run onboarding.
   const request: GenerateRequest = {
-    systemPrompt: CRAWL_PROMPTS[operation], userPrompt: body.userPrompt, signal: body.signal,
-    jsonMode: true, temperature: 0.1, maxTokens: operation === 'extract' ? 4000 : 1800,
+    systemPrompt: CRAWL_PROMPTS[operation as CrawlOperation], userPrompt: body.userPrompt, signal: body.signal,
+    jsonMode: true, temperature: 0.1, maxTokens: operation === 'relate' ? 1800 : 4000,
     providerTimeoutMs: 12000,
     // gpt-oss is a reasoning model: without a low effort it spends the whole
     // token budget on internal reasoning and returns an empty JSON body.

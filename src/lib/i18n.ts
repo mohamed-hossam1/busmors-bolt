@@ -1,184 +1,46 @@
-export const translations = {
-  // nav & shell
-  appName: 'BusMora',
-  navRoadmap: 'Roadmap',
-  workspace: 'Workspace',
-  more: 'More',
-  retry: 'Try again',
-  saved: 'Saved',
-  saving: 'Saving…',
-  google: 'Continue with Google',
-  newPassword: 'Set a new password',
-  navEmployee: 'Marketing Director',
-  navBrain: 'Brain',
-  navCalendar: 'Calendar & Publishing',
-  navDeliverables: 'Deliverables',
-  navSettings: 'Settings',
-  signOut: 'Sign out',
+import en from '../app/[lang]/dictionaries/en.json'
 
-  // auth
-  signIn: 'Sign in',
-  signUp: 'Create account',
-  email: 'Email',
-  password: 'Password',
-  confirmPassword: 'Confirm password',
-  companyName: 'Company name',
-  forgotPassword: 'Forgot password?',
-  resetPassword: 'Send reset link',
-  resetSent: 'If that email exists, a reset link is on its way.',
-  haveAccount: 'Already have an account? Sign in',
-  noAccount: 'New to BusMora? Create an account',
-  authTagline: 'Your AI Marketing Employee — research, content, and publishing in one place.',
-  passwordMismatch: 'Passwords do not match',
+export const locales = ['ar', 'en'] as const
+export type Locale = (typeof locales)[number]
+export const defaultLocale: Locale = 'ar'
 
-  // onboarding
-  welcome: 'Welcome to BusMora',
-  onboardingIntro: 'Enter your company website. BusMora will read it in the background and build your Business Brain — you can explore while it works.',
-  websiteUrl: 'Company website URL',
-  startCrawl: 'Start building my Brain',
-  crawling: 'Reading your website…',
-  crawlPagesRead: 'pages read',
-  crawlDone: 'Knowledge is ready for review',
-  reviewCandidates: 'Review knowledge',
-  skipForNow: 'Skip for now',
+export const LOCALE_COOKIE = 'BUSMORA_LOCALE'
 
-  // brain
-  brainCandidates: 'Knowledge to review',
-  approve: 'Approve',
-  reject: 'Reject',
-  edit: 'Edit',
-  delete: 'Delete',
-  save: 'Save',
-  cancel: 'Cancel',
-  addKnowledge: 'Add knowledge',
-  reorganizeAi: 'Organize with AI',
-  reorganizeAiDesc: 'Analyze website and structure knowledge with AI',
-  reorganizeSuccess: 'Knowledge successfully organized with AI!',
-  reorganizing: 'Organizing with AI…',
-  confirmDelete: 'Are you sure you want to delete this knowledge card?',
-  reorganizeModalTitle: 'Reorganize Brain with AI',
-  reorganizeModalDesc: 'BusMora AI will re-read your website, clean up messy or duplicated cards, and structure your Business Brain into clear products, target audience, positioning, and facts.',
-  startReorganize: 'Start AI Organization',
-  candidatesBadge: 'pending',
-  pendingReviewTitle: 'Pending Review',
-  pendingReviewSubtitle: 'Knowledge extracted from tasks or crawler waiting for your confirmation.',
-  approvedKnowledgeTitle: 'Approved Knowledge Base',
-  allKnowledgeFilter: 'All',
-  approvedFilter: 'Approved',
-  pendingFilter: 'Pending',
-  searchKnowledgePlaceholder: 'Search knowledge cards…',
-  allCategoriesFilter: 'All Categories',
-  approveAllPending: 'Approve all',
-  rejectAllPending: 'Reject all',
-  noApprovedFound: 'No approved knowledge cards match your search.',
-  noApprovedKnowledge: 'No approved knowledge cards yet.',
-  graphView: 'Graph',
-  listView: 'List',
-  source: 'Source',
-  provenance: 'Provenance',
-  retired: 'Retired',
-  retire: 'Retire',
-  noCandidates: 'Nothing to review right now.',
-  auditLog: 'History',
+export type Dictionary = typeof en
+export type AppKey = keyof Dictionary['app']
+export type TranslationKey = AppKey
 
-  // categories
-  cat_company_profile: 'Company Info',
-  cat_offering: 'Products & Services',
-  cat_audience: 'Audience & Market',
-  cat_brand_rule: 'Brand & Messaging',
-  cat_positioning: 'Positioning',
-  cat_strategic_goal: 'Strategic Goals',
-  cat_channel: 'Channels',
-  cat_competitor: 'Competitors',
-  cat_company_fact: 'Company Facts',
+export function hasLocale(value: string): value is Locale {
+  return (locales as readonly string[]).includes(value)
+}
 
-  // chat
-  chatPlaceholder: 'Ask your Marketing Director…',
-  send: 'Send',
-  newConversation: 'New chat',
-  chatHistory: 'Chat History',
-  deleteChatConfirm: 'Are you sure you want to delete this conversation?',
-  noChatsYet: 'No conversations yet',
-  viewFull: 'View full deliverable',
-  downloadReport: 'Download',
-  liveAgentProgress: 'Agent Activity',
-  copyContent: 'Copy text',
-  copiedContent: 'Copied!',
-  searchYourself: 'Search for me',
-  submitForm: 'Submit',
-  working: 'Working…',
-  canvasTitle: 'Agent Canvas',
-  quickResearch: 'Do market research',
-  quickCompetitors: 'Analyze competitors',
-  quickContent: 'Write social posts',
-  quickCalendar: 'Plan a content calendar',
-  greetingProactive: 'Hello! What would you like to work on? I can use your confirmed business context to help.',
+export function isRtl(locale: string): boolean {
+  return locale === 'ar'
+}
 
-  // deliverables
-  deliverablesTitle: 'Deliverables',
-  type_research_report: 'Research Report',
-  type_competitor_analysis: 'Competitor Analysis',
-  type_content_posts: 'Content Posts',
-  type_content_calendar: 'Content Calendar',
-  type_performance_diagnosis: 'Performance Diagnosis',
-  type_general: 'General',
-  viewDeliverable: 'View',
-  noDeliverables: 'No deliverables yet. Tasks you run will appear here.',
-  download: 'Download',
+export function dirForLocale(locale: string): 'ltr' | 'rtl' {
+  return isRtl(locale) ? 'rtl' : 'ltr'
+}
 
-  // calendar & publishing
-  calendarTitle: 'Calendar & Publishing',
-  batchReview: 'Batch Review',
-  approveAll: 'Approve all remaining',
-  rejectAll: 'Reject all remaining',
-  publishYourselfHint: 'Approved posts are ready below — copy the caption and publish them yourself on each platform.',
-  connectPlatform: 'Connect',
-  disconnect: 'Disconnect',
-  platform_facebook: 'Facebook Page',
-  platform_instagram: 'Instagram Business',
-  status_draft: 'Draft',
-  status_pending_approval: 'Pending approval',
-  status_approved: 'Approved',
-  status_rejected: 'Rejected',
-  status_scheduled: 'Scheduled',
-  status_publishing: 'Publishing…',
-  status_published: 'Published',
-  status_failed: 'Failed',
-  copyCaption: 'Copy caption',
-  copied: 'Copied!',
-  openImage: 'Open image',
-  markPublished: 'I published it',
-  publishedByYou: 'You published this post',
-  postPreviewTitle: 'Post previews',
-  postPreviewHint: 'Here is how your posts will look — publish them from Calendar & Publishing when ready.',
-  noPosts: 'No planned posts yet. Ask the Employee for a content calendar.',
+export function format(template: string, values?: Record<string, string | number>): string {
+  if (!values) return template
+  return template.replace(/\{(\w+)\}/g, (match, name) => (values[name] === undefined ? match : String(values[name])))
+}
 
-  // calendar grid
-  calendarMonthView: 'Month',
-  calendarWeekView: 'Week',
-  calendarViewLabel: 'Calendar view',
-  calendarToday: 'Today',
-  calendarPrevious: 'Previous',
-  calendarNext: 'Next',
-  calendarTimezone: 'Times in {zone}',
-  calendarMore: '+{count} more',
-  calendarDayPlan: 'Day plan',
-  calendarDayEmpty: 'Nothing planned for this day yet.',
-  calendarUnscheduledTitle: 'Drafts without a date',
-  calendarUnscheduledHint: 'These drafts have no time yet. Approve or edit them here, then schedule them in chat.',
-  calendarNoTime: 'No date set',
-  calendarWeekStarts: 'Week starts Sunday',
+export function stripLocale(pathname: string): string {
+  const stripped = pathname.replace(/^\/(en|ar)(?=\/|$)/, '')
+  return stripped === '' ? '/' : stripped
+}
 
-  // settings
-  connectedPlatforms: 'Connected platforms',
-
-  // errors
-  errorGeneric: 'Something went wrong. Please try again.',
-  loading: 'Loading…',
-} as const
-
-export type TranslationKey = keyof typeof translations
-
-export function t(key: TranslationKey, values?: Record<string, string | number>): string {
- return translations[key].replace(/\{(\w+)\}/g, (match, name) => values?.[name] === undefined ? match : String(values[name]))
+export function localizePath(path: string, locale: Locale): string {
+  if (!path.startsWith('/') || path.startsWith('//')) return path
+  const hashIndex = path.indexOf('#')
+  const hash = hashIndex >= 0 ? path.slice(hashIndex) : ''
+  const withoutHash = hashIndex >= 0 ? path.slice(0, hashIndex) : path
+  const queryIndex = withoutHash.indexOf('?')
+  const query = queryIndex >= 0 ? withoutHash.slice(queryIndex) : ''
+  const pathname = queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash
+  const stripped = stripLocale(pathname)
+  const localized = stripped === '/' ? `/${locale}` : `/${locale}${stripped}`
+  return localized + query + hash
 }

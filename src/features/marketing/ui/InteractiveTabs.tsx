@@ -12,7 +12,7 @@ export default function InteractiveTabs() {
   const TABS = [
     { id: "chat", label: t("InteractiveTabs.directorChat"), title: t("InteractiveTabs.directorChat"), image: MARKETING_ASSETS.tabs.chat, description: t("InteractiveTabs.askForHelpWithASpecificMarketingTaskThe") },
     { id: "brain", label: t("InteractiveTabs.businessBrain"), title: t("InteractiveTabs.businessBrain"), image: MARKETING_ASSETS.tabs.brain, description: t("InteractiveTabs.keepYourOfferingsAudienceAndConfirmedDecisionsConnectedReview") },
-    { id: "calendar", label: "Calendar", title: "Calendar & Publishing", image: "/marketing/product/calendar.webp", description: "Review drafts, approve the work, and keep track of your publishing schedule." }
+    { id: "calendar", label: t("InteractiveTabs.calendar"), title: t("InteractiveTabs.calendarPublishing"), image: "/marketing/product/calendar.webp", description: t("InteractiveTabs.reviewDraftsApproveTheWorkAndKeepTrack") }
   ];
 
   const [activeTab, setActiveTab] = useState(0);
@@ -74,7 +74,7 @@ export default function InteractiveTabs() {
 
           {/* Right Screenshot Column */}
           <div className="mt-[31px] w-full lg:mt-0 lg:h-full lg:min-h-[min(38.3334vw,736px)]">
-            <img src={current.image} alt={`${current.title} interface with fictional sample business data`} loading="lazy" className="block h-auto w-full select-none rounded-s-xl border border-slate-structure" />
+            <img src={current.image} alt={t("InteractiveTabs.interfaceWithFictionalSampleBusinessData", { title: current.title })} loading="lazy" className="block h-auto w-full select-none rounded-s-xl border border-slate-structure" />
           </div>
         </div>
       </div>

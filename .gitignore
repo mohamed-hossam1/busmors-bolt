@@ -9,3 +9,7 @@ playwright-report/
 .env*
 !.env.example
 *.tsbuildinfo
+bus2/
+.scratch/
+.claude/
+.agents/

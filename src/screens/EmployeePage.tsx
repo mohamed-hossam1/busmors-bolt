@@ -2,8 +2,9 @@
 
 import { useDialog } from '../hooks/useDialog'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import Link from 'next/link'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { Link } from '@/shared/i18n'
+import { useSearchParams } from 'next/navigation'
+import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import {
   Bot,
   KeyRound,
@@ -205,7 +206,7 @@ export default function EmployeePage() {
         const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
         if(error)throw error
         if(!cancelled)setMessages((data??[]) as ChatMessage[])
-      }catch{if(!cancelled)setActionError('Messages could not be loaded. Your saved conversation is kept; retry shortly.')}
+      }catch{if(!cancelled)setActionError(t('messagesLoadFailed'))}
       finally{polling=false;if(!cancelled)setLoadedConversationId(conversationId)}
     }
     void refresh();const interval=setInterval(()=>void refresh(),1800)
@@ -232,7 +233,7 @@ export default function EmployeePage() {
         if(cancelled)return
         if(error)throw error
         setEvents((data??[]) as AgentEvent[]);setCanvasLoadError(null)
-      }catch{if(!cancelled)setCanvasLoadError('Saved task events could not be loaded. Retrying…')}
+      }catch{if(!cancelled)setCanvasLoadError(t('taskEventsLoadFailed'))}
       finally{polling=false}
     }
     void refresh();const interval=setInterval(()=>void refresh(),1800)
@@ -254,7 +255,7 @@ export default function EmployeePage() {
       .single()
 
     if (error || !created) {
-      setActionError('A new conversation could not be saved. Try again.')
+      setActionError(t('newConversationSaveFailed'))
       return
     }
 
@@ -276,7 +277,7 @@ export default function EmployeePage() {
     if (!userId) return
 
     const { error } = await supabase.from('conversations').delete().eq('id', id)
-    if (error) { setActionError('This conversation could not be deleted. Its saved data is unchanged.');return }
+    if (error) { setActionError(t('deleteConversationFailed'));return }
     forgetCanvasLayout(id)
     const updated = conversations.filter((c) => c.id !== id)
     setConversations(updated)
@@ -333,7 +334,7 @@ export default function EmployeePage() {
       if(viewedConversationRef.current===conversationId){setActiveTask(task.id)}
       const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
       if(viewedConversationRef.current===conversationId){
-        if(error)setActionError('Your request is saved. Messages could not be refreshed yet; they will retry automatically.')
+        if(error)setActionError(t('messagesRefreshFailed'))
         else setMessages((data??[]) as ChatMessage[])
       }
       setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
@@ -341,12 +342,12 @@ export default function EmployeePage() {
     }catch{
       setInput(textToSend)
       setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
-      setActionError('Your request could not be confirmed saved. Keep your text and retry; the same request will not be duplicated.')
+      setActionError(t('requestSaveUncertain'))
     }
     finally{setSending(false)}
   }
   const submitForm = async (msg: ChatMessage, values: Record<string,string|string[]>) => {
-    if(!runner||typeof msg.payload?.inputId!=='string')throw new Error('This older form cannot be resumed. Send a new request with your answer.')
+    if(!runner||typeof msg.payload?.inputId!=='string')throw new Error(t('legacyFormCannotResume'))
     const selected=String(values.answer??'')
     const status=['unknown','skipped','not_applicable'].includes(selected)?selected:'answered'
     await runner.answer(msg.payload.inputId,Number(msg.payload.inputVersion),{status,value:status==='answered'?selected:undefined})
@@ -355,25 +356,24 @@ export default function EmployeePage() {
   // Derive live progress step details from agent events
   const { currentAgentLabel, currentStepDescription, completedSteps } = useMemo(() => {
     const completed: string[] = []
-    let activeAgent = 'Director'
-    let currentStep = selectedTask?.status==='queued'?'Queued · waiting for an execution slot.':'Waiting for saved progress…'
+    let activeAgent = t('agentDirector')
+    let currentStep = selectedTask?.status==='queued'?t('queuedWaitingSlot'):t('waitingSavedProgress')
 
     const formatAgentName = (id: string) => {
       switch (id) {
         case 'orchestrator':
-          return 'Orchestrator'
-        case 'market_research':
-          return 'Market Research'
-        case 'competitor_analysis':
-          return 'Competitor Analysis'
+          return t('agentOrchestrator')
+        case 'marketing_research':
+        case 'research_director':
+          return t('agentResearchDirector')
         case 'content_writer':
-          return 'Content Writer'
+          return t('agentContentWriter')
         case 'campaign_planner':
-          return 'Campaign Planner'
+          return t('agentCampaignPlanner')
         case 'performance':
-          return 'Performance Analyst'
+          return t('agentPerformanceAnalyst')
         default:
-          return id ? id.charAt(0).toUpperCase() + id.slice(1) : 'Orchestrator'
+          return id ? id.charAt(0).toUpperCase() + id.slice(1) : t('agentOrchestrator')
       }
     }
 
@@ -395,7 +395,7 @@ export default function EmployeePage() {
       currentStepDescription: currentStep,
       completedSteps: Array.from(new Set(completed)),
     }
-  }, [events,selectedTask?.status])
+  }, [events,selectedTask?.status,t])
 
   const currentConversation = conversations.find((c) => c.id === conversationId)
 
@@ -421,7 +421,7 @@ export default function EmployeePage() {
             }`}
           >
             <MessageSquare size={14} />
-            <span>Chat</span>
+            <span>{t('chatTab')}</span>
           </button>
           <button
             type="button"
@@ -464,7 +464,7 @@ export default function EmployeePage() {
             </button>
             <span className="text-ink-300">|</span>
             <span className="truncate text-xs font-medium text-ink-600 max-w-[120px] sm:max-w-[200px]">
-              {currentConversation?.title || 'Chat'}
+              {currentConversation?.title || t('chatTab')}
             </span>
           </div>
 
@@ -505,7 +505,7 @@ export default function EmployeePage() {
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-800">
                       <span className="h-1.5 w-1.5 rounded-full bg-primary-600 animate-ping" />
-                      In Progress
+                      {t('inProgress')}
                     </span>
                   </div>
                   <p className="mt-1 text-sm font-medium text-ink-900 leading-snug">
@@ -556,13 +556,13 @@ export default function EmployeePage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            aria-label="Message your Marketing Director"
+            aria-label={t('messageDirectorAriaLabel')}
             placeholder={t('chatPlaceholder')}
             className="input-field flex-1"
           />
           <button
             type="submit"
-            aria-label="Send message"
+            aria-label={t('sendMessageAriaLabel')}
             disabled={!runner || running || conversationLoading || !input.trim()}
             className="btn-primary px-4 shrink-0 h-10 sm:h-11 flex items-center justify-center"
           >
@@ -583,7 +583,7 @@ export default function EmployeePage() {
         </div>
         <div className="min-h-0 flex-1">
           {conversationLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Loader2 size={16} className="animate-spin" />Loading conversation graph…</div>
+            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Loader2 size={16} className="animate-spin" />{t('loadingConversationGraph')}</div>
           ) : canvasLoadError ? (
             <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
           ) : (
@@ -599,7 +599,7 @@ export default function EmployeePage() {
           onClick={() => setShowHistory(false)}
         >
           <div
-            role="dialog" aria-modal="true" aria-label="Conversation history" className="h-full w-full max-w-xs bg-white shadow-2xl border-e border-ink-200 p-4 flex flex-col"
+            role="dialog" aria-modal="true" aria-label={t('conversationHistoryAriaLabel')} className="h-full w-full max-w-xs bg-white shadow-2xl border-e border-ink-200 p-4 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-ink-100">
@@ -610,7 +610,7 @@ export default function EmployeePage() {
               <button
                 type="button"
                 onClick={() => setShowHistory(false)}
-                aria-label="Close conversation history"
+                aria-label={t('closeConversationHistoryAriaLabel')}
                 className="rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
               >
                 <X size={18} />
@@ -653,7 +653,7 @@ export default function EmployeePage() {
                         className={isSelected ? 'text-primary-600 shrink-0' : 'text-ink-400 shrink-0'}
                       />
                       <div className="truncate">
-                        <p className="truncate">{c.title || 'Conversation'}</p>
+                        <p className="truncate">{c.title || t('conversationFallback')}</p>
                         <p className="text-[10px] text-ink-400 font-normal">
                           {formatWorkspaceTime(c.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })}
                         </p>
@@ -663,7 +663,7 @@ export default function EmployeePage() {
                       type="button"
                       onClick={(e) => handleDeleteChat(e, c.id)}
                       className="opacity-0 group-hover:opacity-100 rounded p-1 text-ink-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0 ml-1"
-                      title="Delete chat"
+                       title={t('deleteChatTitle')}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -707,7 +707,7 @@ export default function EmployeePage() {
                 <button
                   type="button"
                   onClick={() => setViewingDeliverable(null)}
-                  aria-label="Close report"
+                   aria-label={t('closeReportAriaLabel')}
                   className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
                 >
                   <X size={18} />
@@ -744,7 +744,7 @@ function MessageBubble({
       </div>
     )
   }
-  if(msg.type==='post_reference')return <Link className="card block p-4 text-sm text-primary-800 hover:border-primary-400" href={`/scheduling?post=${encodeURIComponent(String(msg.payload?.postId??''))}`}><span className="font-semibold">Draft Post · review in Scheduling</span><p className="mt-2 line-clamp-3 text-ink-600">{String(msg.payload?.caption??msg.content)}</p></Link>
+  if(msg.type==='post_reference')return <Link className="card block p-4 text-sm text-primary-800 hover:border-primary-400" href={`/scheduling?post=${encodeURIComponent(String(msg.payload?.postId??''))}`}><span className="font-semibold">{t('draftPostReviewScheduling')}</span><p className="mt-2 line-clamp-3 text-ink-600">{String(msg.payload?.caption??msg.content)}</p></Link>
   if(msg.type==='task_status')return <p className="rounded-xl bg-ink-100 p-3 text-sm text-ink-600">{msg.content}</p>
   if (msg.type === 'error') {
     return (
@@ -800,7 +800,7 @@ function MessageBubble({
                       type="button"
                       onClick={() => onDownload(title, content)}
                       className="inline-flex items-center gap-1 rounded-lg bg-white border border-primary-200 px-2.5 py-1 text-xs font-semibold text-primary-800 shadow-2xs hover:bg-primary-50 hover:border-primary-300 transition-colors"
-                      title="Download as Markdown file"
+                       title={t('downloadMarkdownTitle')}
                     >
                       <Download size={13} />
                       <span>{t('downloadReport')}</span>
@@ -809,7 +809,7 @@ function MessageBubble({
                       type="button"
                       onClick={() => onOpenFull(title, content)}
                       className="inline-flex items-center gap-1 rounded-lg bg-white border border-ink-200 px-2 py-1 text-xs font-medium text-ink-700 shadow-2xs hover:bg-ink-100 transition-colors"
-                      title="Open full view"
+                       title={t('openFullViewTitle')}
                     >
                       <Maximize2 size={13} />
                       <span className="hidden sm:inline">{t('viewFull')}</span>
@@ -818,10 +818,10 @@ function MessageBubble({
                       <Link
                         href={`/deliverables?document=${encodeURIComponent(msg.payload.deliverable_id)}`}
                         className="inline-flex items-center gap-1 rounded-lg bg-white border border-ink-200 px-2 py-1 text-xs font-medium text-ink-700 shadow-2xs hover:bg-ink-100 transition-colors"
-                        title="Open this document in Documents"
-                      >
-                        <ArrowUpRight size={13} />
-                        <span className="hidden sm:inline">Documents</span>
+                         title={t('openDocumentTitle')}
+                       >
+                         <ArrowUpRight size={13} />
+                         <span className="hidden sm:inline">{t('documentsLabel')}</span>
                       </Link>
                     )}
                   </div>
@@ -855,7 +855,7 @@ function MessageBubble({
                 again as the first field label; render it once via the form. */}
             {msg.type === 'form' && <MarkdownContent content={msg.content} className="text-sm font-medium text-ink-800" />}
             {!submitted && resumable && <FormFields fields={fields} onSubmit={(v) => onSubmitForm(msg, v)} />}
-            {!submitted && !resumable && <p className="mt-2 text-xs text-ink-500">This earlier form is kept for history and cannot be answered here.</p>}
+            {!submitted && !resumable && <p className="mt-2 text-xs text-ink-500">{t('earlierFormHistoryNote')}</p>}
             {submitted && <p className="mt-2 text-xs text-primary-700">✓ {t('submitForm')}</p>}
           </div>
         </div>
@@ -877,12 +877,12 @@ function MessageBubble({
             <Gauge size={16} />
           </div>
           <div className="card max-w-[95%] sm:max-w-[85%] p-3.5 sm:p-4">
-            <p className="text-sm font-semibold text-ink-900">Model allowance reached</p>
+            <p className="text-sm font-semibold text-ink-900">{t('modelAllowanceReached')}</p>
             <p className="mt-1 text-sm leading-relaxed text-ink-700">{msg.content}</p>
             {(Number.isFinite(used) && Number.isFinite(limit)) || remaining !== null ? (
               <p className="mt-2 text-xs text-ink-600">
-                {Number.isFinite(used) && Number.isFinite(limit) ? `${used} of ${limit} model calls used.` : ''}
-                {remaining !== null ? ` ${remaining} remaining.` : ''}
+                {Number.isFinite(used) && Number.isFinite(limit) ? t('modelCallsUsed', { used, limit }) : ''}
+                {remaining !== null ? ` ${t('modelCallsRemaining', { remaining })}` : ''}
               </p>
             ) : null}
             {taskId && (
@@ -891,10 +891,10 @@ function MessageBubble({
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50"
               >
                 <MessageSquare size={13} />
-                Answer in Chat
+                {t('answerInChat')}
               </Link>
             )}
-            <p className="mt-2 text-xs text-ink-500">Saved progress is kept. No further model calls run until you explicitly continue.</p>
+            <p className="mt-2 text-xs text-ink-500">{t('savedProgressKept')}</p>
           </div>
         </div>
       </div>
@@ -919,11 +919,11 @@ function MessageBubble({
         {!isUser && (msg.content.includes('Settings page') || msg.content.includes('add your API key')) && (
           <div className="mt-3 pt-2.5 border-t border-ink-100 flex items-center gap-2">
             <Link
-              href="/app/settings"
+              href="/settings"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors"
             >
               <KeyRound size={13} />
-              Open AI Settings
+              {t('openAiSettings')}
             </Link>
           </div>
         )}
@@ -933,8 +933,9 @@ function MessageBubble({
 }
 
 function FormFields({fields,onSubmit}:{fields:FormField[];onSubmit:(values:Record<string,string|string[]>)=>Promise<void>}) {
+ const { t } = useCopy()
  const [values,setValues]=useState<Record<string,string>>({}),[busy,setBusy]=useState(false),[error,setError]=useState('')
- return <form className="mt-3 space-y-4" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await onSubmit(values)}catch(error){setError(error instanceof Error?error.message:'Your answer could not be saved. Try again.')}finally{setBusy(false)}}}>
+ return <form className="mt-3 space-y-4" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await onSubmit(values)}catch(error){setError(error instanceof Error?error.message:t('answerSaveFailed'))}finally{setBusy(false)}}}>
   {fields.map(field=>{
    // Numeric and URL fields ask for the right keyboard/validation without
    // changing the free-text answer path used by every other clarification.
@@ -942,10 +943,10 @@ function FormFields({fields,onSubmit}:{fields:FormField[];onSubmit:(values:Recor
    const inputMode=field.type==='number'?'decimal':field.type==='url'?'url':undefined
    return <fieldset key={field.name} className="space-y-3"><legend className="mb-2 text-sm font-medium">{field.label}</legend>
    {!!field.options?.length&&<div className="flex flex-wrap gap-2">{field.options.map(option=><button disabled={busy} type="button" key={option} className={`rounded-xl border px-3 py-2 text-xs ${values[field.name]===option?'border-primary-500 bg-primary-50':'border-ink-200'}`} onClick={()=>setValues({...values,[field.name]:option})}>{option}</button>)}</div>}
-   <label className="block text-xs">Your answer or another option<input type={inputType} inputMode={inputMode} className="input-field mt-2" value={values[field.name]??''} maxLength={3000} onChange={e=>setValues({...values,[field.name]:e.target.value})}/></label>
-   <div className="flex flex-wrap gap-2">{[['unknown','I don’t know yet'],['skipped','Skip'],['not_applicable','Not applicable']].map(([value,label])=><button disabled={busy} type="button" key={value} className={`rounded-lg border px-2 py-1.5 text-xs ${values[field.name]===value?'border-primary-500 bg-primary-50':'border-ink-200'}`} onClick={()=>setValues({...values,[field.name]:value})}>{label}</button>)}</div>
-  </fieldset>})}
+    <label className="block text-xs">{t('answerLabel')}<input type={inputType} inputMode={inputMode} className="input-field mt-2" value={values[field.name]??''} maxLength={3000} onChange={e=>setValues({...values,[field.name]:e.target.value})}/></label>
+    <div className="flex flex-wrap gap-2">{[['unknown',t('answerUnknown')],['skipped',t('skipAnswer')],['not_applicable',t('notApplicableAnswer')]].map(([value,label])=><button disabled={busy} type="button" key={value} className={`rounded-lg border px-2 py-1.5 text-xs ${values[field.name]===value?'border-primary-500 bg-primary-50':'border-ink-200'}`} onClick={()=>setValues({...values,[field.name]:value})}>{label}</button>)}</div>
+   </fieldset>})}
   {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
-  <button className="btn-primary text-xs" disabled={busy||fields.some(field=>!values[field.name]?.trim())}>{busy?'Saving answer…':'Save answer and continue'}</button>
+  <button className="btn-primary text-xs" disabled={busy||fields.some(field=>!values[field.name]?.trim())}>{busy?t('savingAnswer'):t('saveAnswerContinue')}</button>
  </form>
 }

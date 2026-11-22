@@ -13,6 +13,7 @@ export interface ExtractedCandidate {
   properties: Record<string, unknown>
   source_url: string
   confidence: number
+  verification_state?: 'unverified' | 'source_supported' | 'contradicted' | 'owner_reported'
 }
 
 export function truncateWords(text: string, max: number): string {
@@ -27,18 +28,30 @@ export function cleanTitle(title: string): string {
   return truncateWords(title.replace(/^[-–—#*:\s]+|[-–—#*:\s]+$/g, ''), 60)
 }
 
+export function cleanCrawlText(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/^(URL Source|Markdown Content):/gim, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function cleanPageForAi(markdown: string): string {
   const seen = new Set<string>()
-  // Navigation can contain H3 headings before the actual H1. Drop that preamble.
+  // Navigation can contain H3 headings before the actual H1. Drop that preamble only if near top.
   const firstTitle = markdown.search(/^#\s+\S/m)
-  const content = firstTitle >= 0 ? markdown.slice(firstTitle) : markdown
-  return content
-    .split(/(?=^#{1,6}\s)/m)
-    .filter((section) => {
-      const lines = section.split('\n').filter((line) => line.trim() && !/^#{1,6}\s/.test(line) && !/^\s*!\[/.test(line))
-      const prose = lines.filter((line) => !/^\s*(?:[-*]\s*)?\[[^\]]*\]\([^)]*\)(?:\s*\[[^\]]*\]\([^)]*\))*\s*$/.test(line))
-      return !lines.length || prose.join(' ').length >= 40
-    }).join('\n')
+  const content = firstTitle >= 0 && firstTitle < markdown.length * 0.2 ? markdown.slice(firstTitle) : markdown
+  const sections = content.split(/(?=^#{1,6}\s)/m)
+  const filtered = sections.length > 1
+    ? sections.filter((section) => {
+        const lines = section.split('\n').filter((line) => line.trim() && !/^#{1,6}\s/.test(line) && !/^\s*!\[/.test(line))
+        const prose = lines.filter((line) => !/^\s*(?:[-*]\s*)?\[[^\]]*\]\([^)]*\)(?:\s*\[[^\]]*\]\([^)]*\))*\s*$/.test(line))
+        return !lines.length || prose.join(' ').length >= 25
+      }).join('\n')
+    : content
+  return filtered
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 ')
     .replace(/https?:\/\/[^\s)]+/g, '')
@@ -58,6 +71,17 @@ export function toPlainText(markdown: string): string {
   return markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 ')
     .replace(/[#*_>`~|]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Strips markdown/link syntax that survives slicing (e.g. a truncated `[..](mailto:`),
+ * so stored evidence reads as clean prose instead of raw markup. */
+export function sanitizeEvidence(text: string): string {
+  const cleaned = text
+    .replace(/!\[[^\]]*\]\([^)]*\)?/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)?/g, '$1 ')
+    .replace(/\]\([^)]*\)?/g, ' ')
+    .replace(/[[\]]/g, ' ')
+  return toPlainText(cleaned).replace(/\b(?:mailto|tel):/gi, '').replace(/\s+/g, ' ').trim()
 }
 
 export function normalizedEvidence(text: string): string {
@@ -148,17 +172,22 @@ export function dedupeCandidates(candidates: ExtractedCandidate[]): ExtractedCan
 export function extractCandidates(baseUrl: string, pages: CrawledPage[]): ExtractedCandidate[] {
   const candidates: ExtractedCandidate[] = []
   const home = pages[0]
-  const company = cleanTitle(home?.title?.split(/\s[-–—|]\s|:\s/)[0] || new URL(baseUrl).hostname.replace(/^www\./, '').split('.')[0])
+  const rawTitle = home?.title?.split(/\s[-–—|]\s|:\s/)[0] || ''
+  // A product/price title (e.g. "250g of Coffee ... LE 480.00") is not a company
+  // name; fall back to the hostname brand instead of storing the broken string.
+  const titleLooksLikeProduct = /(?:\bEGP\b|\bLE\b|[$€£]|\d+\s*(?:g|kg|ml)\b|LE\s*[\d,])/i.test(rawTitle) || /\d{3,}/.test(rawTitle)
+  const fallbackBrand = new URL(baseUrl).hostname.replace(/^www\./, '').split('.')[0]
+  const company = cleanTitle(!titleLooksLikeProduct && rawTitle ? rawTitle : fallbackBrand)
   const badHeading = /best time to post|\b20\d{2}\b|\b(?:guide|tips|strategies)\b|^(?:frequently|faq|resources|apps\s*&|navigation|cookie|privacy)/i
   const meaningful = (text: string) => text.length >= 35 && text.split(/\s+/).length >= 6 &&
     !/^(?:get started|start your|learn more|enter your|by entering|sign up|log in|navigation|what.s included)/i.test(text)
   const paragraphs = (body: string) => body.split(/\n\s*\n/).map(toPlainText).filter(meaningful)
   const add = (category: BrainCategory, title: string, evidence: string, page: CrawledPage, details = evidence) => {
-    const quote = truncateWords(evidence, 500)
+    const quote = truncateWords(sanitizeEvidence(evidence), 500)
     if (quote.length < 25) return
-    candidates.push({ category, title: cleanTitle(title), summary: truncateWords(evidence, 280),
+    candidates.push({ category, title: cleanTitle(title), summary: truncateWords(sanitizeEvidence(evidence), 280),
       source_url: page.url, confidence: 0.65,
-      properties: { extracted_by: 'heuristic', evidence_quote: quote, details: truncateWords(details, 1600) } })
+      properties: { extracted_by: 'heuristic', evidence_quote: quote, details: truncateWords(sanitizeEvidence(details), 1600) } })
   }
   if (home) {
     const sections = splitSections(cleanPageForAi(home.markdown))
@@ -207,7 +236,7 @@ export function extractCandidates(baseUrl: string, pages: CrawledPage[]): Extrac
         if (supported.length >= 2 && /publish|schedule|post|support|advertis|across/i.test(text)) add('channel', 'Supported platforms', text, page, supported.join(', ') + '\n' + text)
       }
     }
-    const text = toPlainText(cleaned)
+    const text = sanitizeEvidence(cleaned)
     const email = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)
     if (email) {
       const index = text.indexOf(email[0])
@@ -215,8 +244,9 @@ export function extractCandidates(baseUrl: string, pages: CrawledPage[]): Extrac
     }
     const phone = page.markdown.match(/\]\(tel:([^\s)]+)\)/i)?.[1]
     if (phone && phone.replace(/\D/g, '').length >= 8) {
-      const index = page.markdown.indexOf(phone)
-      add('company_fact', 'Contact phone', toPlainText(page.markdown.slice(Math.max(0, index - 50), index + phone.length + 70)), page)
+      const index = text.indexOf(phone)
+      const at = index >= 0 ? index : 0
+      add('company_fact', 'Contact phone', text.slice(Math.max(0, at - 50), at + phone.length + 70), page)
     }
   }
   return dedupeCandidates(candidates)
