@@ -46,6 +46,7 @@ import {
   saveDiscoveryAnswer,
   saveDiscoveryDraft,
   syncDiscoveryQuestions,
+  generateRoadmap,
 } from './api'
 import type {
   DiscoveryAnswerValue,
@@ -352,7 +353,7 @@ function QuestionCard({
   )
 }
 
-export default function DiscoveryWizard() {
+export default function DiscoveryWizard({ onGenerated }: { onGenerated?: () => void }) {
   const { settings } = useAuth()
   const { t } = useCopy()
   const { locale } = useI18n()
@@ -376,6 +377,8 @@ export default function DiscoveryWizard() {
   const [showEarlier, setShowEarlier] = useState(false)
   const [preliminary, setPreliminary] = useState(false)
   const [planning, setPlanning] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
 
   const questionsRef = useRef<DiscoveryQuestion[]>([])
   const draftRef = useRef<DiscoveryDraft | null>(null)
@@ -709,6 +712,35 @@ export default function DiscoveryWizard() {
     }
   }
 
+  const generatePlan = async () => {
+    if (!draftRef.current || generating) return
+    setGenerating(true)
+    setGenerateError('')
+    setDraftConflict('')
+    try {
+      await saveAll()
+      if (Object.keys(localRef.current).length > 0) {
+        setGenerateError('Some answers are still unsaved. Save them before generating your roadmap.')
+        return
+      }
+      await generateRoadmap()
+      onGenerated?.()
+    } catch (error) {
+      const code = rpcCode(error)
+      const typed = (error as { code?: string })?.code
+      if (code === 'STALE_VERSION' || typed === 'STALE_VERSION') {
+        setDraftConflict('This Discovery changed in another tab. Reload the saved draft before generating your roadmap.')
+      } else {
+        const message = error instanceof Error && error.message && error.message !== 'roadmap_request_failed'
+          ? error.message
+          : 'Your roadmap could not be generated right now. Your answers are safe; try again.'
+        setGenerateError(message)
+      }
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (Object.keys(localRef.current).length > 0) {
@@ -989,18 +1021,20 @@ export default function DiscoveryWizard() {
               )}
           </section>
 
-          {!preliminary && (
-            <section className="card p-4">
-              <h2 className="text-sm font-semibold">{t('preliminaryPlan')}</h2>
-              <p className="mt-2 text-xs leading-5 text-ink-600">
-                {t('preliminaryPlanHelp')}
-              </p>
-              <button type="button" onClick={() => void continuePreliminary()} disabled={planning} className="btn-secondary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
-                {planning ? <><Spinner size={13} /> {t('saving')}</> : t('continuePreliminary')}
+          <section className="card p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} className="text-primary-600" /> {t('roadmapGenerateTitle')}</h2>
+            <p className="mt-2 text-xs leading-5 text-ink-600">{t('roadmapGenerateHelp')}</p>
+            {generateError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">{generateError}</p>}
+            <button type="button" onClick={() => void generatePlan()} disabled={generating} className="btn-primary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
+              {generating ? <><Spinner size={13} /> {t('roadmapGenerating')}</> : t('roadmapGenerateAction')}
+            </button>
+            {!preliminary && (
+              <button type="button" onClick={() => void continuePreliminary()} disabled={planning || generating} className="mt-2 text-xs font-semibold text-primary-700 underline disabled:opacity-50">
+                {t('continuePreliminary')}
               </button>
-              <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('preliminaryPlanNote')}</p>
-            </section>
-          )}
+            )}
+            <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('roadmapGenerateNote')}</p>
+          </section>
         </aside>
       </div>
     </div>

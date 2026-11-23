@@ -13,6 +13,7 @@ const checks = [
   'discovery-db-check.sql',
   'planned-posts-db-check.sql',
   'deliverable-offer-db-check.sql',
+  'roadmap-generation-db-check.sql',
   'post-proposed-time-db-check.sql',
   'facebook-connection-db-check.sql',
 ]

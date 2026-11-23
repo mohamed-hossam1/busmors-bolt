@@ -16,7 +16,9 @@ const corsHeaders = {
 
 // Orchestrator chat operations run without a task/allowance row: they are bounded
 // by a fixed system prompt, a low token cap and a short provider timeout.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title'])
+// `roadmap` is included: it is a one-shot, server-owned generation from confirmed
+// Discovery answers (no task row, no research allowance), like brain_answer.
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title', 'roadmap'])
 
 interface GenerateRequest {
   signal?: AbortSignal
@@ -409,16 +411,17 @@ async function handleOrchestratorRequest(
   body: GenerateRequest,
   workspaceId: string,
 ): Promise<Response> {
-  const operation = body.operation as 'orchestrate' | 'brain_answer'
+  const operation = body.operation as 'orchestrate' | 'brain_answer' | 'roadmap'
   const opConfig = getModelConfigForOperation(operation)
-  const jsonMode = operation === 'orchestrate'
+  const jsonMode = operation === 'orchestrate' || operation === 'roadmap'
+  const roadmapTokens = operation === 'roadmap' ? 4200 : 0
   const request: GenerateRequest = {
     systemPrompt: body.systemPrompt,
     userPrompt: body.userPrompt,
     signal: body.signal,
     jsonMode,
     temperature: body.temperature ?? opConfig.temperature ?? 0.3,
-    maxTokens: jsonMode ? 700 : 900,
+    maxTokens: roadmapTokens || (jsonMode ? 700 : 900),
     reasoningEffort: opConfig.reasoningEffort ?? 'low',
     providerTimeoutMs: 20000,
   }

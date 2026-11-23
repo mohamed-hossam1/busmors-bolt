@@ -6,7 +6,49 @@ import type {
   DiscoveryLoad,
   DiscoveryQuestion,
   PlannedQuestion,
+  RoadmapLoad,
+  RoadmapStepStatus,
 } from './types'
+
+async function roadmapRequest<T>(body: Record<string, unknown>): Promise<T> {
+  const { data: sessionData } = await supabase.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new Error('unauthorized')
+  const response = await fetch('/api/roadmap', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(typeof data.error === 'string' ? data.error : 'roadmap_request_failed') as Error & { code?: string }
+    error.code = typeof data.code === 'string' ? data.code : undefined
+    throw error
+  }
+  return data as T
+}
+
+export async function loadActiveRoadmap(): Promise<RoadmapLoad> {
+  const loaded = await roadmapRequest<Partial<RoadmapLoad>>({ action: 'load' })
+  return { roadmap: loaded.roadmap ?? null, version: loaded.version ?? null, steps: loaded.steps ?? [] }
+}
+
+export interface RoadmapGenerateResult {
+  plan: unknown
+  saved: { roadmapId: string; versionId: string; version: number; steps: number }
+}
+
+export async function generateRoadmap(): Promise<RoadmapGenerateResult> {
+  return roadmapRequest<RoadmapGenerateResult>({ action: 'generate' })
+}
+
+export async function setRoadmapStepStatus(
+  stepId: string,
+  status: RoadmapStepStatus,
+  attestation: Record<string, unknown> = {},
+): Promise<void> {
+  await roadmapRequest<unknown>({ action: 'setStepStatus', stepId, status, attestation })
+}
 
 export async function loadDiscovery(): Promise<DiscoveryLoad> {
   const { data, error } = await supabase.rpc('load_discovery')
