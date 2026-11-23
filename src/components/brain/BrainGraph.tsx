@@ -46,16 +46,10 @@ const CustomHubNode = memo(function CustomHubNode({ data, selected }: NodeProps<
       <Handle type="source" id="out-right" position={Position.Right} />
       <Handle type="target" id="in-left" position={Position.Left} />
       <Handle type="target" id="in-right" position={Position.Right} />
-      <div className="flex items-center gap-2.5 w-full">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white shadow-xs">
-          <Building2 size={17} />
-        </span>
-        <div className="min-w-0 flex-1 text-start">
-          <h3 className="truncate text-xs font-bold text-white tracking-wide" dir="auto" title={data.title}>
-            {data.title}
-          </h3>
-          <p className="text-[10px] text-white/80 leading-tight mt-0.5">{data.subtitle}</p>
-        </div>
+      <span className="brain-map-hub-icon"><Building2 size={18} /></span>
+      <div className="brain-map-hub-body">
+        <h3 className="brain-map-hub-title" dir="auto" title={data.title}>{data.title}</h3>
+        <p className="brain-map-hub-subtitle">{data.subtitle}</p>
       </div>
     </div>
   )

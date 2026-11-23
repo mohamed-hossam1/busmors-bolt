@@ -39,6 +39,12 @@ export const AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
     timeoutMs: 15000,
     // reasoningEffort is omitted so it takes the provider default
   },
+  {
+    provider: 'dahl',
+    model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
+    timeoutMs: 25000,
+    reasoningEffort: 'none',
+  },
 ] as const
 
 export const AI_MODELS = {
@@ -94,14 +100,13 @@ export const AI_MODELS = {
   /**
    * Onboarding Web Crawl & Scraping Extraction:
    * Used during onboarding to extract business facts and relations from crawled websites.
-   * Primary: DeepSeek-V4-Flash on Dahl with reasoning_effort: "none" (thinking disabled).
-   * Fallback: Handled transparently by handleSharedCrawlRequest to openai/gpt-oss-120b on Groq.
+   * Primary: openai/gpt-oss-120b on Groq for ultra-high speed and reliability.
+   * Fallback: Handled transparently by AI_FALLBACK_TEMPLATE (openai/gpt-oss-20b, then Dahl).
    */
   onboardingCrawl: {
-    provider: 'dahl',
-    model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.1,
-    reasoningEffort: 'none',
   },
 } as const satisfies Record<string, ModelConfig>
 

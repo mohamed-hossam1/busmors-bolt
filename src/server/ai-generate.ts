@@ -523,19 +523,26 @@ async function handleSharedCrawlRequest(
     })
   }
 
+  const primaryApiKey = crawlConfig.provider === 'dahl'
+    ? effectiveDahlKey
+    : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
+  const primaryBaseUrl = crawlConfig.provider === 'dahl' ? dahlBaseUrl : null
+  const primaryTimeout = crawlConfig.provider === 'dahl' ? 25000 : 20000
+
   try {
     const result = await executeWithFallback({
       primary: {
         provider: crawlConfig.provider,
         model: crawlConfig.model,
-        apiKey: effectiveDahlKey,
-        baseUrl: dahlBaseUrl,
-        reasoningEffort: 'none',
-        timeoutMs: 25000,
+        apiKey: primaryApiKey,
+        baseUrl: primaryBaseUrl,
+        reasoningEffort: crawlConfig.reasoningEffort,
+        timeoutMs: primaryTimeout,
       },
       fallbacks: AI_FALLBACK_TEMPLATE.map((fb) => ({
         ...fb,
-        apiKey: effectiveFallbackKey || resolveApiKeyForProvider(fb.provider),
+        apiKey: fb.provider === 'dahl' ? (effectiveDahlKey || resolveApiKeyForProvider('dahl')) : (effectiveFallbackKey || resolveApiKeyForProvider(fb.provider)),
+        baseUrl: fb.provider === 'dahl' ? dahlBaseUrl : null,
       })),
       request: baseRequest,
       totalDeadlineMs: 45000,
@@ -586,7 +593,7 @@ async function callProvider(
   body: GenerateRequest
 ): Promise<string> {
   const isHigh = body.reasoningEffort === 'high'
-  const maxTokens = (isHigh || body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens, 100), 8000)
+  const maxTokens = (isHigh && body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens ?? 4096, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
   const providerTimeout = Math.min(isHigh ? 60000 : 25000, Math.max(1000, body.providerTimeoutMs ?? (isHigh ? 45000 : 25000)))
 

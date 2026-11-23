@@ -34,10 +34,10 @@ export async function extractKnowledgeFromSite(rawUrl: string, onProgress?: Craw
   const pages = crawled.pages
   const diagnostics = crawled.diagnostics
 
-  // Await structured JSON-LD candidates (race with 600ms timeout so crawl is never stalled)
+  // Await structured JSON-LD candidates (race with 300ms timeout so crawl is never stalled)
   const jsonLdCandidates = await Promise.race([
     jsonLdPromise,
-    new Promise<ExtractedCandidate[]>((resolve) => setTimeout(() => resolve([]), 600)),
+    new Promise<ExtractedCandidate[]>((resolve) => setTimeout(() => resolve([]), 300)),
   ])
 
   const heuristicCandidates = extractCandidates(base, pages)

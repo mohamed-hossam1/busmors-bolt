@@ -3,7 +3,7 @@ import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
 import { firecrawlScrape } from './research/providers'
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
-export const DEFAULT_CRAWL_PAGES = 5
+export const DEFAULT_CRAWL_PAGES = 3
 /** Per-page ceiling for the Firecrawl escalation; short enough to keep the crawl fast. */
 const FIRECRAWL_PAGE_TIMEOUT = 10000
 export interface CrawlOptions {
@@ -176,19 +176,39 @@ function looksLikeBlockPage(cleaned: string, title?: string): boolean {
   return /^(?:404\s*)?(?:page not found|not found|access denied|just a moment|checking your browser)\b/i.test((title || '').trim())
 }
 
-function extractHtmlText(html: string): string {
-  return html
+function htmlToSimpleMarkdown(html: string): string {
+  let text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+
+  // Convert hyperlinks to markdown [text](href) so discoverLinks works!
+  text = text.replace(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, content) => {
+    const cleanContent = content.replace(/<[^>]+>/g, '').trim()
+    const cleanHref = href.trim()
+    if (!cleanContent || !cleanHref || cleanHref.startsWith('javascript:') || cleanHref.startsWith('#')) {
+      return cleanContent || ' '
+    }
+    return ` [${cleanContent}](${cleanHref}) `
+  })
+
+  // Convert headings, paragraphs, and list items to natural line breaks
+  text = text
+    .replace(/<\/(?:p|div|section|article|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n\n')
     .trim()
+
+  return text
 }
 
 function parseFirecrawlPage(markdown: string, title: string, url: string): CrawledPage | null {
@@ -208,6 +228,9 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
   const pages: CrawledPage[] = []
   const deadline = new AbortController()
 
+  // Notify client immediately so UI shows active state in <50ms
+  onProgress?.(0, maxPages, baseUrl)
+
   const pageTimeout = options.timeoutMs ?? 6000
   const batches = 1 + Math.ceil((maxPages - 1) / concurrency)
   const standardBudget = Math.max(16000, batches * (pageTimeout + FIRECRAWL_PAGE_TIMEOUT) + 1000)
@@ -217,32 +240,13 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
   options.signal?.addEventListener('abort', abort, { once: true })
   if (options.signal?.aborted) deadline.abort()
 
-  const readViaJina = async (url: string): Promise<CrawledPage | null> => {
-    if (deadline.signal.aborted) return null
-    const controller = new AbortController()
-    const cancel = () => controller.abort()
-    deadline.signal.addEventListener('abort', cancel, { once: true })
-    if (deadline.signal.aborted) controller.abort()
-    const timer = setTimeout(cancel, pageTimeout)
-    try {
-      const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain', 'X-Robots-Txt': 'BusMoraBot' }, cache: 'no-store', signal: controller.signal })
-      if (!response.ok) return null
-      return parsePage(await response.text(), url)
-    } catch {
-      return null
-    } finally {
-      clearTimeout(timer)
-      deadline.signal.removeEventListener('abort', cancel)
-    }
-  }
-
   const readViaDirect = async (url: string): Promise<CrawledPage | null> => {
     if (deadline.signal.aborted) return null
     const controller = new AbortController()
     const cancel = () => controller.abort()
     deadline.signal.addEventListener('abort', cancel, { once: true })
     if (deadline.signal.aborted) controller.abort()
-    const timer = setTimeout(cancel, 4500)
+    const timer = setTimeout(cancel, 2500)
     try {
       const response = await fetch(url, {
         headers: {
@@ -256,9 +260,28 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
       const html = await response.text()
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
       const title = titleMatch ? titleMatch[1].trim() : undefined
-      const text = extractHtmlText(html)
-      if (text.length < 80 || looksLikeBlockPage(text, title)) return null
-      return { url, markdown: text, title }
+      const markdown = htmlToSimpleMarkdown(html)
+      if (markdown.length < 80 || looksLikeBlockPage(markdown, title)) return null
+      return { url, markdown, title }
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+      deadline.signal.removeEventListener('abort', cancel)
+    }
+  }
+
+  const readViaJina = async (url: string): Promise<CrawledPage | null> => {
+    if (deadline.signal.aborted) return null
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    deadline.signal.addEventListener('abort', cancel, { once: true })
+    if (deadline.signal.aborted) controller.abort()
+    const timer = setTimeout(cancel, pageTimeout)
+    try {
+      const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain', 'X-Robots-Txt': 'BusMoraBot' }, cache: 'no-store', signal: controller.signal })
+      if (!response.ok) return null
+      return parsePage(await response.text(), url)
     } catch {
       return null
     } finally {
@@ -283,8 +306,11 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     if (options.reader === 'firecrawl') {
       page = await readViaFirecrawl(url)
     } else {
-      page = await readViaJina(url)
-      if (!page && !deadline.signal.aborted) page = await readViaDirect(url)
+      // Tier 1: Fast direct fetch first (200-400ms for 90%+ of sites)
+      page = await readViaDirect(url)
+      // Tier 2: Fall back to Jina only if direct fetch was blocked or failed
+      if (!page && !deadline.signal.aborted) page = await readViaJina(url)
+      // Tier 3: Fall back to Firecrawl if both failed
       if (!page && !deadline.signal.aborted) page = await readViaFirecrawl(url)
     }
     if (page) {
