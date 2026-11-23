@@ -1,9 +1,10 @@
 import 'server-only'
 import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
+import { DEFAULT_CRAWL_PAGES } from '../lib/crawlConstants'
 import { firecrawlScrape } from './research/providers'
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
-export const DEFAULT_CRAWL_PAGES = 5
+export { DEFAULT_CRAWL_PAGES }
 /** Per-page ceiling for the Firecrawl escalation; short enough to keep the crawl fast. */
 const FIRECRAWL_PAGE_TIMEOUT = 10000
 export interface CrawlOptions {
@@ -33,8 +34,12 @@ function sameSite(url: string, base: string): boolean {
 }
 
 function linkPriority(url: string): number {
-  const path = new URL(url).pathname
-  return /about|product|service|solution|pricing|feature|company|audience|customer/i.test(decodeURI(path)) ? 10 : /contact|faq|partner/i.test(path) ? 5 : 0
+  const path = decodeURI(new URL(url).pathname).toLowerCase()
+  // High commercial value: products, services, pricing, about, packages, solutions
+  if (/(?:about|product|service|solution|pricing|feature|company|package|audience|customer|من[-_]?نحن|عن[-_]?(?:الشركة|الموقع)|خدمات(?:نا)?|منتجات(?:نا)?|باقات|اسعار|أسعار|مميزات|حلول)/i.test(path)) return 10
+  // Supporting commercial value: contact, faq, partners
+  if (/(?:contact|faq|partner|اتصل[-_]?بنا|تواصل[-_]?معنا|الاسئلة[-_]?الشائعة)/i.test(path)) return 5
+  return 0
 }
 
 function discoverLinks(page: CrawledPage, base: string): string[] {
@@ -43,20 +48,23 @@ function discoverLinks(page: CrawledPage, base: string): string[] {
     try {
       const url = normalizeSiteUrl(match[1], page.url)
       if (!sameSite(url, base)) continue
-      const path = decodeURI(new URL(url).pathname)
-      if (/\.(?:png|jpe?g|gif|webp|avif|svg|pdf|zip|mp4|mp3|css|js)$/i.test(path)) continue
-      if (/(?:^|\/)(?:login|signin|signup|sign-in|sign-up|cart|checkout|privacy|terms|legal|cookie|careers?|jobs?|blog|news|author|tag)(?:\/|$)/i.test(path)) continue
+      const path = decodeURI(new URL(url).pathname).toLowerCase()
+      if (/\.(?:png|jpe?g|gif|webp|avif|svg|pdf|zip|mp4|mp3|css|js|xml)$/i.test(path)) continue
+      if (/(?:^|\/)(?:login|signin|signup|sign-in|sign-up|cart|checkout|privacy|terms|legal|cookie|careers?|jobs?|blog|news|author|tag|سلة|تسجيل[-_]?الدخول|سياسة[-_]?الخصوصية|الشروط|الاحكام|وظائف)(?:[-_/]|$)/i.test(path)) continue
       links.add(url)
     } catch { /* Ignore malformed links and non-web protocols. */ }
   }
-  return [...links].sort((a, b) => linkPriority(b) - linkPriority(a))
+  const sorted = [...links].sort((a, b) => linkPriority(b) - linkPriority(a))
+  // If high-priority commercial links exist, prioritize them to focus strictly on commercial pages
+  const highPriority = sorted.filter((u) => linkPriority(u) > 0)
+  return highPriority.length > 0 ? highPriority : sorted
 }
 
 /**
  * Probes the target website's sitemap.xml to instantly discover high-value canonical pages
  * (e.g. products, pricing, about) without waiting for recursive link discovery.
  */
-export async function discoverSitemapLinks(baseUrl: string, signal?: AbortSignal): Promise<string[]> {
+async function discoverSitemapLinks(baseUrl: string, signal?: AbortSignal): Promise<string[]> {
   try {
     const origin = new URL(baseUrl).origin
     const candidatePaths = ['/sitemap.xml', '/sitemap_index.xml']
@@ -169,19 +177,39 @@ function looksLikeBlockPage(cleaned: string, title?: string): boolean {
   return /^(?:404\s*)?(?:page not found|not found|access denied|just a moment|checking your browser)\b/i.test((title || '').trim())
 }
 
-function extractHtmlText(html: string): string {
-  return html
+function htmlToSimpleMarkdown(html: string): string {
+  let text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+
+  // Convert hyperlinks to markdown [text](href) so discoverLinks works!
+  text = text.replace(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, content) => {
+    const cleanContent = content.replace(/<[^>]+>/g, '').trim()
+    const cleanHref = href.trim()
+    if (!cleanContent || !cleanHref || cleanHref.startsWith('javascript:') || cleanHref.startsWith('#')) {
+      return cleanContent || ' '
+    }
+    return ` [${cleanContent}](${cleanHref}) `
+  })
+
+  // Convert headings, paragraphs, and list items to natural line breaks
+  text = text
+    .replace(/<\/(?:p|div|section|article|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n\n')
     .trim()
+
+  return text
 }
 
 function parseFirecrawlPage(markdown: string, title: string, url: string): CrawledPage | null {
@@ -201,6 +229,9 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
   const pages: CrawledPage[] = []
   const deadline = new AbortController()
 
+  // Notify client immediately so UI shows active state in <50ms
+  onProgress?.(0, maxPages, baseUrl)
+
   const pageTimeout = options.timeoutMs ?? 6000
   const batches = 1 + Math.ceil((maxPages - 1) / concurrency)
   const standardBudget = Math.max(16000, batches * (pageTimeout + FIRECRAWL_PAGE_TIMEOUT) + 1000)
@@ -210,32 +241,13 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
   options.signal?.addEventListener('abort', abort, { once: true })
   if (options.signal?.aborted) deadline.abort()
 
-  const readViaJina = async (url: string): Promise<CrawledPage | null> => {
-    if (deadline.signal.aborted) return null
-    const controller = new AbortController()
-    const cancel = () => controller.abort()
-    deadline.signal.addEventListener('abort', cancel, { once: true })
-    if (deadline.signal.aborted) controller.abort()
-    const timer = setTimeout(cancel, pageTimeout)
-    try {
-      const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain', 'X-Robots-Txt': 'BusMoraBot' }, cache: 'no-store', signal: controller.signal })
-      if (!response.ok) return null
-      return parsePage(await response.text(), url)
-    } catch {
-      return null
-    } finally {
-      clearTimeout(timer)
-      deadline.signal.removeEventListener('abort', cancel)
-    }
-  }
-
   const readViaDirect = async (url: string): Promise<CrawledPage | null> => {
     if (deadline.signal.aborted) return null
     const controller = new AbortController()
     const cancel = () => controller.abort()
     deadline.signal.addEventListener('abort', cancel, { once: true })
     if (deadline.signal.aborted) controller.abort()
-    const timer = setTimeout(cancel, 4500)
+    const timer = setTimeout(cancel, 2500)
     try {
       const response = await fetch(url, {
         headers: {
@@ -249,9 +261,28 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
       const html = await response.text()
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
       const title = titleMatch ? titleMatch[1].trim() : undefined
-      const text = extractHtmlText(html)
-      if (text.length < 80 || looksLikeBlockPage(text, title)) return null
-      return { url, markdown: text, title }
+      const markdown = htmlToSimpleMarkdown(html)
+      if (markdown.length < 80 || looksLikeBlockPage(markdown, title)) return null
+      return { url, markdown, title }
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
+      deadline.signal.removeEventListener('abort', cancel)
+    }
+  }
+
+  const readViaJina = async (url: string): Promise<CrawledPage | null> => {
+    if (deadline.signal.aborted) return null
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    deadline.signal.addEventListener('abort', cancel, { once: true })
+    if (deadline.signal.aborted) controller.abort()
+    const timer = setTimeout(cancel, pageTimeout)
+    try {
+      const response = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: 'text/plain', 'X-Robots-Txt': 'BusMoraBot' }, cache: 'no-store', signal: controller.signal })
+      if (!response.ok) return null
+      return parsePage(await response.text(), url)
     } catch {
       return null
     } finally {
@@ -276,8 +307,11 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     if (options.reader === 'firecrawl') {
       page = await readViaFirecrawl(url)
     } else {
-      page = await readViaJina(url)
-      if (!page && !deadline.signal.aborted) page = await readViaDirect(url)
+      // Tier 1: Fast direct fetch first (200-400ms for 90%+ of sites)
+      page = await readViaDirect(url)
+      // Tier 2: Fall back to Jina only if direct fetch was blocked or failed
+      if (!page && !deadline.signal.aborted) page = await readViaJina(url)
+      // Tier 3: Fall back to Firecrawl if both failed
       if (!page && !deadline.signal.aborted) page = await readViaFirecrawl(url)
     }
     if (page) {
@@ -287,6 +321,9 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     return page
   }
 
+  // Step 0: Kick off sitemap discovery concurrently to discover canonical high-value pages
+  const sitemapPromise = discoverSitemapLinks(baseUrl, deadline.signal).catch(() => [] as string[])
+
   // Step 1: Read homepage immediately (zero pre-crawl lag, starts in 0ms)
   const home = await read(normalizeSiteUrl(baseUrl))
   if (home) {
@@ -295,6 +332,18 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     pages.push(home)
     onProgress?.(pages.length, maxPages, home.url)
     for (const link of discoverLinks(home, baseUrl)) {
+      if (!enqueued.has(link) && enqueued.size < maxPages * 4) {
+        enqueued.add(link)
+        queue.push(link)
+      }
+    }
+
+    // Await fast sitemap results (up to 800ms) to prioritize canonical commercial pages
+    const sitemapLinks = await Promise.race([
+      sitemapPromise,
+      new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 800)),
+    ])
+    for (const link of sitemapLinks) {
       if (!enqueued.has(link) && enqueued.size < maxPages * 4) {
         enqueued.add(link)
         queue.push(link)

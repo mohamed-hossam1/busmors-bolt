@@ -36,26 +36,8 @@
     "playwright.config.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    ".next-test-4183/types/**/*.ts",
-    ".next-test-4183/dev/types/**/*.ts",
-    ".next-test-4179/types/**/*.ts",
-    ".next-test-4179/dev/types/**/*.ts",
-    ".next-test-4185/types/**/*.ts",
-    ".next-test-4185/dev/types/**/*.ts",
-    ".next-test-4191/types/**/*.ts",
-    ".next-test-4191/dev/types/**/*.ts",
-    ".next-test-4186/types/**/*.ts",
-    ".next-test-4186/dev/types/**/*.ts",
-    ".next-test-4184/types/**/*.ts",
-    ".next-test-4184/dev/types/**/*.ts",
-    ".next-test-4187/types/**/*.ts",
-    ".next-test-4187/dev/types/**/*.ts",
-    ".next-test-4182/types/**/*.ts",
-    ".next-test-4182/dev/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
-    ".next-e2e/dev/types/**/*.ts",
-    ".next-preview/types/**/*.ts",
-    ".next-preview/dev/types/**/*.ts"
+    ".next-e2e/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

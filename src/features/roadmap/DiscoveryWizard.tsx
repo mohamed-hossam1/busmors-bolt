@@ -7,13 +7,21 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Loader2,
+  Coins,
+  HelpCircle,
+  Lightbulb,
   LockKeyhole,
   RefreshCw,
+  Repeat,
+  Rocket,
   Route,
   Save,
   Sparkles,
+  Target,
+  TrendingUp,
+  UserPlus,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { RoadmapSkeleton } from '../../components/skeletons'
 import { useAuth } from '../../context/AuthContext'
 import { useCopy } from '../../hooks/useCopy'
@@ -46,6 +54,17 @@ import type {
   DiscoveryQuestion,
   DiscoveryQuestionOption,
 } from './types'
+
+const CHALLENGE_ICONS: Record<string, typeof Lightbulb> = {
+  validate_idea: Lightbulb,
+  win_first_customers: UserPlus,
+  grow_customers: TrendingUp,
+  convert_inquiries: Target,
+  unprofitable_marketing: Coins,
+  launch_offer: Rocket,
+  increase_repeat_referral: Repeat,
+  something_else: HelpCircle,
+}
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -776,25 +795,28 @@ export default function DiscoveryWizard() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {goals.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              disabled={busy}
-              onClick={() => void selectGoal(item.value)}
-              className="card flex items-start gap-4 p-5 text-start transition hover:border-primary-400 disabled:opacity-60"
-            >
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Route size={18} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-ink-900">{item.label}</span>
-                <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
-              </span>
-              <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400 rtl:rotate-180" />
-            </button>
-          ))}
+          {goals.map((item) => {
+            const ChallengeIcon = CHALLENGE_ICONS[item.value] ?? Route
+            return (
+              <button
+                key={item.value}
+                type="button"
+                disabled={busy}
+                onClick={() => void selectGoal(item.value)}
+                className="card flex items-start gap-4 p-5 text-start transition hover:border-primary-400 disabled:opacity-60"
+              >
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><ChallengeIcon size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-ink-900">{item.label}</span>
+                  <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
+                </span>
+                <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400 rtl:rotate-180" />
+              </button>
+            )
+          })}
         </div>
 
-        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Loader2 size={15} className="animate-spin" /> {t('savingGoal')}</p>}
+        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Spinner size={15} /> {t('savingGoal')}</p>}
         {draft && goalPicker && (
           <button type="button" onClick={() => setGoalPicker(false)} className="btn-secondary mt-5">{t('backToCurrentGoal')}</button>
         )}
@@ -817,7 +839,7 @@ export default function DiscoveryWizard() {
 
       <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white/95 p-3 backdrop-blur">
         <span role="status" className={`badge ${saveState === 'error' ? 'bg-red-50 text-red-700' : saveState === 'saving' ? 'bg-primary-50 text-primary-700' : 'bg-emerald-50 text-emerald-700'}`}>
-          {saveState === 'saving' ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} {saveLabel}
+          {saveState === 'saving' ? <Spinner size={12} /> : <CheckCircle2 size={12} />} {saveLabel}
         </span>
         <span className="text-xs text-ink-500">{t('answeredCount', { count: positiveCount, total: activeQuestions.length })}</span>
         <button type="button" onClick={() => void saveAll()} disabled={saveState === 'saving'} className="btn-primary ms-auto min-h-9 px-3 py-1.5 text-xs">
@@ -974,7 +996,7 @@ export default function DiscoveryWizard() {
                 {t('preliminaryPlanHelp')}
               </p>
               <button type="button" onClick={() => void continuePreliminary()} disabled={planning} className="btn-secondary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
-                {planning ? <><Loader2 size={13} className="animate-spin" /> {t('saving')}</> : t('continuePreliminary')}
+                {planning ? <><Spinner size={13} /> {t('saving')}</> : t('continuePreliminary')}
               </button>
               <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('preliminaryPlanNote')}</p>
             </section>

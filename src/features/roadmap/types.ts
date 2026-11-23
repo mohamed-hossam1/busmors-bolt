@@ -2,18 +2,27 @@ import type { AnswerStatus } from '../../lib/contracts'
 import type { BrainNode } from '../../lib/types'
 
 export type DiscoveryGoal =
-  | 'acquire_first_customers'
+  | 'validate_idea'
+  | 'win_first_customers'
   | 'grow_customers'
   | 'convert_inquiries'
+  | 'unprofitable_marketing'
   | 'launch_offer'
-  | 'repeat_referral'
-  | 'custom'
+  | 'increase_repeat_referral'
+  | 'something_else'
+
+export interface DiscoveryChallenge {
+  key: DiscoveryGoal
+  label: string
+  description: string
+  icon: string
+}
 
 export interface DiscoveryDraft {
   id: string
   workspace_id: string
   version: number
-  goal: DiscoveryGoal
+  goal: string
   status: 'draft' | 'planned' | 'archived'
   context_refs: unknown[]
   created_at: string
@@ -85,7 +94,7 @@ export interface PlannedQuestion {
 }
 
 export interface DiscoveryPlanContext {
-  goal: DiscoveryGoal
+  goal: string
   hasWebsite: boolean
   facts: BrainNode[]
   locale?: string

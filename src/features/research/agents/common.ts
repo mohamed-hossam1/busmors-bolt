@@ -1,12 +1,9 @@
-import { emptyUsage, type EvidenceObservation, type SourceRecord, type UsageRecord } from '../contracts'
+import { addUsage, emptyUsage, type EvidenceObservation, type SourceRecord, type UsageRecord } from '../contracts'
 import type { CandidateUrl } from '../providers/normalize'
 import type { QueryFamily } from '../providers/router'
 import type { WorkerClaim, WorkerContext, WorkerResult } from '../director/director'
 import type { ResearchTrack } from '../contracts'
 import { evaluateClaim } from '../references/rubric'
-import { addUsage } from '../director/director'
-
-export { addUsage }
 
 export interface GatherOptions {
   family: QueryFamily
@@ -67,7 +64,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
     await context.emit({
       instanceId: crypto.randomUUID(),
       correlationId: crypto.randomUUID(),
-      parentInstanceId: null,
+      parentInstanceId: context.instanceId,
       type: 'tool_call',
       agentId: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
       agentRole: 'tool',
@@ -111,7 +108,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
       await context.emit({
         instanceId: crypto.randomUUID(),
         correlationId: crypto.randomUUID(),
-        parentInstanceId: null,
+        parentInstanceId: context.instanceId,
         type: 'tool_call',
         agentId: 'firecrawl',
         agentRole: 'tool',

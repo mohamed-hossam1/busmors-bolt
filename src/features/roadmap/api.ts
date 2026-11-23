@@ -3,7 +3,6 @@ import type { BrainNode } from '../../lib/types'
 import { eligibleBrainFacts, planPrefill, planToRpc } from './discovery'
 import type {
   DiscoveryDraft,
-  DiscoveryGoal,
   DiscoveryLoad,
   DiscoveryQuestion,
   PlannedQuestion,
@@ -28,7 +27,7 @@ export async function loadDiscoveryFacts(): Promise<BrainNode[]> {
 }
 
 export async function saveDiscoveryDraft(
-  goal: DiscoveryGoal,
+  goal: string,
   expectedVersion: number,
   contextRefs: unknown[] = []
 ): Promise<DiscoveryDraft> {

@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
-import { getModelConfigForOperation } from '../config/ai-models'
+import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +16,7 @@ const corsHeaders = {
 
 // Orchestrator chat operations run without a task/allowance row: they are bounded
 // by a fixed system prompt, a low token cap and a short provider timeout.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer'])
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title'])
 
 interface GenerateRequest {
   signal?: AbortSignal
@@ -34,7 +34,7 @@ interface GenerateRequest {
    * own submitted site) — the shared key is the business's, not the user's. */
   useSharedCrawlKey?: boolean
   crawlOperation?: CrawlOperation
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   providerTimeoutMs?: number
 }
 
@@ -152,11 +152,7 @@ export async function generateAi(req: Request) {
       body.maxTokens = undefined
     } else {
       body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), body.operation === 'route' ? 1000 : 6000)
-      // gpt-oss models reason before answering. At the default effort the hidden
-      // reasoning can exhaust a small output cap, the JSON is cut off, and Groq
-      // rejects it (400 json_validate_failed). Routing, clarifying and short chat
-      // answers do not need deep reasoning; low effort also saves per-minute tokens.
-      body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort ?? (['route', 'clarify', 'chat'].includes(body.operation) ? 'low' : undefined)
+      body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort
     }
     if (opConfig.temperature !== undefined && body.temperature === undefined) {
       body.temperature = opConfig.temperature
@@ -210,20 +206,37 @@ export async function generateAi(req: Request) {
     if(reservationError)return new Response(JSON.stringify({error:reservationError.message.includes('BUDGET_EXHAUSTED')?'budget_exhausted':'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
     let succeeded=false
     try {
-      const generated=await callProvider(key,plaintextKey,body)
-      if(!validateOutput(body.operation,generated)){
-        // Development aid: log only the response's shape (field names and value
-        // types), never its content, so a rejected format can be identified.
-        if(process.env.NODE_ENV!=='production'){
-          let shape='unparseable'
-          // mode/intent are fixed codes (not user content), so their values are kept.
-          try{shape=JSON.stringify(JSON.parse(generated),(key,value)=>key&&typeof value!=='object'?(typeof value==='number'||key==='mode'||key==='intent'?value:typeof value):value).slice(0,600)}catch{/* keep 'unparseable' */}
-          console.warn('[ai-generate] invalid_output',body.operation,shape)
-        }
-        throw new Error('invalid_output')
-      }
-      succeeded=true
-      return new Response(JSON.stringify({text:generated,usage:body.usage??null,callId}),{status:200,headers:{...corsHeaders,'Content-Type':'application/json'}})
+      const result = await executeWithFallback({
+        primary: {
+          provider: key.provider,
+          model: key.model,
+          apiKey: plaintextKey,
+          baseUrl: key.custom_base_url,
+          reasoningEffort: body.reasoningEffort,
+          timeoutMs: body.providerTimeoutMs,
+        },
+        fallbacks: AI_FALLBACK_TEMPLATE,
+        request: body,
+        validate: (generated) => {
+          const operation = body.operation as Operation
+          const isValid = validateOutput(operation, generated)
+          if (!isValid && process.env.NODE_ENV !== 'production') {
+            let shape = 'unparseable'
+            try {
+              shape = JSON.stringify(JSON.parse(generated), (k, value) => k && typeof value !== 'object' ? (typeof value === 'number' || k === 'mode' || k === 'intent' ? value : typeof value) : value).slice(0, 600)
+            } catch {}
+            console.warn('[ai-generate] invalid_output', operation, shape)
+          }
+          return isValid
+        },
+        logPrefix: '[task-generate]',
+      })
+      const generated = result.text
+      succeeded = true
+      return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null, callId }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     } finally {
       const {error:usageError}=await admin.rpc('finish_task_call',{p_task_id:task.id,p_call_id:callId,p_success:succeeded,p_usage:body.usage??{}})
       if(usageError)throw new Error('usage_record_failed')
@@ -235,6 +248,136 @@ export async function generateAi(req: Request) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
+}
+
+export function resolveApiKeyForProvider(provider: string, explicitKey?: string | null): string | null {
+  if (explicitKey) return explicitKey
+  switch (provider) {
+    case 'dahl':
+      return process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY || null
+    case 'groq':
+      return process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+    case 'anthropic':
+      return process.env.ANTHROPIC_API_KEY || null
+    case 'openai':
+      return process.env.OPENAI_API_KEY || null
+    case 'google':
+      return process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null
+    case 'openrouter':
+      return process.env.OPENROUTER_API_KEY || null
+    default:
+      return process.env.AI_API_KEY || null
+  }
+}
+
+export interface ExecutionTarget {
+  provider: ModelConfig['provider'] | string
+  model: string
+  baseUrl?: string | null
+  apiKey?: string | null
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
+  timeoutMs?: number
+}
+
+export interface FallbackExecutionResult {
+  text: string
+  target: ExecutionTarget
+  attemptIndex: number
+  fallbackUsed: boolean
+}
+
+/**
+ * Reusable execution template: executes an AI request with transparent multi-tiered fallback.
+ * 1. Tries primary target.
+ * 2. If it fails, times out, or produces invalid output, automatically falls back to:
+ *    - Fallback: openai/gpt-oss-120b on Groq (default reasoning)
+ *    - Emergency Fallback: openai/gpt-oss-20b on Groq (default reasoning)
+ * 3. Can be called by ANY operation or request across the application.
+ */
+export async function executeWithFallback(options: {
+  primary: ExecutionTarget
+  fallbacks?: readonly FallbackTargetConfig[] | ExecutionTarget[]
+  request: GenerateRequest
+  validate?: (text: string) => boolean
+  totalDeadlineMs?: number
+  logPrefix?: string
+}): Promise<FallbackExecutionResult> {
+  const {
+    primary,
+    fallbacks = AI_FALLBACK_TEMPLATE,
+    request,
+    validate,
+    totalDeadlineMs = 45000,
+    logPrefix = '[ai-fallback]',
+  } = options
+
+  const targets: ExecutionTarget[] = [primary]
+  for (const fb of fallbacks) {
+    if (fb.provider === primary.provider && fb.model === primary.model) continue
+    targets.push({
+      provider: fb.provider,
+      model: fb.model,
+      baseUrl: (fb as ExecutionTarget).baseUrl ?? (fb.provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : null),
+      apiKey: (fb as ExecutionTarget).apiKey ?? resolveApiKeyForProvider(fb.provider),
+      reasoningEffort: fb.reasoningEffort,
+      timeoutMs: fb.timeoutMs ?? 20000,
+    })
+  }
+
+  const deadline = Date.now() + totalDeadlineMs
+  let lastError: Error | null = null
+
+  for (let i = 0; i < targets.length; i++) {
+    const target = targets[i]
+    const remaining = deadline - Date.now()
+    if (remaining < 2000) break
+
+    const apiKey = target.apiKey || resolveApiKeyForProvider(target.provider)
+    if (!apiKey) {
+      console.warn(`${logPrefix} Skipping target ${target.provider}/${target.model}: no API key available`)
+      continue
+    }
+
+    const targetRequest: GenerateRequest = {
+      ...request,
+      reasoningEffort: target.reasoningEffort ?? (target.provider === 'groq' && target.model.includes('gpt-oss') ? undefined : request.reasoningEffort),
+      providerTimeoutMs: Math.min(target.timeoutMs ?? 20000, remaining),
+    }
+
+    const keyRow: KeyRow = {
+      workspace_id: '',
+      provider: target.provider,
+      model: target.model,
+      custom_base_url: target.baseUrl ?? (target.provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : null),
+      status: 'active',
+    }
+
+    try {
+      const text = await callProvider(keyRow, apiKey, targetRequest)
+      if (!text || !text.trim()) throw new Error('empty_provider_response')
+
+      if (validate && !validate(text)) {
+        throw new Error('invalid_output')
+      }
+
+      return {
+        text,
+        target,
+        attemptIndex: i,
+        fallbackUsed: i > 0,
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      const nextTarget = targets[i + 1]
+      if (nextTarget) {
+        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${lastError.message}). Falling back to: ${nextTarget.provider}/${nextTarget.model}`)
+      } else {
+        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${lastError.message}). All fallback options exhausted.`)
+      }
+    }
+  }
+
+  throw lastError ?? new Error('all_targets_failed')
 }
 
 /**
@@ -262,11 +405,13 @@ async function handleOrchestratorRequest(
     providerTimeoutMs: 20000,
   }
 
-  const managedKey = process.env.AI_API_KEY ?? null
-  const provider = opConfig.provider || process.env.AI_PROVIDER || 'groq'
-  const model = opConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
+  const managedKey = opConfig.provider === 'dahl'
+    ? ((process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY) ?? null)
+    : (process.env.AI_API_KEY ?? null)
+  const provider = opConfig.provider || 'groq'
+  const model = opConfig.model || 'openai/gpt-oss-120b'
   let key: KeyRow | null = managedKey && provider && model
-    ? { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
+    ? { workspace_id: workspaceId, provider, model, custom_base_url: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : (process.env.AI_BASE_URL ?? null), status: 'active' }
     : null
   let plaintextKey: string | null = managedKey
 
@@ -290,14 +435,26 @@ async function handleOrchestratorRequest(
   }
 
   try {
-    const generated = await callProvider(key, plaintextKey, request)
-    if (!validateOutput(operation, generated)) throw new Error('invalid_output')
-    return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null }), {
+    const result = await executeWithFallback({
+      primary: {
+        provider,
+        model,
+        apiKey: plaintextKey,
+        baseUrl: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : null,
+        timeoutMs: 20000,
+      },
+      fallbacks: AI_FALLBACK_TEMPLATE,
+      request,
+      validate: (generated) => validateOutput(operation, generated),
+      logPrefix: '[orchestrator]',
+    })
+    return new Response(JSON.stringify({ text: result.text, usage: body.usage ?? null }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    const message = err instanceof Error && /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(err.message) ? err.message : 'provider_unavailable'
+    const rawMessage = err instanceof Error ? err.message : 'generation failed'
+    const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -318,28 +475,36 @@ async function handleSharedCrawlRequest(
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-  // Shared crawl is a bounded onboarding path (extract/relate the caller's own
-  // submitted site). It intentionally does NOT go through reserve_task_call: there
-  // is no task/allowance here, the spend is bounded by the fixed prompts, maxTokens,
-  // and providerTimeout clamps below, and it only runs during first-run onboarding.
+
   const crawlConfig = getModelConfigForOperation(operation)
-  const request: GenerateRequest = {
-    systemPrompt: CRAWL_PROMPTS[operation as CrawlOperation], userPrompt: body.userPrompt, signal: body.signal,
-    jsonMode: true, temperature: 0.1, maxTokens: operation === 'relate' ? 2500 : (crawlConfig.maxTokens ?? 5000),
+  const baseRequest: GenerateRequest = {
+    systemPrompt: CRAWL_PROMPTS[operation as CrawlOperation],
+    userPrompt: body.userPrompt,
+    signal: body.signal,
+    jsonMode: true,
+    temperature: 0.1,
+    maxTokens: operation === 'relate' ? 2500 : (crawlConfig.maxTokens ?? 5000),
     providerTimeoutMs: 25000,
-    reasoningEffort: crawlConfig.reasoningEffort ?? 'high',
+    reasoningEffort: crawlConfig.reasoningEffort ?? body.reasoningEffort ?? 'none',
   }
-  const envKey = process.env.AI_API_KEY
-  const envProvider = crawlConfig.provider || process.env.AI_PROVIDER || 'groq'
-  const envModel = crawlConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
 
-  let secretRow = envKey ?? null
-  if (!secretRow) {
+  // Primary: DeepSeek-V4-Flash via general Dahl provider
+  const dahlKey = process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_CRAWL_API_KEY || process.env.AI_API_KEY || null
+  const dahlBaseUrl = process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1'
+
+  // Fallback: Groq API key
+  const fallbackKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+
+  let sharedRpcKey: string | null = null
+  if (!dahlKey && !fallbackKey) {
     const { data: rpcSecret, error: secretError } = await admin.rpc('read_shared_crawl_key')
-    if (!secretError && rpcSecret) secretRow = String(rpcSecret)
+    if (!secretError && rpcSecret) sharedRpcKey = String(rpcSecret)
   }
 
-  if (!secretRow) {
+  const effectiveDahlKey = dahlKey || sharedRpcKey
+  const effectiveFallbackKey = fallbackKey || sharedRpcKey
+
+  if (!effectiveDahlKey && !effectiveFallbackKey) {
     // A personal key is optional; it is read and used entirely on the server.
     const { data: meta } = await admin
       .from('ai_keys')
@@ -348,7 +513,7 @@ async function handleSharedCrawlRequest(
     if (meta?.status === 'active') {
       const personalKey = await decryptKey(workspaceId, admin)
       if (personalKey) {
-        const text = await callProvider(meta as KeyRow, personalKey, request)
+        const text = await callProvider(meta as KeyRow, personalKey, baseRequest)
         return new Response(JSON.stringify({ text }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
     }
@@ -358,40 +523,68 @@ async function handleSharedCrawlRequest(
     })
   }
 
-  const candidateModels = [crawlConfig.model, envModel, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile']
-  const uniqueModels = [...new Set(candidateModels.filter(Boolean))]
-  const deadline = Date.now() + 30000
-  let lastError: Error | null = null
+  const primaryApiKey = crawlConfig.provider === 'dahl'
+    ? effectiveDahlKey
+    : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
+  const primaryBaseUrl = crawlConfig.provider === 'dahl' ? dahlBaseUrl : null
+  const primaryTimeout = crawlConfig.provider === 'dahl' ? 25000 : 20000
 
-  for (const model of uniqueModels) {
-    const remaining = deadline - Date.now()
-    if (remaining < 1500) break
-    request.providerTimeoutMs = Math.min(10000, remaining)
-    const sharedKeyRow: KeyRow = {
-      workspace_id: '',
-      provider: envProvider,
-      model,
-      custom_base_url: process.env.AI_BASE_URL ?? null,
-      status: 'active',
+  try {
+    const result = await executeWithFallback({
+      primary: {
+        provider: crawlConfig.provider,
+        model: crawlConfig.model,
+        apiKey: primaryApiKey,
+        baseUrl: primaryBaseUrl,
+        reasoningEffort: crawlConfig.reasoningEffort,
+        timeoutMs: primaryTimeout,
+      },
+      fallbacks: AI_FALLBACK_TEMPLATE.map((fb) => ({
+        ...fb,
+        apiKey: fb.provider === 'dahl' ? (effectiveDahlKey || resolveApiKeyForProvider('dahl')) : (effectiveFallbackKey || resolveApiKeyForProvider(fb.provider)),
+        baseUrl: fb.provider === 'dahl' ? dahlBaseUrl : null,
+      })),
+      request: baseRequest,
+      totalDeadlineMs: 45000,
+      logPrefix: '[shared-crawl]',
+      validate: (text) => {
+        try {
+          const parsed = JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''))
+          return Boolean(parsed && typeof parsed === 'object' && (Array.isArray(parsed.candidates) || Array.isArray(parsed.edges)))
+        } catch {
+          return false
+        }
+      },
+    })
+
+    return new Response(JSON.stringify({ text: result.text }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    // If all shared targets in fallback template failed, try personal key if available before giving up
+    const { data: meta } = await admin
+      .from('ai_keys')
+      .select('workspace_id, provider, model, custom_base_url, status')
+      .eq('workspace_id', workspaceId).maybeSingle()
+    if (meta?.status === 'active') {
+      const personalKey = await decryptKey(workspaceId, admin)
+      if (personalKey) {
+        try {
+          const text = await callProvider(meta as KeyRow, personalKey, baseRequest)
+          return new Response(JSON.stringify({ text }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        } catch {}
+      }
     }
-    try {
-      const text = await callProvider(sharedKeyRow, String(secretRow), request)
-      return new Response(JSON.stringify({ text }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err))
-    }
+
+    // Never leak raw provider text. Reuse the same whitelist as the task path above.
+    const rawMessage = err instanceof Error ? err.message : 'generation failed'
+    const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
-
-  // Never leak raw provider text. Reuse the same whitelist as the task path above.
-  const rawMessage = lastError ? lastError.message : 'generation failed'
-  const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
-  return new Response(JSON.stringify({ error: message }), {
-    status: 500,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
 }
 
 async function callProvider(
@@ -400,7 +593,7 @@ async function callProvider(
   body: GenerateRequest
 ): Promise<string> {
   const isHigh = body.reasoningEffort === 'high'
-  const maxTokens = (isHigh || body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens, 100), 8000)
+  const maxTokens = (isHigh && body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens ?? 4096, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
   const providerTimeout = Math.min(isHigh ? 60000 : 25000, Math.max(1000, body.providerTimeoutMs ?? (isHigh ? 45000 : 25000)))
 
@@ -433,7 +626,7 @@ async function callProvider(
     return text
   }
 
-  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, custom
+  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, dahl, custom
   const base =
     key.provider === 'openai'
       ? 'https://api.openai.com/v1'
@@ -443,10 +636,13 @@ async function callProvider(
           ? 'https://generativelanguage.googleapis.com/v1beta/openai'
           : key.provider === 'openrouter'
             ? 'https://openrouter.ai/api/v1'
-            : (key.custom_base_url ?? '').replace(/\/$/, '')
+            : key.provider === 'dahl'
+              ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1').replace(/\/$/, '')
+              : (key.custom_base_url ?? '').replace(/\/$/, '')
   if (!base) throw new Error('missing_base_url')
   if (key.provider === 'custom') {
-    const allowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)
+    const configuredAllowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)
+    const allowed = [...new Set([...configuredAllowed, 'https://inference.dahl.global/v1'])]
     if (!base.startsWith('https://') || !allowed.includes(base)) throw new Error('unapproved_base_url')
   }
 
@@ -466,7 +662,11 @@ async function callProvider(
         { role: 'user', content: body.userPrompt },
       ],
       ...(body.jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      ...(body.reasoningEffort ? { reasoning_effort: body.reasoningEffort } : {}),
+      ...(body.reasoningEffort && !(key.provider === 'groq' && key.model.startsWith('openai/gpt-oss-')) ? {
+        reasoning_effort: key.provider === 'groq'
+          ? (body.reasoningEffort === 'none' ? undefined : (body.jsonMode && body.reasoningEffort === 'high' ? 'medium' : body.reasoningEffort))
+          : body.reasoningEffort,
+      } : {}),
     }),
   })
   if (res.status === 401 || res.status === 403) throw new Error('invalid_key')

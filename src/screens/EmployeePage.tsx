@@ -19,11 +19,11 @@ import {
   Maximize2,
   FileText,
   CheckCircle2,
-  Loader2,
   X,
   ArrowUpRight,
   Gauge,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
@@ -60,6 +60,7 @@ export default function EmployeePage() {
   const composedRef = useRef<string|null>(null)
   const continuationOrigin = useRef<{deliverableId:string;version:number}|null>(null)
   const [events, setEvents] = useState<AgentEvent[]>([])
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null)
   const [activeTask, setActiveTask] = useState<string | null>(null)
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null)
   const [canvasLoadError, setCanvasLoadError] = useState<string | null>(null)
@@ -85,7 +86,13 @@ export default function EmployeePage() {
   const displayedMessages = useMemo(() => {
     const greetingText = t('greetingProactive')
     const isGreeting = (m: ChatMessage) =>
-      m.role === 'agent' && (m.content === greetingText || m.content.includes('I reviewed your company info'))
+      m.role === 'agent' && (
+        m.content === greetingText ||
+        m.content.includes('I reviewed your company info') ||
+        m.content.includes('أقدر أساعدك بناءً على المعلومات اللي أكدتها عن مشروعك') ||
+        m.content.includes('المساعد التسويقي لـ Busmora') ||
+        m.content.includes('Busmora marketing assistant')
+      )
 
     const currentMessages = messages.filter((message) => message.conversation_id === conversationId)
     const greetingMsg = currentMessages.find(isGreeting)
@@ -139,6 +146,47 @@ export default function EmployeePage() {
     const last = [...displayedMessages].reverse().find((m) => m.role === 'user' && m.type === 'text')
     return last?.content ?? null
   }, [displayedMessages])
+
+  // User text messages, in order — each one owns a canvas "turn".
+  const userMessages = useMemo(
+    () => displayedMessages.filter((m) => m.role === 'user' && m.type === 'text'),
+    [displayedMessages],
+  )
+
+  // Split the event stream into turns at each Orchestrator start. A turn is the
+  // canvas for one user message; task events fall into the turn whose
+  // Orchestrator run created them because they share its created_at window.
+  const turns = useMemo(() => {
+    const sorted = [...events].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || a.seq - b.seq,
+    )
+    const groups: AgentEvent[][] = []
+    let current: AgentEvent[] = []
+    for (const event of sorted) {
+      if (event.agent_id === 'orchestrator' && event.event_type === 'agent_started') {
+        if (current.length) groups.push(current)
+        current = []
+      }
+      current.push(event)
+    }
+    if (current.length) groups.push(current)
+    return groups
+  }, [events])
+
+  const activeIndex = useMemo(() => {
+    const index = userMessages.findIndex((m) => m.id === activeMessageId)
+    return index >= 0 ? index : userMessages.length - 1
+  }, [userMessages, activeMessageId])
+
+  const activeUserMessageId = userMessages[activeIndex]?.id ?? null
+
+  const turnEvents = useMemo(() => {
+    if (turns.length === 0) return events
+    const index = Math.min(Math.max(activeIndex, 0), turns.length - 1)
+    return turns[index] ?? turns[turns.length - 1] ?? events
+  }, [turns, activeIndex, events])
+
+  const activeUserMessage = userMessages[activeIndex]?.content ?? lastUserMessage
 
   const loadConversationsList = async (userId: string) => {
     const { data } = await supabase
@@ -320,6 +368,8 @@ export default function EmployeePage() {
     setInput('')
     setActionError('')
     setSending(true)
+    const existingUser = [...messages, ...optimisticMessages].filter(m => m.role === 'user' && m.type === 'text')
+    const isFirstMessage = existingUser.length === 0
     const tempId = `optimistic-${crypto.randomUUID()}`
     const optimisticMsg: ChatMessage = {
       id: tempId,
@@ -331,6 +381,7 @@ export default function EmployeePage() {
       created_at: new Date().toISOString(),
     }
     setOptimisticMessages(prev => [...prev, optimisticMsg])
+    setActiveMessageId(null)
     if(requestKey.current?.conversation!==conversationId||requestKey.current?.text!==textToSend)requestKey.current={conversation:conversationId,text:textToSend,key:crypto.randomUUID()}
     const pending=continuationOrigin.current
     const origin:TaskOrigin|undefined=pending?{kind:'document',conversationId,deliverableId:pending.deliverableId,version:pending.version}:undefined
@@ -349,6 +400,15 @@ export default function EmployeePage() {
       if(viewedConversationRef.current===conversationId){
         if(error)setActionError(t('messagesRefreshFailed'))
         else setMessages((data??[]) as ChatMessage[])
+      }
+      if(isFirstMessage){
+        try{
+          const res=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'title',conversationId,request:textToSend})})
+          if(res.ok){
+            const {title}=await res.json()
+            setConversations(prev=>prev.map(c=>c.id===conversationId?{...c,title}:c))
+          }
+        }catch{/* Title is best-effort; the default title is kept. */}
       }
       setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
       if(workspaceIdRef.current)await loadConversationsList(workspaceIdRef.current)
@@ -503,6 +563,8 @@ export default function EmployeePage() {
               onSubmitForm={submitForm}
               onDownload={downloadDeliverable}
               onOpenFull={(title, content) => setViewingDeliverable({ title, content })}
+              onSelect={setActiveMessageId}
+              isActive={msg.id === activeUserMessageId}
             />
           ))}
 
@@ -511,7 +573,7 @@ export default function EmployeePage() {
             <div className="animate-fade-up rounded-2xl border border-primary-200/90 bg-gradient-to-r from-primary-50/95 to-accent-50/80 p-3.5 shadow-xs">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
-                  <Loader2 size={16} className="animate-spin" />
+                  <Spinner size={16} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
@@ -595,14 +657,23 @@ export default function EmployeePage() {
         <div className="employee-panel-header hidden items-center gap-2 px-6 py-3 text-sm font-medium text-ink-900 lg:flex">
           <Network size={16} className="text-primary-500" />
           {t('canvasTitle')}
+          {activeMessageId !== null && activeUserMessageId !== userMessages[userMessages.length - 1]?.id && (
+            <button
+              type="button"
+              onClick={() => setActiveMessageId(null)}
+              className="ms-auto inline-flex items-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100"
+            >
+              {t('backToLatest')}
+            </button>
+          )}
         </div>
         <div className="min-h-0 flex-1">
           {conversationLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Loader2 size={16} className="animate-spin" />{t('loadingConversationGraph')}</div>
+            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Spinner size={16} />{t('loadingConversationGraph')}</div>
           ) : canvasLoadError ? (
             <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
           ) : (
-            <AgentCanvas key={`${conversationId}:${activeTask}`} conversationId={conversationId ? `${conversationId}:${activeTask??'empty'}` : null} events={events} running={running} taskId={selectedTask?.id} taskStatus={selectedTask?.status} userMessage={lastUserMessage} previewPosts={canvasPreviews} />
+            <AgentCanvas key={`${conversationId}:${activeTask}`} conversationId={conversationId ? `${conversationId}:${activeTask??'empty'}` : null} events={turnEvents} running={running} taskId={selectedTask?.id} taskStatus={selectedTask?.status} userMessage={activeUserMessage} previewPosts={canvasPreviews} />
           )}
         </div>
       </div>
@@ -746,6 +817,8 @@ function MessageBubble({
   onSubmitForm,
   onDownload,
   onOpenFull,
+  onSelect,
+  isActive,
 }: {
   msg: ChatMessage
   pageName: string
@@ -753,6 +826,8 @@ function MessageBubble({
   onSubmitForm: (msg: ChatMessage, values: Record<string, string | string[]>) => Promise<void>
   onDownload: (title: string, content: string) => void
   onOpenFull: (title: string, content: string) => void
+  onSelect?: (id: string) => void
+  isActive?: boolean
 }) {
   const { t } = useCopy()
   if (msg.type === 'knowledge_notification') {
@@ -923,17 +998,23 @@ function MessageBubble({
   // Plain text and text_response share the standard bubble below. Submitting a
   // legacy form never changes brand voice; only an explicit form action does.
   const isUser = msg.role === 'user'
+  const dir = /[\u0600-\u06FF]/.test(msg.content) ? 'rtl' : 'ltr'
+  const selectable = isUser && !!onSelect
   return (
-    <div className={`animate-fade-up flex ${isUser ? 'justify-end' : 'items-start gap-2.5'}`}>
+    <div
+      className={`animate-fade-up flex ${isUser ? 'justify-end' : 'items-start gap-2.5'}`}
+      onClick={selectable ? () => onSelect!(msg.id) : undefined}
+    >
       {!isUser && (
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
           <Bot size={16} />
         </div>
       )}
       <div
+        dir={dir}
         className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
           isUser ? 'bg-primary-700 text-white' : 'card text-ink-800'
-        }`}
+        } ${selectable ? 'cursor-pointer' : ''} ${isActive ? 'ring-2 ring-primary-400 ring-offset-1' : ''}`}
       >
         <MarkdownContent content={msg.content} isUser={isUser} />
         {!isUser && (msg.content.includes('Settings page') || msg.content.includes('add your API key')) && (

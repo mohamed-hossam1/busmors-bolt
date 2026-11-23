@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Trash2, X } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { useDialog } from '../../hooks/useDialog'
 import { useCopy } from '../../hooks/useCopy'
 import type { BrainNode } from '../../lib/types'
@@ -42,7 +43,7 @@ export default function DeleteKnowledgeDialog({ node, busy, error, onCancel, onC
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={onCancel} disabled={busy}>{t('cancel')}</button>
           <button type="button" className="btn-danger px-4 py-2 text-sm" onClick={() => onConfirm(skipConfirmation)} disabled={busy}>
-            {busy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}{busy ? t('deleting') : t('delete')}
+            {busy ? <Spinner size={15} /> : <Trash2 size={15} />}{busy ? t('deleting') : t('delete')}
           </button>
         </div>
       </div>

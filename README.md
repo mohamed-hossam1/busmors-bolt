@@ -47,5 +47,3 @@ The reference landing was adapted into `src/features/marketing/` with links, nat
 The original logo, local Inter fonts, cosmic palette, electric purple actions, and light work surfaces form one system across the public page, auth, onboarding, and protected routes. See [DESIGN.md](DESIGN.md).
 
 Conversation graphs restore their recorded task events independently, with per-conversation browser persistence of node positions and viewport. Browser storage is a local layout preference; Supabase remains the source of task data.
-
-[Visual review and screenshots](artifacts/redesign/README.md).

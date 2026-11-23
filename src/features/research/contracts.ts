@@ -181,13 +181,6 @@ export interface ResearchBrief {
   createdAt: string
 }
 
-export interface ResearchRequest {
-  intent: typeof MARKETING_RESEARCH_INTENT
-  mode: ResearchMode
-  request: string
-  conversationId: string
-}
-
 const LANGUAGES: readonly ResearchLanguage[] = ['ar-EG', 'en']
 
 /** Arabizi numerals or known Egyptian transliterations. */
@@ -198,10 +191,6 @@ function looksArabizi(text: string): boolean {
 
 export function isResearchMode(value: unknown): value is ResearchMode {
   return typeof value === 'string' && (RESEARCH_MODES as readonly string[]).includes(value)
-}
-
-export function isProviderName(value: unknown): value is ProviderName {
-  return typeof value === 'string' && ['firecrawl', 'tavily', 'exa', 'egypt_official', 'osm', 'composio'].includes(value)
 }
 
 /** Bilingual ordering rule: Arabic-first for Arabic/Egyptian/Arabizi queries. */
@@ -215,30 +204,17 @@ export function queryLanguageOrder(text: string): ResearchLanguage[] {
   return [...LANGUAGES].reverse() as ResearchLanguage[]
 }
 
-export function parseResearchRequest(value: unknown): ResearchRequest | null {
-  if (!value || typeof value !== 'object') return null
-  const v = value as Record<string, unknown>
-  if (v.intent !== MARKETING_RESEARCH_INTENT || !isResearchMode(v.mode)) return null
-  if (typeof v.request !== 'string' || !v.request.trim() || v.request.length > 12000) return null
-  if (typeof v.conversationId !== 'string') return null
-  return { intent: MARKETING_RESEARCH_INTENT, mode: v.mode, request: v.request.trim(), conversationId: v.conversationId }
-}
-
 export function emptyUsage(): UsageRecord {
   return { calls: 0, pages: 0, tokens: 0, credits: 0 }
 }
 
-export function addUsage(a: UsageRecord, b: Partial<UsageRecord>): UsageRecord {
-  return {
-    calls: a.calls + (b.calls ?? 0),
-    pages: a.pages + (b.pages ?? 0),
-    tokens: a.tokens + (b.tokens ?? 0),
-    credits: a.credits + (b.credits ?? 0),
-  }
-}
-
-export function isUsageWithin(usage: UsageRecord, budget: ResearchBudget): boolean {
-  return usage.calls <= budget.calls && usage.pages <= budget.pages && usage.tokens <= budget.tokens && usage.credits <= budget.credits
+/** Accumulate provider usage into a running total (mutates and returns `target`). */
+export function addUsage(target: UsageRecord, addition: Partial<UsageRecord>): UsageRecord {
+  target.calls += addition.calls ?? 0
+  target.pages += addition.pages ?? 0
+  target.tokens += addition.tokens ?? 0
+  target.credits += addition.credits ?? 0
+  return target
 }
 export interface ResearchRunInput {
   taskId: string

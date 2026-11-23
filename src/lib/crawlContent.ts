@@ -28,21 +28,46 @@ export function cleanTitle(title: string): string {
   return truncateWords(title.replace(/^[-–—#*:\s]+|[-–—#*:\s]+$/g, ''), 60)
 }
 
-export function cleanCrawlText(text: string): string {
+export function stripMarkupBloat(text: string): string {
+  if (!text) return ''
   return text
+    // Raw script, style, svg, noscript, iframe, and HTML comments
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    // CSS at-rules and style declarations that leak through markdown readers
+    .replace(/@font-face\s*\{[\s\S]*?\}/gi, ' ')
+    .replace(/@media[^{]*\{[\s\S]*?\}\s*\}/gi, ' ')
+    .replace(/@keyframes[^{]*\{[\s\S]*?\}\s*\}/gi, ' ')
+    .replace(/\{[^{}]*(?:font-family|font-size|margin|padding|background-color|--[a-z0-9_-]+:)[^{}]*\}/gi, ' ')
+    .replace(/--[a-zA-Z0-9_-]+:\s*[^;\n]+;/g, ' ')
+    // Data URIs / Base64 image strings
+    .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[a-zA-Z0-9+/=]+/gi, ' ')
+    // Reader headers / metadata
+    .replace(/^(?:URL Source|Markdown Content):.*$/gim, ' ')
+}
+
+export function cleanCrawlText(text: string): string {
+  return stripMarkupBloat(text)
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/https?:\/\/\S+/g, ' ')
-    .replace(/^(URL Source|Markdown Content):/gim, ' ')
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
 export function cleanPageForAi(markdown: string): string {
+  if (!markdown) return ''
   const seen = new Set<string>()
+  const stripped = stripMarkupBloat(markdown)
+
   // Navigation can contain H3 headings before the actual H1. Drop that preamble only if near top.
-  const firstTitle = markdown.search(/^#\s+\S/m)
-  const content = firstTitle >= 0 && firstTitle < markdown.length * 0.2 ? markdown.slice(firstTitle) : markdown
+  const firstTitle = stripped.search(/^#\s+\S/m)
+  const content = firstTitle >= 0 && firstTitle < stripped.length * 0.2 ? stripped.slice(firstTitle) : stripped
   const sections = content.split(/(?=^#{1,6}\s)/m)
   const filtered = sections.length > 1
     ? sections.filter((section) => {
@@ -55,11 +80,13 @@ export function cleanPageForAi(markdown: string): string {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 ')
     .replace(/https?:\/\/[^\s)]+/g, '')
+    .replace(/<[^>]+>/g, ' ')
     .split('\n')
     .filter((line) => {
       const key = line.trim().replace(/\s+/g, ' ').toLowerCase()
       if (!key) return true
-      if (/^[-*]?\s*(home|menu|navigation|footer|log ?in|sign ?up)\s*$/i.test(key)) return false
+      if (/^[-*•]?\s*(?:home|menu|navigation|footer|log ?in|sign ?up|cookies?|accept all|reject all|manage cookies|cookie settings|privacy policy|terms of service|terms & conditions|all rights reserved|جميع الحقوق محفوظة|سياسة ملفات تعريف الارتباط|تخطي إلى المحتوى|تسجيل الدخول|إنشاء حساب)\s*$/i.test(key)) return false
+      if (/^(?:facebook|twitter|x|instagram|linkedin|tiktok|youtube|pinterest|github|whatsapp)(?:\s+(?:facebook|twitter|x|instagram|linkedin|tiktok|youtube|pinterest|github|whatsapp))*$/i.test(key)) return false
       if (seen.has(key)) return false
       seen.add(key)
       return true

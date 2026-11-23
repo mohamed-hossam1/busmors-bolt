@@ -1,6 +1,6 @@
 import type { ResearchBrief, SourceRecord } from '../contracts'
 import type { Subagent, WorkerContext, WorkerResult } from '../director/director'
-import { agentForTrack } from '../director/brief'
+import { agentForTrack, buildResearchQueries } from '../director/brief'
 import { coverageNotes, gather, makeClaim, observation, result, shouldStop, uniqueBy } from './common'
 import { buildQueryPack, lexiconEntry, QUERY_LEXICON, detectLanguage, type LexiconEntry } from '../references/lexicon'
 import { resolveEntity, dedupeEntities, type ResolvedEntity } from '../references/entity-resolution'
@@ -33,11 +33,6 @@ function conceptsFor(brief: ResearchBrief): LexiconEntry[] {
     codeSwitched: [],
   }
   return [synthetic]
-}
-
-function geoQueries(brief: ResearchBrief): string[] {
-  const scope = brief.geography.governorates.length ? brief.geography.governorates.slice(0, 3) : EGYPT_GOVERNORATES.filter(name => /cairo|giza/i.test(name))
-  return scope.map(name => `${name} ${brief.category.label}`.trim())
 }
 
 function brandFromSource(source: SourceRecord): string {
@@ -98,9 +93,10 @@ export function createMarketScout(options: { maxOpensPerRound?: number } = {}): 
       while (round < brief.stopRules.maxQueryRounds && !context.ledger.exhausted) {
         round += 1
         const queries = uniqueBy([
+          // Brand, category, audience and geography first — never a bare
+          // "competitors in Egypt", so retrieval starts from the real business.
+          ...buildResearchQueries(brief, 8),
           ...entries.flatMap(entry => buildQueryPack(entry.concept, { includeMisspellings: round === 1 }).map(item => item.query)),
-          ...geoQueries(brief),
-          ...(round === 1 ? ['\u0627\u0644\u0645\u0646\u0627\u0641\u0633\u064a\u0646 \u0641\u064a \u0645\u0635\u0631', 'competitors in Egypt'] : []),
         ], query => query.trim().toLowerCase())
         lexiconUsed.push(...queries)
         const gathered = await gather(context, {

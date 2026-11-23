@@ -115,10 +115,6 @@ export function monthLabel(year: number, month: number): string {
     .format(new Date(Date.UTC(year, month - 1, 1)))
 }
 
-export function weekdayShort(key: string): string {
-  return new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }).format(new Date(keyToUTC(key)))
-}
-
 export function dayHeading(key: string): string {
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
     .format(new Date(keyToUTC(key)))

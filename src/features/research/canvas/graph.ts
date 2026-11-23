@@ -107,7 +107,9 @@ function roleKind(agentRole: string | null | undefined, agentId: string, eventTy
 function stateFromEvent(eventType: string, status: string | null | undefined): AgentNodeState {
   if (status === 'failed' || eventType === 'agent_error') return 'failed'
   if (status === 'partial') return 'partial'
-  if (eventType === 'agent_completed') return 'completed'
+  // Any event type can complete: tool_call / skill_read / delegation carry a
+  // status but not the agent_completed event_type, so they must be honoured here.
+  if (status === 'completed' || eventType === 'agent_completed') return 'completed'
   if (status === 'queued') return 'queued'
   return 'running'
 }
@@ -146,11 +148,25 @@ function displayLabel(kind: CanvasNodeKind, agentId: string, rawLabel: string): 
 }
 
 /** Build the graph only from persisted events and steps. No event is invented. */
-export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: PersistedStep[]; running?: boolean; userMessage?: string | null }): CanvasGraph {
+export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: PersistedStep[]; running?: boolean; userMessage?: string | null; activeOrchestratorId?: string | null }): CanvasGraph {
   const nodes = new Map<string, CanvasNode>()
   const edges: CanvasEdge[] = []
   const order: string[] = []
   const pendingFlowEdges: { seq: number; from: string; to: string; message: string }[] = []
+
+  // Aggregate repeated tool/skill calls of one subagent into a single node, so a
+  // subagent shows one "Scrape" node instead of a fan of near-identical tools.
+  // Events of the same subagent share a parent_instance_id (the subagent), so we
+  // key the merged node by that parent.
+  const toolKey = new Map<string, string>()
+  for (const event of input.events) {
+    if (event.event_type === 'flow_connection') continue
+    const kind = roleKind(event.agent_role ?? null, event.agent_id, event.event_type)
+    if (kind !== 'tool' && kind !== 'skill') continue
+    const parent = event.parent_instance_id ?? (typeof event.payload?.parent_instance_id === 'string' ? event.payload.parent_instance_id : null)
+    const key = `${kind}:${parent ?? event.instance_id ?? event.agent_id}`
+    if (event.instance_id) toolKey.set(event.instance_id, key)
+  }
 
   for (const step of input.steps ?? []) {
     if (nodes.has(step.id)) continue
@@ -188,7 +204,7 @@ export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: Persi
     }
     const rawLabel = String(event.payload?.task_summary ?? event.agent_id)
     if (isInternalPlumbing(event.agent_id, rawLabel)) continue
-    const id = event.instance_id ?? `${event.agent_id}:${event.seq}`
+    const id = toolKey.get(event.instance_id ?? '') ?? event.instance_id ?? `${event.agent_id}:${event.seq}`
     const kind = roleKind(event.agent_role ?? null, event.agent_id, event.event_type)
     const existing = nodes.get(id)
     const state = stateFromEvent(event.event_type, event.status)
@@ -243,7 +259,7 @@ export function buildAgentGraph(input: { events: PersistedEvent[]; steps?: Persi
 
   const userMessage = (input.userMessage ?? '').trim()
   if (userMessage) {
-    const orchestrator = [...nodes.values()].find(node => node.kind === 'orchestrator')
+    const orchestrator = (input.activeOrchestratorId ? nodes.get(input.activeOrchestratorId) : null) ?? [...nodes.values()].find(node => node.kind === 'orchestrator')
     if (orchestrator && !nodes.has('user')) {
       nodes.set('user', {
         id: 'user', instanceId: null, kind: 'user', agentId: 'user', label: 'You', objective: 'You',
@@ -285,17 +301,4 @@ function addConsumption(current: UsageRecord, addition: { calls?: number; pages?
 
 function normalizeConsumption(value: { calls?: number; pages?: number; tokens?: number; credits?: number } | null | undefined): UsageRecord {
   return addConsumption(emptyUsage(), value)
-}
-
-/** The same persisted rows always rebuild the same sequence. */
-export function graphFingerprint(graph: CanvasGraph): string {
-  return graph.order.join('|') + '#' + graph.edges.map(edge => `${edge.from}>${edge.to}`).join(',')
-}
-
-export function nodeById(graph: CanvasGraph, id: string): CanvasNode | undefined {
-  return graph.nodes.find(node => node.id === id)
-}
-
-export function failedNodes(graph: CanvasGraph): CanvasNode[] {
-  return graph.nodes.filter(node => node.state === 'failed' || node.state === 'partial')
 }

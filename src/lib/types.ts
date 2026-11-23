@@ -1,5 +1,3 @@
-import { supabase } from './supabase'
-
 export type BrainCategory =
   | 'company_profile'
   | 'offering'
@@ -92,28 +90,21 @@ export interface FormField {
   value?: string | string[]
 }
 
-export interface Task {
-  id: string
-  workspace_id: string
-  conversation_id: string | null
-  type: string
-  status: 'pending' | 'running' | 'awaiting_input' | 'completed' | 'failed'
-  user_request: string
-  plan: { agent: string; label: string }[]
-  result_summary: string | null
-  created_at: string
-  updated_at: string
-}
-
 export interface AgentEvent {
   id: string
   task_id: string
   instance_id?: string
   run_id?: string
+  conversation_id?: string | null
+  parent_instance_id?: string | null
+  correlation_id?: string | null
   seq: number
-  event_type: 'agent_started' | 'agent_tool_used' | 'agent_completed' | 'agent_error' | 'flow_connection'
+  event_type: 'agent_started' | 'agent_completed' | 'agent_error' | 'agent_tool_used' | 'tool_call' | 'delegation' | 'skill_read' | 'flow_connection'
   agent_id: string
   payload: Record<string, unknown>
+  started_at?: string | null
+  ended_at?: string | null
+  failure_reason?: string | null
   created_at: string
 }
 
@@ -203,14 +194,6 @@ export interface WorkspaceSettings {
   updated_at: string
 }
 
-export interface PlatformConnection {
-  id: string
-  platform: Platform
-  account_name: string
-  status: 'connected' | 'expired' | 'disconnected'
-  connected_at: string
-}
-
 export interface AuditEntry {
   id: string
   action: string
@@ -218,10 +201,4 @@ export interface AuditEntry {
   entity_id: string | null
   details: Record<string, unknown>
   created_at: string
-}
-
-export async function getWorkspaceId(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession()
-  const user = data.session?.user
-  return user?.id ?? null
 }

@@ -2,8 +2,6 @@ import type { TaskOrigin, TaskStatus } from '../../lib/contracts'
 import type { BrainNode, Deliverable } from '../../lib/types'
 import type { ResearchArtifacts, ResearchMode } from '../research/contracts'
 export type TaskIntent='simple_answer'|'marketing_research'|'content_creation'|'campaign_planning'|'performance_diagnosis'
-/** Run cap before a failed or interrupted Task can no longer be resumed. */
-export const MAX_TASK_ATTEMPTS=5
 export interface RouteDecision {
  mode:'reply'|'clarify'|'task';reply:string;intent:TaskIntent;quantity:number
  researchMode?:ResearchMode

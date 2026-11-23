@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { useCopy } from '../../hooks/useCopy'
 import { useDialog } from '../../hooks/useDialog'
 import type { TranslationKey } from '../../lib/i18n'
@@ -122,7 +122,7 @@ export default function FacebookConnectionCard() {
     <section className="card p-4 sm:p-6 border border-ink-200/80 shadow-card">
       <h2 className="mb-4 font-bold text-lg text-ink-900">{t('connectedAccounts')}</h2>
       {!status ? (
-        <div className="flex items-center gap-2 text-sm text-ink-400"><Loader2 size={16} className="animate-spin" />{t('loading')}</div>
+        <div className="flex items-center gap-2 text-sm text-ink-400"><Spinner size={16} />{t('loading')}</div>
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -138,7 +138,7 @@ export default function FacebookConnectionCard() {
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmDisconnect(true)}>{t('facebookDisconnect')}</button>
           ) : (
             <button type="button" className="btn-primary flex items-center gap-2" disabled={busy} onClick={connect}>
-              {busy && <Loader2 size={16} className="animate-spin" />}{t('facebookConnect')}
+              {busy && <Spinner size={16} />}{t('facebookConnect')}
             </button>
           )}
 
@@ -170,7 +170,7 @@ export default function FacebookConnectionCard() {
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmDisconnect(false)}>{t('cancel')}</button>
               <button type="button" className="btn-danger flex items-center gap-2" disabled={busy} onClick={disconnect}>
-                {busy && <Loader2 size={16} className="animate-spin" />}{t('facebookDisconnect')}
+                {busy && <Spinner size={16} />}{t('facebookDisconnect')}
               </button>
             </div>
           </div>

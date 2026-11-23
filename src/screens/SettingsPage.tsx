@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { KeyRound, Trash2, Check, Loader2, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react'
+import { KeyRound, Trash2, Check, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { removeAiKey as removeKey, saveAiKey as saveKey } from '../server/key-actions'
 import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -12,7 +13,7 @@ import { useCopy } from '../hooks/useCopy'
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
-  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'], needsBaseUrl: false },
+  { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'], needsBaseUrl: false },
   { id: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'], needsBaseUrl: false },
   { id: 'google', label: 'Google Gemini', models: ['gemini-2.0-flash'], needsBaseUrl: false },
   { id: 'openrouter', label: 'OpenRouter', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku'], needsBaseUrl: false },
@@ -163,7 +164,7 @@ function SettingsContent() {
 
           {loadingInitial ? (
             <div className="flex items-center justify-center p-6 text-ink-400 text-sm gap-2">
-              <Loader2 size={16} className="animate-spin" />
+              <Spinner size={16} />
               {t('loadingSettings')}
             </div>
           ) : (
@@ -194,7 +195,7 @@ function SettingsContent() {
                     title={t('removeKeyTitle')}
                     className="btn-danger px-3 py-2 text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-red-50 self-start sm:self-auto"
                   >
-                    {keyBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={14} />}
+                    {keyBusy ? <Spinner size={13} /> : <Trash2 size={14} />}
                     <span>{t('removeKey')}</span>
                   </button>
                 </div>
@@ -307,7 +308,7 @@ function SettingsContent() {
                 }
                 className="btn-primary mt-5 flex items-center justify-center gap-2 shadow-lift w-full sm:w-auto"
               >
-                {keyBusy && <Loader2 size={16} className="animate-spin" />}
+                {keyBusy && <Spinner size={16} />}
                 <span>{aiKey ? t('updateKey') : t('saveKey')}</span>
                 {keySaved && <Check size={16} />}
               </button>

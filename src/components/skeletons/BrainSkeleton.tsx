@@ -79,8 +79,8 @@ export default function BrainSkeleton() {
               {/* Central hub */}
               <div className="absolute left-1/2 top-1/2 z-10 w-44 -translate-x-1/2 -translate-y-1/2">
                 <div className="brain-map-hub">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20"><SkeletonBox className="h-4 w-4 rounded-md bg-white/40" /></span>
-                  <div className="min-w-0 flex-1 space-y-1.5 ps-2.5">
+                  <span className="brain-map-hub-icon"><SkeletonBox className="h-4 w-4 rounded-md bg-white/40" /></span>
+                  <div className="brain-map-hub-body space-y-1.5">
                     <SkeletonBox className="h-3 w-full rounded-md bg-white/40" />
                     <SkeletonBox className="h-2.5 w-2/3 rounded-md bg-white/30" />
                   </div>

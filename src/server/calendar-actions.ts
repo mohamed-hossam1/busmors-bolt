@@ -94,14 +94,5 @@ export async function updatePosts(ids: string[], change: { status?: PlannedPost[
    const { error: auditError } = await identity.supabase.from('audit_log').insert({ workspace_id: identity.user.id, actor_id: identity.user.id, action: 'post_' + change.status, entity_type: 'planned_post', details: { ids, count: changed } })
    if (auditError) return { error: 'The posts were updated, but their activity record could not be saved. Refresh before retrying.' }
  }
- return { error: null }
-}
-
-export async function deletePosts(ids: string[]): Promise<{ error: string | null }> {
- const identity = await getIdentity()
- if (!identity) return { error: 'Sign in again.' }
- if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some(id => typeof id !== 'string')) return { error: 'Invalid post selection.' }
- const { error } = await identity.supabase.rpc('delete_post', { p_ids: ids })
- if (error) return { error: error.message?.includes('HAS_PUBLISH_HISTORY') ? 'This post has publishing history and cannot be deleted.' : 'The posts could not be deleted. Please retry.' }
- return { error: null }
+  return { error: null }
 }
