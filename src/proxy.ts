@@ -21,6 +21,18 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
   const segment = pathname.split('/')[1] ?? ''
 
+  // 0. An OAuth/PKCE code that lands on any page other than the callback (e.g.
+  // Supabase fell back to the site URL, which the locale step below turns into
+  // "/ar?code=...") must be routed through the server callback so the code is
+  // exchanged and the user is sent to onboarding/employee. Otherwise the code is
+  // never consumed and the user is stranded on a marketing page.
+  if (segment !== 'auth' && request.nextUrl.searchParams.has('code')) {
+    const target = request.nextUrl.clone()
+    target.pathname = '/auth/callback'
+    target.search = search
+    return NextResponse.redirect(target)
+  }
+
   // 1. Ensure the URL carries a locale prefix (/ar/..., /en/...).
   if (!hasLocale(segment)) {
     const locale = detectLocale(request)

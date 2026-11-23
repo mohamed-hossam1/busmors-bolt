@@ -19,14 +19,14 @@ export async function POST(request: Request) {
     const db = createClient(process.env.SUPABASE_URL || url, key, { global: { headers: { Authorization: 'Bearer ' + token } }, auth: { persistSession: false, autoRefreshToken: false } })
 
     // Only retitle when this is still the first user message in the conversation.
-    const { data: countData, error: countError } = await db
+    const { count, error: countError } = await db
       .from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('conversation_id', body.conversationId)
       .eq('workspace_id', user.id)
       .eq('role', 'user')
     if (countError) return apiError(countError)
-    if ((countData?.length ?? 0) > 1) {
+    if ((count ?? 0) > 1) {
       return Response.json({ error: 'Conversation already has a title.' }, { status: 409 })
     }
 

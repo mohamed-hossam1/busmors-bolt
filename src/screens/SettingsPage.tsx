@@ -14,6 +14,7 @@ import { useCopy } from '../hooks/useCopy'
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], needsBaseUrl: false },
   { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'], needsBaseUrl: false },
+  { id: 'sovereigneg', label: 'SovereignEG (Egypt)', models: ['gpt-oss-120b', 'claude-haiku-5.5', 'gpt-6-luna', 'SovereignEG/Qwen3.8-27B-FP8', 'deepseek-v4-flash'], needsBaseUrl: false },
   { id: 'anthropic', label: 'Anthropic (Claude)', models: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'], needsBaseUrl: false },
   { id: 'google', label: 'Google Gemini', models: ['gemini-2.0-flash'], needsBaseUrl: false },
   { id: 'openrouter', label: 'OpenRouter', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku'], needsBaseUrl: false },

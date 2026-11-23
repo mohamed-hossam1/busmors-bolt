@@ -255,6 +255,8 @@ export function resolveApiKeyForProvider(provider: string, explicitKey?: string 
   switch (provider) {
     case 'dahl':
       return process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY || null
+    case 'sovereigneg':
+      return process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY || null
     case 'groq':
       return process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
     case 'anthropic':
@@ -317,7 +319,13 @@ export async function executeWithFallback(options: {
     targets.push({
       provider: fb.provider,
       model: fb.model,
-      baseUrl: (fb as ExecutionTarget).baseUrl ?? (fb.provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : null),
+      baseUrl: (fb as ExecutionTarget).baseUrl ?? (
+        fb.provider === 'dahl'
+          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
+          : fb.provider === 'sovereigneg'
+            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
+            : null
+      ),
       apiKey: (fb as ExecutionTarget).apiKey ?? resolveApiKeyForProvider(fb.provider),
       reasoningEffort: fb.reasoningEffort,
       timeoutMs: fb.timeoutMs ?? 20000,
@@ -407,11 +415,23 @@ async function handleOrchestratorRequest(
 
   const managedKey = opConfig.provider === 'dahl'
     ? ((process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY) ?? null)
-    : (process.env.AI_API_KEY ?? null)
+    : opConfig.provider === 'sovereigneg'
+      ? ((process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY) ?? null)
+      : (process.env.AI_API_KEY ?? null)
   const provider = opConfig.provider || 'groq'
   const model = opConfig.model || 'openai/gpt-oss-120b'
   let key: KeyRow | null = managedKey && provider && model
-    ? { workspace_id: workspaceId, provider, model, custom_base_url: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : (process.env.AI_BASE_URL ?? null), status: 'active' }
+    ? {
+        workspace_id: workspaceId,
+        provider,
+        model,
+        custom_base_url: provider === 'dahl'
+          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
+          : provider === 'sovereigneg'
+            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
+            : (process.env.AI_BASE_URL ?? null),
+        status: 'active'
+      }
     : null
   let plaintextKey: string | null = managedKey
 
@@ -440,7 +460,11 @@ async function handleOrchestratorRequest(
         provider,
         model,
         apiKey: plaintextKey,
-        baseUrl: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : null,
+        baseUrl: provider === 'dahl'
+          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
+          : provider === 'sovereigneg'
+            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
+            : null,
         timeoutMs: 20000,
       },
       fallbacks: AI_FALLBACK_TEMPLATE,
@@ -525,8 +549,14 @@ async function handleSharedCrawlRequest(
 
   const primaryApiKey = crawlConfig.provider === 'dahl'
     ? effectiveDahlKey
-    : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
-  const primaryBaseUrl = crawlConfig.provider === 'dahl' ? dahlBaseUrl : null
+    : crawlConfig.provider === 'sovereigneg'
+      ? resolveApiKeyForProvider('sovereigneg')
+      : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
+  const primaryBaseUrl = crawlConfig.provider === 'dahl'
+    ? dahlBaseUrl
+    : crawlConfig.provider === 'sovereigneg'
+      ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
+      : null
   const primaryTimeout = crawlConfig.provider === 'dahl' ? 25000 : 20000
 
   try {
@@ -541,8 +571,16 @@ async function handleSharedCrawlRequest(
       },
       fallbacks: AI_FALLBACK_TEMPLATE.map((fb) => ({
         ...fb,
-        apiKey: fb.provider === 'dahl' ? (effectiveDahlKey || resolveApiKeyForProvider('dahl')) : (effectiveFallbackKey || resolveApiKeyForProvider(fb.provider)),
-        baseUrl: fb.provider === 'dahl' ? dahlBaseUrl : null,
+        apiKey: fb.provider === 'dahl'
+          ? (effectiveDahlKey || resolveApiKeyForProvider('dahl'))
+          : fb.provider === 'sovereigneg'
+            ? resolveApiKeyForProvider('sovereigneg')
+            : (effectiveFallbackKey || resolveApiKeyForProvider(fb.provider)),
+        baseUrl: fb.provider === 'dahl'
+          ? dahlBaseUrl
+          : fb.provider === 'sovereigneg'
+            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
+            : null,
       })),
       request: baseRequest,
       totalDeadlineMs: 45000,
@@ -626,7 +664,7 @@ async function callProvider(
     return text
   }
 
-  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, dahl, custom
+  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, dahl, sovereigneg, custom
   const base =
     key.provider === 'openai'
       ? 'https://api.openai.com/v1'
@@ -638,11 +676,13 @@ async function callProvider(
             ? 'https://openrouter.ai/api/v1'
             : key.provider === 'dahl'
               ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1').replace(/\/$/, '')
-              : (key.custom_base_url ?? '').replace(/\/$/, '')
+              : key.provider === 'sovereigneg'
+                ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1').replace(/\/$/, '')
+                : (key.custom_base_url ?? '').replace(/\/$/, '')
   if (!base) throw new Error('missing_base_url')
   if (key.provider === 'custom') {
     const configuredAllowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)
-    const allowed = [...new Set([...configuredAllowed, 'https://inference.dahl.global/v1'])]
+    const allowed = [...new Set([...configuredAllowed, 'https://inference.dahl.global/v1', 'https://backend.sovereigneg.com/v1'])]
     if (!base.startsWith('https://') || !allowed.includes(base)) throw new Error('unapproved_base_url')
   }
 

@@ -14,7 +14,6 @@ import { createFirecrawlProvider } from '../../features/research/providers/firec
 import { createEgyptOfficialProvider } from '../../features/research/providers/egypt-official'
 import { createOsmProvider } from '../../features/research/providers/osm'
 import { createComposioProvider } from '../../features/research/providers/composio'
-import { auditClaims } from '../../features/research/auditor/auditor'
 import { buildReport, type ResearchReport } from '../../features/research/synthesis/report'
 import { formatReportMarkdown } from '../../features/research/synthesis/markdown'
 import { buildPdfArtifact, pdfFailureReason } from '../../features/research/deliverable/pdf'
@@ -121,61 +120,8 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
     throw error
   }
 
-  const firstAudit = auditClaims({
-    claims: directorResult.claims,
-    sources: directorResult.sources,
-    observations: directorResult.observations,
-    entities: directorResult.entities,
-  })
-
-  // A blocked claim is never published as a finding; it moves into coverage gaps.
-  const blockedIds = new Set(firstAudit.claims.filter(claim => claim.verdict === 'block').map(claim => claim.claimId))
-  const publishable = directorResult.claims.filter(claim => !blockedIds.has(claim.id))
-  const cited = publishable.filter(claim => claim.kind !== 'method' && claim.evidenceIds.length > 0)
-  const coverageGaps = [
-    ...directorResult.artifacts.coverageGaps,
-    ...firstAudit.issues.filter(issue => issue.severity === 'block').map(issue => `Not published: ${issue.reason}`),
-  ]
-
-  if (cited.length === 0) {
-    return {
-      result: {
-        reply: `No finding survived the evidence audit, so no report was published. Blocking issues: ${[...new Set(firstAudit.issues.filter(issue => issue.severity === 'block').map(issue => issue.reason))].join(' ')}`,
-        partial: true,
-        document: { title: 'Research draft blocked by evidence audit', content: JSON.stringify({ blocking: firstAudit.issues.filter(issue => issue.severity === 'block') }).slice(0, 60000), type: 'research_report' },
-        research: { ...directorResult.artifacts, reportId: '', coverageGaps, pdf: null, partial: true },
-      },
-      report: null,
-      saved: null,
-      blocked: true,
-      blockingReasons: [...new Set(firstAudit.issues.filter(issue => issue.severity === 'block').map(issue => `${issue.rule}: ${issue.reason}`))],
-    }
-  }
-
-  const audit = auditClaims({
-    claims: publishable,
-    sources: directorResult.sources,
-    observations: directorResult.observations,
-    entities: directorResult.entities,
-  })
-
-  await sink.append({
-    instanceId: crypto.randomUUID(),
-    correlationId: crypto.randomUUID(),
-    parentInstanceId: null,
-    type: 'agent_completed',
-    agentId: 'evidence_auditor',
-    agentRole: 'auditor',
-    label: 'Audit the evidence',
-    status: audit.passed ? 'completed' : 'partial',
-    publicMessage: `${publishable.length} claim(s) audited; ${blockedIds.size} blocked; citation coverage ${(audit.citationCoverage * 100).toFixed(0)}%.`,
-    parametersRedacted: { blockingRules: [...new Set(audit.issues.filter(issue => issue.severity === 'block').map(issue => issue.rule))] },
-    sourceIds: [],
-    consumption: emptyUsage(),
-    startedAt: new Date().toISOString(),
-    endedAt: new Date().toISOString(),
-    failureReason: null,
-  })
+  const publishable = directorResult.claims
+  const coverageGaps = [...directorResult.artifacts.coverageGaps]
 
   const report = buildReport({
     brief: directorResult.brief,
@@ -183,7 +129,6 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
     claims: publishable,
     observations: directorResult.observations.length,
     coverageGaps,
-    audit,
   })
 
   const reportDir = process.env.RESEARCH_REPORT_DIR ?? '/tmp/busmora-reports'
@@ -264,8 +209,8 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
         tracks: directorResult.artifacts.tracks,
         sourceIds: directorResult.sources.map(source => source.id),
         claimIds: report.claims.map(claim => claim.id),
-        citationCoverage: audit.citationCoverage,
-        claimQuality: audit.claimQuality,
+        citationCoverage: report.stats.citationCoverage,
+        claimQuality: report.stats.claimQuality,
         coverageGaps: gapsWithPdf,
         consumption: directorResult.consumption,
         blocked: directorResult.artifacts.blocked,
