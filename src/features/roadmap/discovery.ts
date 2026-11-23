@@ -12,80 +12,138 @@ export interface DiscoveryGoalDefinition {
   value: DiscoveryGoal
   label: string
   description: string
+  icon: string
 }
 
+/**
+ * Business-situation challenges. These replace marketing jargon with plain,
+ * recognizable situations a small-business owner can self-identify with. The
+ * `value` keys are the persisted goal keys; legacy keys are normalized to these.
+ */
 export const DISCOVERY_GOALS: DiscoveryGoalDefinition[] = [
   {
-    value: 'acquire_first_customers',
-    label: 'Win my first customers',
-    description: 'Find a believable first route to paying customers.',
+    value: 'validate_idea',
+    label: 'Validate my business idea',
+    description: 'I have a business idea and want to know whether there is a real market for it before investing more time or money.',
+    icon: 'lightbulb',
+  },
+  {
+    value: 'win_first_customers',
+    label: 'Get my first customers',
+    description: 'I have launched my business, but I am struggling to acquire my first customers.',
+    icon: 'user-plus',
   },
   {
     value: 'grow_customers',
-    label: 'Grow customers from what already works',
-    description: 'Improve the motion that already produces customers.',
+    label: 'Grow my customer base',
+    description: 'I already have customers, but growth is slow or inconsistent.',
+    icon: 'trending-up',
   },
   {
     value: 'convert_inquiries',
-    label: 'Turn more inquiries into customers',
-    description: 'Fix the step between interest and a real purchase.',
+    label: 'Convert more leads into customers',
+    description: 'People are interested in my product or service, but not enough of them actually buy.',
+    icon: 'target',
+  },
+  {
+    value: 'unprofitable_marketing',
+    label: 'Make my marketing profitable',
+    description: 'I spend money or effort on marketing, but the results are not producing the profit I expected.',
+    icon: 'coins',
   },
   {
     value: 'launch_offer',
-    label: 'Launch a new offer',
-    description: 'Prepare a launch that fits your real capacity.',
+    label: 'Launch a new product or offer',
+    description: 'I want to launch a new product, service, or offer and need a strategy to make it successful.',
+    icon: 'rocket',
   },
   {
-    value: 'repeat_referral',
-    label: 'Increase repeat and referral revenue',
-    description: 'Build a reason and a moment for customers to return.',
+    value: 'increase_repeat_referral',
+    label: 'Increase repeat purchases and referrals',
+    description: 'I have customers, but I struggle to get them to return or recommend my business.',
+    icon: 'repeat',
   },
   {
-    value: 'custom',
-    label: 'Something else',
-    description: 'Describe the outcome in your own words.',
+    value: 'something_else',
+    label: 'I am not sure what is wrong',
+    description: 'I know my business could perform better, but I do not know where the problem is.',
+    icon: 'help-circle',
   },
 ]
 
 export const DISCOVERY_GOALS_AR: DiscoveryGoalDefinition[] = [
   {
-    value: 'acquire_first_customers',
-    label: 'كسب أول عملاء',
-    description: 'إيجاد مسار واقعي للوصول إلى أول عملاء يدفعون مقابل خدمتك.',
+    value: 'validate_idea',
+    label: 'التحقق من جدوى فكرتي',
+    description: 'لدي فكرة مشروع وأريد معرفة ما إذا كان هناك طلب حقيقي عليها قبل استثمار المزيد من الوقت أو المال.',
+    icon: 'lightbulb',
+  },
+  {
+    value: 'win_first_customers',
+    label: 'الحصول على أول عملاء',
+    description: 'أطلقت مشروعي، لكنني أواجه صعوبة في اكتساب أول عملائي.',
+    icon: 'user-plus',
   },
   {
     value: 'grow_customers',
-    label: 'تنمية العملاء من المسار الحالي',
-    description: 'تطوير وتحسين الأسلوب الذي يجلب عملاء بالفعل الآن.',
+    label: 'تنمية قاعدة عملائي',
+    description: 'لدي عملاء بالفعل، لكن النمو بطيء أو غير مستقر.',
+    icon: 'trending-up',
   },
   {
     value: 'convert_inquiries',
-    label: 'تحويل المزيد من الاستفسارات إلى عملاء',
-    description: 'معالجة العقبات بين إبداء الاهتمام وإتمام الشراء الفعلي.',
+    label: 'تحويل المزيد من الاهتمامات إلى عملاء',
+    description: 'الناس مهتمون بمنتجي أو خدمتي، لكن ليس بالعدد الكافي من يشترون فعلياً.',
+    icon: 'target',
+  },
+  {
+    value: 'unprofitable_marketing',
+    label: 'جعل تسويقي مربحاً',
+    description: 'أنفق مالاً أو جهداً على التسويق، لكن النتائج لا تحقق الربح الذي توقعته.',
+    icon: 'coins',
   },
   {
     value: 'launch_offer',
-    label: 'إطلاق عرض جديد',
-    description: 'تجهيز خطة إطلاق تناسب طاقتك الاستيعابية وإمكانياتك الفعلية.',
+    label: 'إطلاق منتج أو عرض جديد',
+    description: 'أريد إطلاق منتج أو خدمة أو عرض جديد وأحتاج استراتيجية لإنجاحه.',
+    icon: 'rocket',
   },
   {
-    value: 'repeat_referral',
+    value: 'increase_repeat_referral',
     label: 'زيادة الشراء المتكرر والترشيحات',
-    description: 'خلق سبب وتوقيت مناسب لعودة العملاء وترشيحك للآخرين.',
+    description: 'لدي عملاء، لكنني أعاني في جعلهم يعودون أو يرشحون نشاطي.',
+    icon: 'repeat',
   },
   {
-    value: 'custom',
-    label: 'هدف آخر',
-    description: 'صف النتيجة المرجوة بأسلوبك وكلماتك الخاصة.',
+    value: 'something_else',
+    label: 'لست متأكداً من المشكلة',
+    description: 'أعرف أن نشاطي يمكن أن يؤدي بشكل أفضل، لكنني لا أعرف أين تكمن المشكلة.',
+    icon: 'help-circle',
   },
 ]
+
+/** Legacy goal keys (pre-challenge taxonomy) mapped to their challenge key. */
+const LEGACY_GOAL_MAP: Readonly<Record<string, DiscoveryGoal>> = {
+  acquire_first_customers: 'win_first_customers',
+  repeat_referral: 'increase_repeat_referral',
+  custom: 'something_else',
+}
+
+/** Map any stored/legacy goal key to a current challenge key. */
+export function normalizeGoal(goal: string): DiscoveryGoal {
+  const mapped = LEGACY_GOAL_MAP[goal]
+  if (mapped) return mapped
+  if (DISCOVERY_GOALS.some((item) => item.value === goal)) return goal as DiscoveryGoal
+  return 'something_else'
+}
 
 export function getDiscoveryGoals(locale?: string): DiscoveryGoalDefinition[] {
   return locale === 'ar' ? DISCOVERY_GOALS_AR : DISCOVERY_GOALS
 }
 
 export function goalDefinition(goal: string, locale?: string): DiscoveryGoalDefinition | undefined {
-  return getDiscoveryGoals(locale).find((item) => item.value === goal) ?? DISCOVERY_GOALS.find((item) => item.value === goal)
+  const normalized = normalizeGoal(goal)
+  return getDiscoveryGoals(locale).find((item) => item.value === normalized) ?? DISCOVERY_GOALS.find((item) => item.value === normalized)
 }
 
 export function eligibleBrainFacts(facts: BrainNode[]): BrainNode[] {
@@ -145,6 +203,7 @@ function prefillFromNode(node: BrainNode): DiscoveryPrefill {
  * it is never filled with invented content.
  */
 export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuestion[] {
+  const goal = normalizeGoal(context.goal)
   const facts = eligibleBrainFacts(context.facts)
   const audience = facts.find((fact) => fact.category === 'audience')
   const offerings = facts.filter((fact) => fact.category === 'offering').slice(0, 4)
@@ -152,7 +211,7 @@ export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuesti
   const plan: PlannedQuestion[] = []
   let position = 0
   const add = (question_key: string, schema: DiscoveryQuestionSchema, prefill?: DiscoveryPrefill) => {
-    plan.push({ question_key, position: position++, branch: context.goal, schema, prefill })
+    plan.push({ question_key, position: position++, branch: goal, schema, prefill })
   }
 
   if (!profile && offerings.length === 0) {
@@ -164,7 +223,7 @@ export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuesti
     })
   }
 
-  if (context.goal === 'custom') {
+  if (goal === 'something_else') {
     add('custom_goal', {
       label: 'What outcome do you want?',
       why: 'A clear outcome keeps every later step tied to a real result instead of activity.',
@@ -246,85 +305,227 @@ export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuesti
     ]),
   })
 
-  if (context.goal === 'acquire_first_customers') {
-    add('first_customer_route', {
-      label: 'Where are the first customers most likely to come from?',
-      why: 'A first-customer plan should start with a route you can actually reach.',
-      type: 'choice',
-      allowOther: true,
-      options: uniqueOptions([
-        option('People I already know', 'People I already know', 'Warm contacts and past conversations.'),
-        option('Local community or partners', 'Local community or partners', 'Groups, neighbours or complementary businesses.'),
-        option('Social content', 'Social content', 'A consistent public presence on a platform you use.'),
-        option('Paid promotion', 'Paid promotion', 'Only if a real budget exists.'),
-        option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
-      ]),
-    })
-  } else if (context.goal === 'grow_customers') {
-    add('growth_motion', {
-      label: 'Which growth motion should the plan test first?',
-      why: 'Testing one motion is more useful than spreading effort across five.',
-      type: 'choice',
-      allowOther: true,
-      options: uniqueOptions([
-        option('Repeat purchase', 'Repeat purchase', 'Bring an existing customer back.'),
-        option('Referrals', 'Referrals', 'Ask happy customers to introduce someone.'),
-        option('Higher average order', 'Higher average order', 'Increase value per purchase.'),
-        option('A new customer segment', 'A new customer segment', 'Reach a group you have not served.'),
-        option('Paid acquisition', 'Paid acquisition', 'Only if a real budget exists.'),
-        option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
-      ]),
-    })
-  } else if (context.goal === 'convert_inquiries') {
-    add('inquiry_response', {
-      label: 'Where does the inquiry path break most often?',
-      why: 'Conversion work should target the actual break, not a generic funnel.',
-      type: 'choice',
-      allowOther: true,
-      options: uniqueOptions([
-        option('Slow replies', 'Slow replies', 'The next step does not happen quickly.'),
-        option('Unclear pricing', 'Unclear pricing', 'People cannot judge whether it fits.'),
-        option('Weak qualification', 'Weak qualification', 'Time goes to people who cannot buy.'),
-        option('Not enough proof', 'Not enough proof', 'People are interested but not convinced.'),
-        option('Too many steps', 'Too many steps', 'The path asks for too much before buying.'),
-        option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
-      ]),
-    })
-  } else if (context.goal === 'launch_offer') {
-    add('launch_scope', {
-      label: 'What launch shape fits your capacity?',
-      why: 'A launch that matches delivery capacity protects the customer experience.',
-      type: 'choice',
-      allowOther: true,
-      options: uniqueOptions([
-        option('Small pilot first', 'Small pilot first', 'Test with a limited group before scaling.'),
-        option('Full launch', 'Full launch', 'You can deliver at the full stated scope.'),
-        option('Waitlist first', 'Waitlist first', 'Prove demand before delivery.'),
-        option('Bundle with an existing offer', 'Bundle with an existing offer', 'Attach the new offer to something proven.'),
-        option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
-      ]),
-    })
-  } else if (context.goal === 'repeat_referral') {
-    add('repeat_trigger', {
-      label: 'When should repeat or referral work happen?',
-      why: 'A trigger makes follow-up part of the customer journey instead of a one-off campaign.',
-      type: 'choice',
-      allowOther: true,
-      options: uniqueOptions([
-        option('After the first purchase', 'After the first purchase', 'Follow up while the experience is fresh.'),
-        option('A fixed time later', 'A fixed time later', 'Use a realistic interval, not a made-up one.'),
-        option('Around a seasonal moment', 'Around a seasonal moment', 'Tie the ask to a real occasion.'),
-        option('When a customer asks', 'When a customer asks', 'Make the next step easy at the moment of interest.'),
-        option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
-      ]),
-    })
-  } else if (context.goal === 'custom') {
-    add('custom_first_step', {
-      label: 'What is the first result you need?',
-      why: 'A preliminary plan needs one real first result, even when the outcome is custom.',
-      type: 'long_text',
-      placeholder: 'Describe the first useful result, not the whole transformation.',
-    })
+  switch (goal) {
+    case 'validate_idea':
+      add('idea_problem', {
+        label: 'What problem are you trying to solve?',
+        why: 'A clear problem statement keeps validation focused on a real need, not a feature list.',
+        type: 'long_text',
+        placeholder: 'Describe the problem in one or two sentences.',
+      })
+      add('idea_who', {
+        label: 'Who do you believe experiences this problem?',
+        why: 'Naming the people who feel the problem makes the market check concrete.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('A specific group of people', 'A specific group of people', 'A group you can describe and reach.'),
+          option('Local households or community', 'Local households or community', 'People in a specific area.'),
+          option('Businesses', 'Businesses', 'Companies with this problem.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('idea_alternatives', {
+        label: 'What are people using instead today?',
+        why: 'The alternatives reveal whether a real market already exists and how you differ.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('Nothing — they do without', 'Nothing — they do without', 'No current solution.'),
+          option('A competitor product or service', 'A competitor product or service', 'An existing business already serves them.'),
+          option('A manual or improvised process', 'A manual or improvised process', 'They cope with a workaround.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('idea_validation', {
+        label: 'Have you tested this with real potential customers?',
+        why: 'Real contact beats assumptions; this separates a hypothesis from a proven demand.',
+        type: 'choice',
+        options: uniqueOptions([
+          option('Not yet', 'Not yet', 'No real contact so far.'),
+          option('Informal conversations', 'Informal conversations', 'Talked to some people, no commitment.'),
+          option('Pre-orders or a small pilot', 'Pre-orders or a small pilot', 'People committed time or money.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      break
+    case 'win_first_customers':
+      add('first_customer_route', {
+        label: 'Where are the first customers most likely to come from?',
+        why: 'A first-customer plan should start with a route you can actually reach.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('People I already know', 'People I already know', 'Warm contacts and past conversations.'),
+          option('Local community or partners', 'Local community or partners', 'Groups, neighbours or complementary businesses.'),
+          option('Social content', 'Social content', 'A consistent public presence on a platform you use.'),
+          option('Paid promotion', 'Paid promotion', 'Only if a real budget exists.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('first_channels_tried', {
+        label: 'What have you tried so far to reach customers?',
+        why: 'Knowing what already happened avoids repeating what did not work.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('Word of mouth', 'Word of mouth', 'Referrals and personal recommendations.'),
+          option('Social media', 'Social media', 'Posts, reels or a page you maintain.'),
+          option('Local or in-person', 'Local or in-person', 'Visits, events or local listings.'),
+          option('Paid ads', 'Paid ads', 'Any paid promotion so far.'),
+          option('Nothing yet', 'Nothing yet', 'No outreach so far.'),
+        ]),
+      })
+      break
+    case 'grow_customers':
+      add('growth_motion', {
+        label: 'Which growth motion should the plan test first?',
+        why: 'Testing one motion is more useful than spreading effort across five.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('Repeat purchase', 'Repeat purchase', 'Bring an existing customer back.'),
+          option('Referrals', 'Referrals', 'Ask happy customers to introduce someone.'),
+          option('Higher average order', 'Higher average order', 'Increase value per purchase.'),
+          option('A new customer segment', 'A new customer segment', 'Reach a group you have not served.'),
+          option('Paid acquisition', 'Paid acquisition', 'Only if a real budget exists.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('growth_customer_count', {
+        label: 'About how many active customers do you have right now?',
+        why: 'A rough baseline lets the plan measure growth instead of guessing.',
+        type: 'text',
+        placeholder: 'For example: around 40 regulars, or a few hundred a year.',
+      })
+      add('growth_trend', {
+        label: 'Is your customer base growing, stable, or declining?',
+        why: 'The trend decides whether the plan should defend, accelerate or repair.',
+        type: 'choice',
+        options: uniqueOptions([
+          option('Growing', 'Growing', 'More customers than before.'),
+          option('Stable', 'Stable', 'About the same over time.'),
+          option('Declining', 'Declining', 'Fewer customers than before.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      break
+    case 'convert_inquiries':
+      add('inquiry_response', {
+        label: 'Where does the inquiry path break most often?',
+        why: 'Conversion work should target the actual break, not a generic funnel.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('Slow replies', 'Slow replies', 'The next step does not happen quickly.'),
+          option('Unclear pricing', 'Unclear pricing', 'People cannot judge whether it fits.'),
+          option('Weak qualification', 'Weak qualification', 'Time goes to people who cannot buy.'),
+          option('Not enough proof', 'Not enough proof', 'People are interested but not convinced.'),
+          option('Too many steps', 'Too many steps', 'The path asks for too much before buying.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('inquiry_volume', {
+        label: 'Roughly how many inquiries do you get in a typical month?',
+        why: 'Volume shows whether the issue is too few leads or poor conversion.',
+        type: 'text',
+        placeholder: 'For example: about 15 messages a month.',
+      })
+      add('inquiry_response_time', {
+        label: 'How quickly do you respond to an inquiry?',
+        why: 'Response speed is often the cheapest conversion lever to fix.',
+        type: 'choice',
+        options: uniqueOptions([
+          option('Within an hour', 'Within an hour', 'Fast, same-session replies.'),
+          option('Same day', 'Same day', 'Replies later the same day.'),
+          option('A few days', 'A few days', 'Replies take several days.'),
+          option('It varies', 'It varies', 'No consistent response time.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      break
+    case 'unprofitable_marketing':
+      add('profit_channels', {
+        label: 'Which marketing channels do you pay for, and roughly how much each month?',
+        why: 'Profitability starts from the real spend per channel; no numbers means no profit claim.',
+        type: 'long_text',
+        placeholder: 'For example: Facebook ads 1,500 EGP, printed flyers 300 EGP.',
+      })
+      add('profit_outcome', {
+        label: 'What would "profitable marketing" look like for you?',
+        why: 'We will not calculate profit without real revenue, cost and margin data; this captures your target instead.',
+        type: 'long_text',
+        placeholder: 'Describe the result you want, e.g. covering ad spend and earning a set margin.',
+      })
+      break
+    case 'launch_offer':
+      add('launch_scope', {
+        label: 'What launch shape fits your capacity?',
+        why: 'A launch that matches delivery capacity protects the customer experience.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('Small pilot first', 'Small pilot first', 'Test with a limited group before scaling.'),
+          option('Full launch', 'Full launch', 'You can deliver at the full stated scope.'),
+          option('Waitlist first', 'Waitlist first', 'Prove demand before delivery.'),
+          option('Bundle with an existing offer', 'Bundle with an existing offer', 'Attach the new offer to something proven.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('launch_offer_detail', {
+        label: 'Describe the new product or offer in a sentence or two.',
+        why: 'The plan needs a concrete offer to build positioning and channels around.',
+        type: 'long_text',
+        placeholder: 'What it is, who it is for, and the main benefit.',
+      })
+      add('launch_timing', {
+        label: 'When do you want to launch?',
+        why: 'A target date turns the plan into a schedule instead of a wish.',
+        type: 'text',
+        placeholder: 'For example: in six weeks, or before a specific season.',
+      })
+      break
+    case 'increase_repeat_referral':
+      add('repeat_trigger', {
+        label: 'When should repeat or referral work happen?',
+        why: 'A trigger makes follow-up part of the customer journey instead of a one-off campaign.',
+        type: 'choice',
+        allowOther: true,
+        options: uniqueOptions([
+          option('After the first purchase', 'After the first purchase', 'Follow up while the experience is fresh.'),
+          option('A fixed time later', 'A fixed time later', 'Use a realistic interval, not a made-up one.'),
+          option('Around a seasonal moment', 'Around a seasonal moment', 'Tie the ask to a real occasion.'),
+          option('When a customer asks', 'When a customer asks', 'Make the next step easy at the moment of interest.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      add('repeat_frequency', {
+        label: 'How often does a typical customer buy from you?',
+        why: 'Purchase frequency decides whether a loyalty or win-back motion makes sense.',
+        type: 'text',
+        placeholder: 'For example: once a month, or once a year.',
+      })
+      add('repeat_feedback', {
+        label: 'Do you collect feedback or have a follow-up process?',
+        why: 'Repeat and referral work needs a reason and a moment, which start with listening.',
+        type: 'choice',
+        options: uniqueOptions([
+          option('Yes, both feedback and follow-up', 'Yes, both feedback and follow-up', 'You ask and you follow up.'),
+          option('Feedback only', 'Feedback only', 'You collect opinions but rarely follow up.'),
+          option('Follow-up only', 'Follow-up only', 'You reach out but do not ask for feedback.'),
+          option('Neither yet', 'Neither yet', 'No structured listening or follow-up.'),
+          option('Not sure yet', 'Not sure yet', 'This will stay an open unknown.'),
+        ]),
+      })
+      break
+    case 'something_else':
+      add('custom_first_step', {
+        label: 'What is the first result you need?',
+        why: 'A plan needs one real first result, even when the outcome is not yet clear.',
+        type: 'long_text',
+        placeholder: 'Describe the first useful result, not the whole transformation.',
+      })
+      break
   }
 
   add('success_signal', {
@@ -481,6 +682,119 @@ export const QUESTION_TRANSLATIONS_AR: Record<string, QuestionLocalization> = {
     label: 'ما الذي سيُعتبر دليلاً على التقدم الحقيقي في الأسابيع الثمانية القادمة؟',
     why: 'تحديد إشارة النجاح يسمح للخطة بفصل التقدم الفعلي عن مجرد الانشغال بأنشطة.',
     placeholder: 'مثال: 5 محادثات مع عملاء مؤهلين وتجربتين مدفوعتين.',
+  },
+  idea_problem: {
+    label: 'ما المشكلة التي تحاول حلها؟',
+    why: 'وضوح المشكلة يحافظ على تركيز التحقق على حاجة حقيقية وليس قائمة ميزات.',
+    placeholder: 'صف المشكلة في جملة أو جملتين.',
+  },
+  idea_who: {
+    label: 'من برأيك يعاني من هذه المشكلة؟',
+    why: 'تحديد من يشعر بالمشكلة يجعل فحص السوق ملموساً.',
+    options: {
+      'A specific group of people': { label: 'فئة محددة من الناس', detail: 'مجموعة يمكنك وصفها والوصول إليها.' },
+      'Local households or community': { label: 'أسر محلية أو مجتمع', detail: 'أشخاص في منطقة محددة.' },
+      'Businesses': { label: 'شركات ومؤسسات', detail: 'شركات لديها هذه المشكلة.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
+  },
+  idea_alternatives: {
+    label: 'ماذا يستخدم الناس بدلاً من ذلك حالياً؟',
+    why: 'تكشف البدائل ما إذا كان هناك سوق حقيقي وكيف تختلف أنت.',
+    options: {
+      'Nothing — they do without': { label: 'لا شيء — يستغنون عنها', detail: 'لا يوجد حل حالي.' },
+      'A competitor product or service': { label: 'منتج أو خدمة منافسة', detail: 'نشاط تجاري موجود يخدمهم بالفعل.' },
+      'A manual or improvised process': { label: 'عملية يدوية أو مؤقتة', detail: 'يتعاملون معها بطريقة بدائية.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
+  },
+  idea_validation: {
+    label: 'هل اختبرت الفكرة مع عملاء محتملين حقيقيين؟',
+    why: 'التواصل الحقيقي أقوى من الافتراضات؛ وهذا يفصل الفرضية عن الطلب المثبت.',
+    options: {
+      'Not yet': { label: 'ليس بعد', detail: 'لا تواصل حقيقي حتى الآن.' },
+      'Informal conversations': { label: 'محادثات غير رسمية', detail: 'تحدثت مع بعضهم دون التزام.' },
+      'Pre-orders or a small pilot': { label: 'طلبات مسبقة أو تجربة صغيرة', detail: 'التزم أشخاص بوقت أو مال.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
+  },
+  first_channels_tried: {
+    label: 'ماذا جربت حتى الآن للوصول إلى العملاء؟',
+    why: 'معرفة ما حدث بالفعل تتجنب تكرار ما لم ينجح.',
+    options: {
+      'Word of mouth': { label: 'التوصيات الشفهية', detail: 'إحالات وتوصيات شخصية.' },
+      'Social media': { label: 'وسائل التواصل الاجتماعي', detail: 'منشورات أو صفحة تديرها.' },
+      'Local or in-person': { label: 'محلي أو حضوري', detail: 'زيارات أو فعاليات أو إعلانات محلية.' },
+      'Paid ads': { label: 'إعلانات ممولة', detail: 'أي ترويج مدفوع حتى الآن.' },
+      'Nothing yet': { label: 'لا شيء حتى الآن', detail: 'لا تواصل فعلي حتى الآن.' },
+    },
+  },
+  growth_customer_count: {
+    label: 'كم عدد العملاء النشطين لديك حالياً تقريباً؟',
+    why: 'خط أساس تقريبي يسمح للخطة بقياس النمو بدلاً من التخمين.',
+    placeholder: 'مثال: حوالي 40 عميلاً دائماً، أو بضع مئات سنوياً.',
+  },
+  growth_trend: {
+    label: 'هل قاعدة عملائك تنمو أم مستقرة أم تتناقص؟',
+    why: 'الاتجاه يحدد ما إذا كان على الخطة أن تدافع أو تتسارع أو تعالج تراجعاً.',
+    options: {
+      'Growing': { label: 'تنمو', detail: 'عملاء أكثر من السابق.' },
+      'Stable': { label: 'مستقرة', detail: 'تقريباً كما هي عبر الوقت.' },
+      'Declining': { label: 'تتناقص', detail: 'عملاء أقل من السابق.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
+  },
+  inquiry_volume: {
+    label: 'كم عدد الاستفسارات التي تصلك في شهر نموذجي تقريباً؟',
+    why: 'الحجم يوضح ما إذا كانت المشكلة قلة العملاء المحتملين أم ضعف التحويل.',
+    placeholder: 'مثال: حوالي 15 رسالة شهرياً.',
+  },
+  inquiry_response_time: {
+    label: 'ما مدى سرعة ردك على الاستفسار؟',
+    why: 'سرعة الرد غالباً أرخص رافعة يمكن إصلاحها لتحسين التحويل.',
+    options: {
+      'Within an hour': { label: 'خلال ساعة', detail: 'ردود سريعة في نفس الجلسة.' },
+      'Same day': { label: 'في نفس اليوم', detail: 'ردود في وقت لاحق من نفس اليوم.' },
+      'A few days': { label: 'خلال أيام', detail: 'الردود تستغرق عدة أيام.' },
+      'It varies': { label: 'يختلف', detail: 'لا يوجد وقت رد ثابت.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
+  },
+  profit_channels: {
+    label: 'ما قنوات التسويق التي تدفع مقابلها، وكم تقريباً كل شهر؟',
+    why: 'الربحية تبدأ من المصروف الحقيقي لكل قناة؛ وبدون أرقام لا يمكن ادعاء ربح.',
+    placeholder: 'مثال: إعلانات فيسبوك 1500 جنيه، مطبوعات 300 جنيه.',
+  },
+  profit_outcome: {
+    label: 'كيف سيبدو "التسويق المربح" بالنسبة لك؟',
+    why: 'لن نحسب الربح دون بيانات حقيقية للإيراد والتكلفة والهامش؛ هذا يسجل هدفك بدلاً من ذلك.',
+    placeholder: 'صف النتيجة التي تريدها، مثل تغطية تكلفة الإعلانات وتحقيق هامش محدد.',
+  },
+  launch_offer_detail: {
+    label: 'صف المنتج أو العرض الجديد في جملة أو جملتين.',
+    why: 'تحتاج الخطة إلى عرض ملموس لبناء التموضع والقنوات حوله.',
+    placeholder: 'ما هو، ولمن، وما الفائدة الأساسية.',
+  },
+  launch_timing: {
+    label: 'متى تريد الإطلاق؟',
+    why: 'التاريخ المستهدف يحول الخطة إلى جدول زمني بدلاً من أمنية.',
+    placeholder: 'مثال: خلال ستة أسابيع، أو قبل موسم معين.',
+  },
+  repeat_frequency: {
+    label: 'كم مرة يشتري العميل النموذجي منك؟',
+    why: 'تكرار الشراء يحدد ما إذا كان برنامج ولاء أو استرجاع العملاء منطقياً.',
+    placeholder: 'مثال: مرة شهرياً، أو مرة سنوياً.',
+  },
+  repeat_feedback: {
+    label: 'هل تجمع ملاحظات العملاء أو لديك عملية متابعة؟',
+    why: 'عمل التكرار والإحالة يحتاج سبباً ولحظة، وكلاهما يبدأ بالاستماع.',
+    options: {
+      'Yes, both feedback and follow-up': { label: 'نعم، ملاحظات ومتابعة', detail: 'تسأل وتتابع.' },
+      'Feedback only': { label: 'ملاحظات فقط', detail: 'تجمع الآراء لكنك نادراً ما تتابع.' },
+      'Follow-up only': { label: 'متابعة فقط', detail: 'تتواصل لكنك لا تطلب ملاحظات.' },
+      'Neither yet': { label: 'لا هذا ولا ذاك', detail: 'لا استماع أو متابعة منظمة.' },
+      'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
+    },
   },
 }
 

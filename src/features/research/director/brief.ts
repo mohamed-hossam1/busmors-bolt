@@ -247,6 +247,50 @@ export function inferGovernorates(request: string): string[] {
   return EGYPT_GOVERNORATES.filter(name => lower.includes(name.toLowerCase()) || (name === 'Cairo' && /القاهرة/.test(request)) || (name === 'Giza' && /الجيزة/.test(request)))
 }
 
+/**
+ * Business-specific search queries derived from the brand, category, audience
+ * and geography. These replace generic "competitors in Egypt" style queries so
+ * retrieval starts from the actual business (e.g. "Man el Nasr") rather than a
+ * broad category. Brand and category terms are prioritised first.
+ */
+export function buildResearchQueries(brief: ResearchBrief, limit = 8): string[] {
+  const brand = (brief.businessProfile.name ?? '').trim()
+  const category = brief.category.label.trim()
+  const categoryAr = brief.category.labelAr.trim()
+  const audience = (brief.businessProfile.audience ?? '').trim()
+  const governorates = brief.geography.governorates.slice(0, 3)
+  const geo = governorates[0] ?? brief.geography.label
+  const request = brief.request.trim()
+
+  const candidates: string[] = []
+  if (brand) {
+    candidates.push(brand)
+    candidates.push(`${brand} competitors`)
+    candidates.push(`${brand} competitors ${geo}`.trim())
+    if (category) candidates.push(`${brand} ${category} ${geo}`.trim())
+  }
+  if (request && request.toLowerCase() !== brand.toLowerCase() && request.length <= 80) {
+    candidates.push(request)
+  }
+  if (category) {
+    candidates.push(`${category} ${geo}`.trim())
+    for (const governorate of governorates.slice(1)) candidates.push(`${category} ${governorate}`.trim())
+    if (audience) candidates.push(`${category} ${audience}`.trim())
+    if (categoryAr) candidates.push(`${categoryAr} ${geo}`.trim())
+  }
+
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const candidate of candidates) {
+    const key = candidate.replace(/\s+/g, ' ').trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    output.push(candidate.replace(/\s+/g, ' ').trim())
+    if (output.length >= limit) break
+  }
+  return output
+}
+
 export function detectRequestLanguage(request: string): ResearchLanguage | 'mixed' {
   return detectLanguage(request)
 }

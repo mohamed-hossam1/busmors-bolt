@@ -16,7 +16,7 @@ const corsHeaders = {
 
 // Orchestrator chat operations run without a task/allowance row: they are bounded
 // by a fixed system prompt, a low token cap and a short provider timeout.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer'])
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title'])
 
 interface GenerateRequest {
   signal?: AbortSignal

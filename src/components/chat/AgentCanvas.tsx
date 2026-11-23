@@ -36,7 +36,7 @@ import type { AgentEvent } from '../../lib/types'
 import { useCopy } from '../../hooks/useCopy'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
 import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
-import { buildAgentGraph, type CanvasNode, type CanvasNodeKind, type PersistedEvent } from '../../features/research/canvas/graph'
+import { buildAgentGraph, type CanvasGraph, type CanvasNode, type CanvasNodeKind, type PersistedEvent } from '../../features/research/canvas/graph'
 
 export type CanvasPreviewPost = PostPreviewData
 const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
@@ -142,6 +142,74 @@ const nodeTypes = {
   postPreview: PreviewNode,
 }
 
+function stableJitter(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return Math.abs(h) % 3
+}
+
+/**
+ * Hierarchical layout derived from the real parent→child edges. Each generation
+ * (nodes whose parent is already placed) becomes one horizontal row, so the tree
+ * reads top-down instead of a repeating three-column grid.
+ */
+function buildHierarchicalLayout(graph: CanvasGraph): Map<string, { x: number; y: number }> {
+  const pos = new Map<string, { x: number; y: number }>()
+  const { nodes, edges } = graph
+  if (nodes.length === 0) return pos
+  const ids = new Set(nodes.map(node => node.id))
+  const parent = new Map<string, string>()
+  for (const edge of edges) {
+    if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) continue
+    if (!parent.has(edge.to)) parent.set(edge.to, edge.from)
+  }
+
+  const TOP = 20
+  const ROW_GAP = 150
+  const COL_GAP = 240
+  const CENTER = 320
+  const placed = new Set<string>()
+  let rowY = TOP
+
+  const placeRow = (row: CanvasNode[]) => {
+    const rowWidth = (row.length - 1) * COL_GAP
+    row.forEach((node, index) => {
+      pos.set(node.id, { x: CENTER - rowWidth / 2 + index * COL_GAP + stableJitter(node.id) * 4, y: rowY })
+      placed.add(node.id)
+    })
+    rowY += ROW_GAP
+  }
+
+  const roots = nodes.filter(node => !parent.has(node.id))
+  const user = roots.find(node => node.kind === 'user')
+  if (user) {
+    placeRow([user])
+    rowY += 40
+  }
+  const otherRoots = roots.filter(node => node.kind !== 'user')
+  if (otherRoots.length) placeRow(otherRoots)
+
+  let pending = nodes.filter(node => !placed.has(node.id))
+  let guard = 0
+  while (pending.length > 0 && guard++ < 200) {
+    const row = pending.filter(node => {
+      const parentId = parent.get(node.id)
+      return !parentId || placed.has(parentId)
+    })
+    if (row.length === 0) break
+    placeRow(row)
+    const placedIds = new Set(row.map(node => node.id))
+    pending = pending.filter(node => !placedIds.has(node.id))
+  }
+  if (pending.length > 0) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(pending.length)))
+    pending.forEach((node, index) => {
+      pos.set(node.id, { x: CENTER + (index % cols - (cols - 1) / 2) * COL_GAP, y: rowY + Math.floor(index / cols) * ROW_GAP })
+    })
+  }
+  return pos
+}
+
 export default function AgentCanvas({
   conversationId,
   events,
@@ -177,12 +245,9 @@ export default function AgentCanvas({
   }), [events, running, userMessage])
 
   useEffect(() => {
-    const newNodes: Node[] = graph.nodes.map((node, index) => {
-      const isEntry = graph.entryId !== null && node.id === graph.entryId
-      const position = userPositionsRef.current[node.id] ?? {
-        x: isEntry ? 300 : 60 + (index % 3) * 230,
-        y: isEntry ? 20 : 150 + Math.floor(index / 3) * 130,
-      }
+    const layout = buildHierarchicalLayout(graph)
+    const newNodes: Node[] = graph.nodes.map((node) => {
+      const position = userPositionsRef.current[node.id] ?? layout.get(node.id) ?? { x: 300, y: 20 }
       return {
         id: node.id,
         type: 'agentNode',

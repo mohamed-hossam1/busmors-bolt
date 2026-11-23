@@ -16,6 +16,7 @@ import { createOsmProvider } from '../../features/research/providers/osm'
 import { createComposioProvider } from '../../features/research/providers/composio'
 import { auditClaims } from '../../features/research/auditor/auditor'
 import { buildReport, type ResearchReport } from '../../features/research/synthesis/report'
+import { formatReportMarkdown } from '../../features/research/synthesis/markdown'
 import { buildPdfArtifact, pdfFailureReason } from '../../features/research/deliverable/pdf'
 import { analyzeClaims } from '../../features/research/brain/proposals'
 import { createMarketScout } from '../../features/research/agents/market-scout'
@@ -251,7 +252,7 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
     saved = await saveResearchResult(client, task.id, task.run_id!, {
       reply: buildReply(report, pdfFailure),
       partial,
-      document: { title: report.executiveBrief.headline.slice(0, 180) || 'Marketing Research Report', content: JSON.stringify(report).slice(0, 79000), type: 'research_report' },
+      document: { title: report.executiveBrief.headline.slice(0, 180) || 'Marketing Research Report', content: formatReportMarkdown(report), type: 'research_report' },
       sources: directorResult.sources.map(source => ({
         ...source,
         excerpt: source.excerpt.slice(0, 1200),
@@ -317,7 +318,7 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
     result: {
       reply: buildReply(report, pdfFailure),
       partial,
-      document: { title: report.executiveBrief.headline.slice(0, 180) || 'Marketing Research Report', content: JSON.stringify(report).slice(0, 79000), type: 'research_report' },
+      document: { title: report.executiveBrief.headline.slice(0, 180) || 'Marketing Research Report', content: formatReportMarkdown(report), type: 'research_report' },
       research: {
         ...directorResult.artifacts,
         reportId: report.reportId,

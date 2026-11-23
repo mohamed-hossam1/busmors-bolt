@@ -95,10 +95,16 @@ export interface AgentEvent {
   task_id: string
   instance_id?: string
   run_id?: string
+  conversation_id?: string | null
+  parent_instance_id?: string | null
+  correlation_id?: string | null
   seq: number
-  event_type: 'agent_started' | 'agent_tool_used' | 'agent_completed' | 'agent_error' | 'flow_connection'
+  event_type: 'agent_started' | 'agent_completed' | 'agent_error' | 'agent_tool_used' | 'tool_call' | 'delegation' | 'skill_read' | 'flow_connection'
   agent_id: string
   payload: Record<string, unknown>
+  started_at?: string | null
+  ended_at?: string | null
+  failure_reason?: string | null
   created_at: string
 }
 

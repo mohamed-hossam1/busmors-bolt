@@ -55,6 +55,8 @@ export interface WorkerContext {
   router: ProviderRouter
   registry: EntityRegistry
   cache: ContentCache
+  /** This subagent's own event instance id, so its tool calls can nest under it. */
+  instanceId: string
   /** Completed tracks, so later specialists consume real prior artifacts. */
   prior: Map<ResearchTrack, WorkerResult>
   /** Wall-clock ceiling for this run, from the brief budget. */
@@ -251,6 +253,7 @@ export class ResearchDirector {
             router: this.deps.router,
             registry,
             cache,
+            instanceId,
             prior,
             deadlineAt,
             emit,

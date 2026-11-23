@@ -158,6 +158,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       p_failure_reason: event.failureReason ?? null,
       p_started_at: event.startedAt ?? null,
       p_ended_at: event.endedAt ?? null,
+      p_parent_instance_id: event.parentInstanceId ?? null,
     })).then(() => undefined),
     recordUserMessage: (content, payload) => safe('append_user_message', () => supabase.rpc('append_conversation_message', {
       p_conversation_id: conversationId,

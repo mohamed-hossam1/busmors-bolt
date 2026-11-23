@@ -7,11 +7,19 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Coins,
+  HelpCircle,
+  Lightbulb,
   LockKeyhole,
   RefreshCw,
+  Repeat,
+  Rocket,
   Route,
   Save,
   Sparkles,
+  Target,
+  TrendingUp,
+  UserPlus,
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/Spinner'
 import { RoadmapSkeleton } from '../../components/skeletons'
@@ -46,6 +54,17 @@ import type {
   DiscoveryQuestion,
   DiscoveryQuestionOption,
 } from './types'
+
+const CHALLENGE_ICONS: Record<string, typeof Lightbulb> = {
+  validate_idea: Lightbulb,
+  win_first_customers: UserPlus,
+  grow_customers: TrendingUp,
+  convert_inquiries: Target,
+  unprofitable_marketing: Coins,
+  launch_offer: Rocket,
+  increase_repeat_referral: Repeat,
+  something_else: HelpCircle,
+}
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -776,22 +795,25 @@ export default function DiscoveryWizard() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {goals.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              disabled={busy}
-              onClick={() => void selectGoal(item.value)}
-              className="card flex items-start gap-4 p-5 text-start transition hover:border-primary-400 disabled:opacity-60"
-            >
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><Route size={18} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-ink-900">{item.label}</span>
-                <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
-              </span>
-              <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400 rtl:rotate-180" />
-            </button>
-          ))}
+          {goals.map((item) => {
+            const ChallengeIcon = CHALLENGE_ICONS[item.value] ?? Route
+            return (
+              <button
+                key={item.value}
+                type="button"
+                disabled={busy}
+                onClick={() => void selectGoal(item.value)}
+                className="card flex items-start gap-4 p-5 text-start transition hover:border-primary-400 disabled:opacity-60"
+              >
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><ChallengeIcon size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-ink-900">{item.label}</span>
+                  <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
+                </span>
+                <ChevronRight size={17} className="mt-1 shrink-0 text-ink-400 rtl:rotate-180" />
+              </button>
+            )
+          })}
         </div>
 
         {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Spinner size={15} /> {t('savingGoal')}</p>}

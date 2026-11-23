@@ -117,6 +117,7 @@ export function getModelConfigForOperation(operation: string): ModelConfig {
       return AI_MODELS.orchestrator
     case 'chat':
     case 'brain_answer':
+    case 'title':
       return AI_MODELS.fastChat
     case 'route':
     case 'clarify':

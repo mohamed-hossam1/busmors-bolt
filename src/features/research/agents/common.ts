@@ -64,7 +64,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
     await context.emit({
       instanceId: crypto.randomUUID(),
       correlationId: crypto.randomUUID(),
-      parentInstanceId: null,
+      parentInstanceId: context.instanceId,
       type: 'tool_call',
       agentId: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
       agentRole: 'tool',
@@ -108,7 +108,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
       await context.emit({
         instanceId: crypto.randomUUID(),
         correlationId: crypto.randomUUID(),
-        parentInstanceId: null,
+        parentInstanceId: context.instanceId,
         type: 'tool_call',
         agentId: 'firecrawl',
         agentRole: 'tool',
