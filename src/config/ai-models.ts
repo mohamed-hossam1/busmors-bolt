@@ -5,85 +5,103 @@
  */
 
 export interface ModelConfig {
-  provider: 'groq' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'custom'
+  provider: 'groq' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'dahl' | 'custom'
   model: string
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
 }
+
+/**
+ * Global Fallback Template:
+ * Standard fallback targets used across any operation if the primary model/provider fails,
+ * times out, or produces invalid output.
+ * 1. Fallback: openai/gpt-oss-120b on Groq (default reasoning)
+ * 2. Emergency Fallback: openai/gpt-oss-20b on Groq (default reasoning)
+ */
+export interface FallbackTargetConfig {
+  provider: ModelConfig['provider']
+  model: string
+  timeoutMs?: number
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
+}
+
+export const AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
+  {
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
+    timeoutMs: 20000,
+    // reasoningEffort is omitted so it takes the provider default
+  },
+  {
+    provider: 'groq',
+    model: 'openai/gpt-oss-20b',
+    timeoutMs: 15000,
+    // reasoningEffort is omitted so it takes the provider default
+  },
+] as const
 
 export const AI_MODELS = {
   /**
    * Orchestrator: the fast intent-decision call every message passes through
-   * before any task creation or Brain retrieval. Effort: LOW for minimal latency.
+   * before any task creation or Brain retrieval.
    */
   orchestrator: {
-    provider: (process.env.AI_ORCHESTRATOR_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_ORCHESTRATOR_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.2,
-    maxTokens: 900,
-    reasoningEffort: 'low' as const,
   },
 
   /**
    * Fast conversational chat: greetings, quick chitchat, "What you can do for me",
    * and "What you know about me" (instant Brain knowledge retrieval).
-   * Effort: LOW (blazing fast sub-second inference).
    */
   fastChat: {
-    provider: (process.env.AI_FAST_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_FAST_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.6,
-    maxTokens: 1200,
-    reasoningEffort: 'low' as const,
   },
 
   /**
    * Intent Router & Clarification Question Generator.
    * Quickly determines if request needs clarification or which deliverable to produce.
-   * Effort: LOW.
    */
   router: {
-    provider: (process.env.AI_ROUTER_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_ROUTER_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.2,
-    maxTokens: 1000,
-    reasoningEffort: 'low' as const,
   },
 
   /**
    * Heavy Task Generation: Copywriting, Post Drafts, Marketing Campaigns, Performance Diagnosis.
-   * Effort: HIGH - maxTokens is deliberately unspecified so the model has unlimited completion capacity.
    */
   heavyTask: {
-    provider: (process.env.AI_HEAVY_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_HEAVY_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.7,
-    reasoningEffort: 'high' as const,
   },
 
   /**
    * Advanced Marketing Research & Competitor Intelligence:
    * Synthesis of search results, source auditing, and deep market analysis.
-   * Effort: HIGH - maxTokens is deliberately unspecified so the model has unlimited capacity for deep reasoning & reporting.
    */
   research: {
-    provider: (process.env.AI_RESEARCH_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_RESEARCH_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'groq',
+    model: 'openai/gpt-oss-120b',
     temperature: 0.3,
-    reasoningEffort: 'high' as const,
   },
 
   /**
    * Onboarding Web Crawl & Scraping Extraction:
    * Used during onboarding to extract business facts and relations from crawled websites.
-   * Effort: HIGH - maxTokens is deliberately unspecified to allow complete extraction without truncation.
+   * Primary: DeepSeek-V4-Flash on Dahl with reasoning_effort: "none" (thinking disabled).
+   * Fallback: Handled transparently by handleSharedCrawlRequest to openai/gpt-oss-120b on Groq.
    */
   onboardingCrawl: {
-    provider: (process.env.AI_CRAWL_PROVIDER || process.env.AI_PROVIDER || 'groq') as ModelConfig['provider'],
-    model: process.env.AI_CRAWL_MODEL || process.env.AI_MODEL || 'openai/gpt-oss-120b',
+    provider: 'dahl',
+    model: 'deepseek-ai/DeepSeek-V4-Flash-0731',
     temperature: 0.1,
-    reasoningEffort: 'high' as const,
+    reasoningEffort: 'none',
   },
 } as const satisfies Record<string, ModelConfig>
 

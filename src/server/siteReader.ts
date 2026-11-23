@@ -33,8 +33,12 @@ function sameSite(url: string, base: string): boolean {
 }
 
 function linkPriority(url: string): number {
-  const path = new URL(url).pathname
-  return /about|product|service|solution|pricing|feature|company|audience|customer/i.test(decodeURI(path)) ? 10 : /contact|faq|partner/i.test(path) ? 5 : 0
+  const path = decodeURI(new URL(url).pathname).toLowerCase()
+  // High commercial value: products, services, pricing, about, packages, solutions
+  if (/(?:about|product|service|solution|pricing|feature|company|package|audience|customer|من[-_]?نحن|عن[-_]?(?:الشركة|الموقع)|خدمات(?:نا)?|منتجات(?:نا)?|باقات|اسعار|أسعار|مميزات|حلول)/i.test(path)) return 10
+  // Supporting commercial value: contact, faq, partners
+  if (/(?:contact|faq|partner|اتصل[-_]?بنا|تواصل[-_]?معنا|الاسئلة[-_]?الشائعة)/i.test(path)) return 5
+  return 0
 }
 
 function discoverLinks(page: CrawledPage, base: string): string[] {
@@ -43,13 +47,16 @@ function discoverLinks(page: CrawledPage, base: string): string[] {
     try {
       const url = normalizeSiteUrl(match[1], page.url)
       if (!sameSite(url, base)) continue
-      const path = decodeURI(new URL(url).pathname)
-      if (/\.(?:png|jpe?g|gif|webp|avif|svg|pdf|zip|mp4|mp3|css|js)$/i.test(path)) continue
-      if (/(?:^|\/)(?:login|signin|signup|sign-in|sign-up|cart|checkout|privacy|terms|legal|cookie|careers?|jobs?|blog|news|author|tag)(?:\/|$)/i.test(path)) continue
+      const path = decodeURI(new URL(url).pathname).toLowerCase()
+      if (/\.(?:png|jpe?g|gif|webp|avif|svg|pdf|zip|mp4|mp3|css|js|xml)$/i.test(path)) continue
+      if (/(?:^|\/)(?:login|signin|signup|sign-in|sign-up|cart|checkout|privacy|terms|legal|cookie|careers?|jobs?|blog|news|author|tag|سلة|تسجيل[-_]?الدخول|سياسة[-_]?الخصوصية|الشروط|الاحكام|وظائف)(?:[-_/]|$)/i.test(path)) continue
       links.add(url)
     } catch { /* Ignore malformed links and non-web protocols. */ }
   }
-  return [...links].sort((a, b) => linkPriority(b) - linkPriority(a))
+  const sorted = [...links].sort((a, b) => linkPriority(b) - linkPriority(a))
+  // If high-priority commercial links exist, prioritize them to focus strictly on commercial pages
+  const highPriority = sorted.filter((u) => linkPriority(u) > 0)
+  return highPriority.length > 0 ? highPriority : sorted
 }
 
 /**
@@ -287,6 +294,9 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     return page
   }
 
+  // Step 0: Kick off sitemap discovery concurrently to discover canonical high-value pages
+  const sitemapPromise = discoverSitemapLinks(baseUrl, deadline.signal).catch(() => [] as string[])
+
   // Step 1: Read homepage immediately (zero pre-crawl lag, starts in 0ms)
   const home = await read(normalizeSiteUrl(baseUrl))
   if (home) {
@@ -295,6 +305,18 @@ export async function crawlPages(baseUrl: string, requestedMax = DEFAULT_CRAWL_P
     pages.push(home)
     onProgress?.(pages.length, maxPages, home.url)
     for (const link of discoverLinks(home, baseUrl)) {
+      if (!enqueued.has(link) && enqueued.size < maxPages * 4) {
+        enqueued.add(link)
+        queue.push(link)
+      }
+    }
+
+    // Await fast sitemap results (up to 800ms) to prioritize canonical commercial pages
+    const sitemapLinks = await Promise.race([
+      sitemapPromise,
+      new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 800)),
+    ])
+    for (const link of sitemapLinks) {
       if (!enqueued.has(link) && enqueued.size < maxPages * 4) {
         enqueued.add(link)
         queue.push(link)

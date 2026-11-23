@@ -24,7 +24,7 @@ export async function callAi(input: {
   jsonMode?: boolean
   useSharedCrawlKey?: boolean
   crawlOperation?: 'extract' | 'extract_ar' | 'relate'
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   signal?: AbortSignal
 }): Promise<AiCallResult> {
   const { data: sessionData } = await supabase.auth.getSession()
@@ -35,7 +35,7 @@ export async function callAi(input: {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...input, signal: undefined, operation: input.operation ?? 'chat', systemPrompt: undefined }),
-      signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(input.useSharedCrawlKey ? 16000 : 45000),
+      signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(input.useSharedCrawlKey ? 35000 : 45000),
     })
     const data = await res.json().catch(() => ({}))
     if (res.ok && typeof data.text === 'string') return { ok: true, text: data.text, usage: data.usage, callId: data.callId }

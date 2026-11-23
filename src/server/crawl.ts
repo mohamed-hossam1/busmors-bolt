@@ -154,7 +154,7 @@ async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions =
   const crawlConfig = getModelConfigForOperation(operation)
   const extractCall = () => callAi({ systemPrompt, userPrompt: isArabic ? `محتوى الموقع:\n${text}` : text,
     maxTokens: crawlConfig.maxTokens, temperature: crawlConfig.temperature ?? 0.2, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation,
-    reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
+    reasoningEffort: crawlConfig.reasoningEffort ?? 'low' }, options.token)
   let ai = await extractCall()
   if (!ai.ok && ai.retryable) {
     await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -169,7 +169,7 @@ async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions =
     try {
       const fix = await callAi({ systemPrompt,
         userPrompt: `The following should be a JSON object with a "candidates" array but it is broken. Return ONLY corrected JSON:\n\n${ai.text.slice(0, 4000)}`,
-        maxTokens: crawlConfig.maxTokens, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation, reasoningEffort: crawlConfig.reasoningEffort ?? 'high' }, options.token)
+        maxTokens: crawlConfig.maxTokens, temperature: 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: operation, reasoningEffort: crawlConfig.reasoningEffort ?? 'low' }, options.token)
       if (!fix.ok || !fix.text) return { ...empty, warnings: ['AI returned incomplete or invalid JSON.'] }
       parsed = parseJson(fix.text)
     } catch {
