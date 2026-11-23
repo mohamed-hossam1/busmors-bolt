@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
-import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
+import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -313,9 +313,19 @@ export async function executeWithFallback(options: {
     logPrefix = '[ai-fallback]',
   } = options
 
-  const targets: ExecutionTarget[] = [primary]
+  // In test mode, SovereignEG is strictly excluded so no tokens are consumed.
+  const isTestMode = CURRENT_AI_MODE === 'test'
+  const effectivePrimary = isTestMode && primary.provider === 'sovereigneg' ? null : primary
+  const targets: ExecutionTarget[] = effectivePrimary ? [effectivePrimary] : []
+  if (isTestMode && !effectivePrimary) {
+    console.warn(`${logPrefix} Skipping SovereignEG primary in test mode (AI_MODE=test)`)
+  }
   for (const fb of fallbacks) {
-    if (fb.provider === primary.provider && fb.model === primary.model) continue
+    if (isTestMode && fb.provider === 'sovereigneg') {
+      console.warn(`${logPrefix} Skipping SovereignEG fallback ${fb.model} in test mode (AI_MODE=test)`)
+      continue
+    }
+    if (effectivePrimary && fb.provider === effectivePrimary.provider && fb.model === effectivePrimary.model) continue
     targets.push({
       provider: fb.provider,
       model: fb.model,
