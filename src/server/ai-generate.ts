@@ -233,7 +233,7 @@ export async function generateAi(req: Request) {
       })
       const generated = result.text
       succeeded = true
-      return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null, callId }), {
+      return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null, callId, provider: result.target.provider, model: result.target.model, attempt: result.attemptIndex, fallbackUsed: result.fallbackUsed }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -482,7 +482,7 @@ async function handleOrchestratorRequest(
       validate: (generated) => validateOutput(operation, generated),
       logPrefix: '[orchestrator]',
     })
-    return new Response(JSON.stringify({ text: result.text, usage: body.usage ?? null }), {
+    return new Response(JSON.stringify({ text: result.text, usage: body.usage ?? null, provider: result.target.provider, model: result.target.model, attempt: result.attemptIndex, fallbackUsed: result.fallbackUsed }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

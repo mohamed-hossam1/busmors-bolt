@@ -20,6 +20,7 @@ import type { ResolvedEntity } from '../references/entity-resolution'
 import { canonicalizeUrl } from '../providers/normalize'
 import { ContentCache, EntityRegistry } from './state'
 import { agentForTrack, buildBrief, planLayers, planTracks, runWithConcurrency, TRACK_LABELS } from './brief'
+import type { ResearchTraceSink } from '../observability'
 
 export interface WorkerResult {
   track: ResearchTrack
@@ -63,6 +64,8 @@ export interface WorkerContext {
   deadlineAt: number
   emit: EmitEvent
   record(event: Omit<VisibleAgentEvent, 'id' | 'seq'>): Promise<void>
+  /** Admin trace sink; tool calls are mirrored here without blocking. */
+  trace?: ResearchTraceSink
 }
 
 export interface EmitEvent {
@@ -102,6 +105,7 @@ export interface DirectorDeps {
   workers: Subagent[]
   sink: EventSink
   canonicalize?: (url: string) => string
+  trace?: ResearchTraceSink
 }
 
 /**
@@ -258,6 +262,7 @@ export class ResearchDirector {
             deadlineAt,
             emit,
             record: async event => { await emit(event) },
+            trace: this.deps.trace,
           }, step.budget)
           addUsage(usage, result.usage)
           prior.set(result.track, result)

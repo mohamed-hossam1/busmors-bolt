@@ -24,8 +24,16 @@ export async function callOrchestratorModel(input: {
         body: JSON.stringify({ operation: input.operation, userPrompt: input.userPrompt, signal: undefined }),
       }),
     )
-    const data = await response.json().catch(() => ({})) as { text?: unknown; error?: unknown }
-    if (response.ok && typeof data.text === 'string') return { ok: true, text: data.text }
+    const data = await response.json().catch(() => ({})) as { text?: unknown; error?: unknown; usage?: unknown; provider?: unknown; model?: unknown; attempt?: unknown; fallbackUsed?: unknown }
+    if (response.ok && typeof data.text === 'string') return {
+      ok: true,
+      text: data.text,
+      usage: data.usage as AiCallResult['usage'],
+      provider: typeof data.provider === 'string' ? data.provider : undefined,
+      model: typeof data.model === 'string' ? data.model : undefined,
+      attempt: typeof data.attempt === 'number' ? data.attempt : undefined,
+      fallbackUsed: typeof data.fallbackUsed === 'boolean' ? data.fallbackUsed : undefined,
+    }
     const reason = typeof data.error === 'string' ? data.error : `http_${response.status}`
     return {
       ok: false,

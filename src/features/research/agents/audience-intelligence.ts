@@ -130,6 +130,16 @@ export function createAudienceIntelligence(options: { platforms?: ComposioPlatfo
             usage.calls += social.usage.calls
             usage.credits += social.usage.credits
             usage.tokens += social.usage.tokens
+            context.trace?.recordTool({
+              toolName: 'composio',
+              agentId: 'composio',
+              provider: 'composio',
+              operation: `${platform}:${action}`,
+              status: social.outcome.ok ? 'completed' : 'partial',
+              input: { platform, action },
+              output: { ok: social.outcome.ok, items: social.outcome.sources.length, creditCount: social.usage.credits },
+              error: social.outcome.ok ? null : (social.outcome as { message?: string }).message ?? null,
+            })
             for (const source of social.outcome.sources) sources.set(source.id, source)
             const items = extractSocialItems({ data: social.outcome.sources.map(source => ({ url: source.url, text: source.excerpt, author: source.authority, id: source.id })) }, { platform, action, mode: 'instant', query: '' }, caps)
             for (const item of items) {

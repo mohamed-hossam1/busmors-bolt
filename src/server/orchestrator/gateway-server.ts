@@ -1,8 +1,10 @@
 import 'server-only'
 import { createHash } from 'node:crypto'
+import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TaskOrigin } from '../../lib/contracts'
 import type { ExecutionTask } from '../../features/tasks/types'
+import type { OrchestratorEventInput } from '../../features/orchestrator/contracts'
 import { executeTask } from '../task-executor'
 import { taskBackend } from '../task-backend'
 import { callOrchestratorModel } from './model'
@@ -13,6 +15,7 @@ import { handoffCheckpoint, planDirectorHandoff } from '../../features/orchestra
 import { buildBrainAnswerPrompt, buildOrchestratePrompt } from '../../features/orchestrator/prompt'
 import type { OrchestratorResult } from '../../features/orchestrator/contracts'
 import { normalizeDecision } from '../../features/orchestrator/decision'
+import { createTraceCollector, type TraceCollector } from '../observability'
 
 /** Fixed server instance id for the synchronous Director handoff. */
 const RUNNER_ID = 'a1b2c3d4-0000-4000-8000-000000000001'
@@ -79,6 +82,37 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
   }
 
   const brain = createBrainReader(supabase)
+
+  // Execution observability. The collector buffers a bounded projection with no
+  // awaited I/O; it is flushed once the response has been produced (after()).
+  const trace: TraceCollector = createTraceCollector({
+    traceId: crypto.randomUUID(),
+    workspaceId,
+    userId: workspaceId,
+    conversationId,
+    idempotencyKey,
+    request,
+    route: null,
+    origin,
+  })
+
+  /** Mirror a customer canvas event into the admin trace (best-effort, in-memory). */
+  const mirrorEvent = (event: OrchestratorEventInput) => {
+    const base = {
+      runId: null,
+      attempt: 1,
+      startedAt: event.startedAt,
+      endedAt: event.endedAt,
+      error: event.failureReason ?? null,
+      parentEventId: event.parentInstanceId ?? null,
+    }
+    if (event.type === 'tool_call') {
+      trace.recordTool({ ...base, toolName: event.agentId, agentId: event.agentId, agentRole: event.agentRole, status: event.status, operation: event.label })
+    } else {
+      trace.recordAgent({ ...base, agentId: event.agentId, agentRole: event.agentRole, label: event.label, status: event.status })
+    }
+  }
+
   const safe = async (label: string, run: () => unknown) => {
     try {
       await run()
@@ -92,24 +126,63 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
     guard: (text) => evaluateGuardrails(text),
     greet: (text) => detectGreeting(text),
     async decide(context) {
+      const startedAt = new Date().toISOString()
       const result = await callOrchestratorModel({
         operation: 'orchestrate',
         userPrompt: buildOrchestratePrompt({ request: context.request, history: context.history, region: context.region, hint: context.hint }),
         accessToken: token,
         signal: context.signal,
       })
+      trace.recordModel({
+        provider: result.provider,
+        model: result.model,
+        operation: 'orchestrate',
+        attempt: result.attempt,
+        fallbackUsed: result.fallbackUsed,
+        usage: result.usage,
+        startedAt,
+        endedAt: new Date().toISOString(),
+        error: result.ok ? null : result.reason ?? result.error ?? 'provider_error',
+        outputText: result.ok ? result.text : null,
+      })
       if (!result.ok) throw new Error(result.reason ?? 'provider_error')
       return { decision: normalizeDecision(result.text), modelCalls: 1 }
     },
     async retrieveBrain(query, brainSignal) {
-      return retrieveBrain(brain, workspaceId, query, { limit: 8, candidateLimit: 80, signal: brainSignal })
+      const startedAt = new Date().toISOString()
+      const brainResult = await retrieveBrain(brain, workspaceId, query, { limit: 8, candidateLimit: 80, signal: brainSignal })
+      trace.recordTool({
+        toolName: 'brain',
+        agentId: 'brain',
+        agentRole: 'tool',
+        operation: 'retrieve',
+        status: brainResult.ok ? 'completed' : 'failed',
+        startedAt,
+        endedAt: new Date().toISOString(),
+        output: { retrieved: brainResult.retrievedCount, categories: [...new Set(brainResult.facts.map(fact => fact.category))] },
+        error: brainResult.ok ? null : brainResult.reason ?? null,
+      })
+      return brainResult
     },
     async answerFromBrain(context) {
+      const startedAt = new Date().toISOString()
       const result = await callOrchestratorModel({
         operation: 'brain_answer',
         userPrompt: buildBrainAnswerPrompt({ request: context.request, query: context.query, facts: context.facts }),
         accessToken: token,
         signal: context.signal,
+      })
+      trace.recordModel({
+        provider: result.provider,
+        model: result.model,
+        operation: 'brain_answer',
+        attempt: result.attempt,
+        fallbackUsed: result.fallbackUsed,
+        usage: result.usage,
+        startedAt,
+        endedAt: new Date().toISOString(),
+        error: result.ok ? null : result.reason ?? result.error ?? 'provider_error',
+        outputText: result.ok ? result.text : null,
       })
       if (!result.ok) throw new Error(result.reason ?? 'provider_error')
       return { reply: result.text, modelCalls: 1 }
@@ -122,6 +195,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
         p_request: context.request,
         p_origin: context.origin ?? { kind: 'direct', conversationId: context.conversationId },
         p_idempotency_key: context.idempotencyKey,
+        p_trace_id: trace.traceId,
       })) as ExecutionTask
       const admitted = (await backend.rpc('admit_task', { p_task_id: enqueued.id, p_runner_id: RUNNER_ID })) as ExecutionTask | null
       if (admitted) {
@@ -132,7 +206,8 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
           p_type: handoff.type,
           p_plan: null,
         })) as ExecutionTask
-        await executeTask(backend, withCheckpoint, context.signal ?? new AbortController().signal)
+        trace.setRun(withCheckpoint.run_id, withCheckpoint.attempts)
+        await executeTask(backend, withCheckpoint, context.signal ?? new AbortController().signal, trace)
       }
       return { taskId: enqueued.id }
     },
@@ -145,7 +220,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
         return null
       }
     },
-    recordEvent: (event) => safe('record_conversation_event', () => supabase.rpc('record_conversation_event', {
+    recordEvent: (event) => { mirrorEvent(event); return safe('record_conversation_event', () => supabase.rpc('record_conversation_event', {
       p_conversation_id: conversationId,
       p_instance_id: event.instanceId,
       p_event_type: event.type,
@@ -159,7 +234,8 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       p_started_at: event.startedAt ?? null,
       p_ended_at: event.endedAt ?? null,
       p_parent_instance_id: event.parentInstanceId ?? null,
-    })).then(() => undefined),
+    })).then(() => undefined)
+    },
     recordUserMessage: (content, payload) => safe('append_user_message', () => supabase.rpc('append_conversation_message', {
       p_conversation_id: conversationId,
       p_role: 'user',
@@ -182,7 +258,9 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
         return null
       }
     },
-    recordRun: (record) => safe('record_orchestrator_run', () => supabase.rpc('record_orchestrator_run', {
+    recordRun: (record) => {
+      trace.setResult({ status: record.outcome, route: record.path, finalReply: record.reply || null, durationMs: record.metrics.totalMs })
+      return safe('record_orchestrator_run', () => supabase.rpc('record_orchestrator_run', {
       p_conversation_id: conversationId,
       p_idempotency_key: idempotencyKey,
       p_request_hash: requestHash(request, idempotencyKey),
@@ -192,7 +270,8 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       p_message_id: record.messageId,
       p_reply: record.reply,
       p_metrics: record.metrics,
-    })).then(() => undefined),
+    })).then(() => undefined)
+    },
   }
 
   const orchestratorInput: OrchestratorInput = {
@@ -204,7 +283,20 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
     origin,
     signal,
   }
-  return runOrchestrator(orchestratorInput, deps)
+  const result = await runOrchestrator(orchestratorInput, deps)
+  // Flush after the response is sent: no awaited I/O on the customer path.
+  scheduleFlush(trace)
+  return result
+}
+
+/** Schedule a best-effort trace flush after the response; never throws. */
+function scheduleFlush(trace: TraceCollector): void {
+  try {
+    after(() => trace.flush())
+  } catch {
+    // Called outside a request scope (e.g. a unit test): fire and forget.
+    void trace.flush()
+  }
 }
 
 export { planDirectorHandoff }

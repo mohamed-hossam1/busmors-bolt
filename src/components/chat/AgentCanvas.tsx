@@ -54,6 +54,15 @@ function PreviewNode({ data }: { data: { posts: CanvasPreviewPost[] } }) {
 interface AgentNodeData extends CanvasNode {
   selected: boolean
   onSelect: (id: string) => void
+  hasTopConnection?: boolean
+  hasBottomConnection?: boolean
+  hasRightConnection?: boolean
+  hasLeftConnection?: boolean
+  targetSide?: 'left' | 'right' | 'top'
+}
+
+function isToolOrSkill(kind: CanvasNodeKind): boolean {
+  return kind === 'tool' || kind === 'skill'
 }
 
 const NODE_ICON: Record<CanvasNodeKind, typeof Bot> = {
@@ -95,12 +104,30 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
           : 'border-ink-200 bg-white'
 
   if (isCircleNode) {
+    const targetSide = data.targetSide ?? 'left'
     return (
       <div
         className={`relative flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-full border-2 p-1 text-center shadow-md transition-all hover:scale-105 ${border}`}
         onClick={() => onSelect(data.id)}
       >
-        <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+        <Handle
+          type="target"
+          id="left"
+          position={Position.Left}
+          className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${targetSide === 'left' ? '' : '!opacity-0 pointer-events-none'}`}
+        />
+        <Handle
+          type="target"
+          id="right"
+          position={Position.Right}
+          className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${targetSide === 'right' ? '' : '!opacity-0 pointer-events-none'}`}
+        />
+        <Handle
+          type="target"
+          id="top"
+          position={Position.Top}
+          className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${targetSide === 'top' ? '' : '!opacity-0 pointer-events-none'}`}
+        />
         <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ backgroundColor: `${data.color}25`, color: data.color }}>
           <Icon size={12} />
         </span>
@@ -108,7 +135,12 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
         <div className="scale-75">
           {statePill(data, t)}
         </div>
-        <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+        <Handle
+          type="source"
+          id="bottom"
+          position={Position.Bottom}
+          className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 !opacity-0 pointer-events-none"
+        />
       </div>
     )
   }
@@ -118,7 +150,12 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
       className={`relative min-w-[150px] cursor-pointer rounded-xl border p-2.5 transition-all ${border}`}
       onClick={() => onSelect(data.id)}
     >
-      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+      <Handle
+        type="target"
+        id="top"
+        position={Position.Top}
+        className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${data.hasTopConnection === false ? '!opacity-0 pointer-events-none' : ''}`}
+      />
       <div className="flex items-center gap-2">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${data.color}1a`, color: data.color }}>
           <Icon size={14} />
@@ -132,7 +169,24 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
           </div>
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+      <Handle
+        type="source"
+        id="bottom"
+        position={Position.Bottom}
+        className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${data.hasBottomConnection === false ? '!opacity-0 pointer-events-none' : ''}`}
+      />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${data.hasRightConnection ? '' : '!opacity-0 pointer-events-none'}`}
+      />
+      <Handle
+        type="source"
+        id="left"
+        position={Position.Left}
+        className={`!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500 ${data.hasLeftConnection ? '' : '!opacity-0 pointer-events-none'}`}
+      />
     </div>
   )
 }
@@ -149,24 +203,37 @@ function stableJitter(id: string): number {
 }
 
 /**
- * Hierarchical layout derived from the real parent→child edges. Each generation
- * (nodes whose parent is already placed) becomes one horizontal row, so the tree
- * reads top-down instead of a repeating three-column grid.
+ * Hierarchical layout separating agent hierarchy (vertical top-to-bottom rows)
+ * from tools and skills (placed to the side of their parent agent).
  */
 function buildHierarchicalLayout(graph: CanvasGraph): Map<string, { x: number; y: number }> {
   const pos = new Map<string, { x: number; y: number }>()
   const { nodes, edges } = graph
   if (nodes.length === 0) return pos
   const ids = new Set(nodes.map(node => node.id))
-  const parent = new Map<string, string>()
+
+  const agentNodes = nodes.filter(node => !isToolOrSkill(node.kind))
+  const toolNodes = nodes.filter(node => isToolOrSkill(node.kind))
+  const agentIds = new Set(agentNodes.map(node => node.id))
+
+  const agentParent = new Map<string, string>()
+  const toolParent = new Map<string, string>()
+
   for (const edge of edges) {
     if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) continue
-    if (!parent.has(edge.to)) parent.set(edge.to, edge.from)
+    const toNode = nodes.find(n => n.id === edge.to)
+    if (!toNode) continue
+
+    if (isToolOrSkill(toNode.kind)) {
+      if (!toolParent.has(edge.to)) toolParent.set(edge.to, edge.from)
+    } else if (agentIds.has(edge.from)) {
+      if (!agentParent.has(edge.to)) agentParent.set(edge.to, edge.from)
+    }
   }
 
   const TOP = 20
-  const ROW_GAP = 150
-  const COL_GAP = 240
+  const ROW_GAP = 140
+  const COL_GAP = 280
   const CENTER = 320
   const placed = new Set<string>()
   let rowY = TOP
@@ -180,33 +247,74 @@ function buildHierarchicalLayout(graph: CanvasGraph): Map<string, { x: number; y
     rowY += ROW_GAP
   }
 
-  const roots = nodes.filter(node => !parent.has(node.id))
+  // 1. Root agent nodes (e.g. user)
+  const roots = agentNodes.filter(node => !agentParent.has(node.id))
   const user = roots.find(node => node.kind === 'user')
   if (user) {
     placeRow([user])
-    rowY += 40
+    rowY += 10
   }
   const otherRoots = roots.filter(node => node.kind !== 'user')
   if (otherRoots.length) placeRow(otherRoots)
 
-  let pending = nodes.filter(node => !placed.has(node.id))
+  // 2. Child agents in vertical generations (downward hierarchy: "تحت يعني في agent")
+  let pendingAgents = agentNodes.filter(node => !placed.has(node.id))
   let guard = 0
-  while (pending.length > 0 && guard++ < 200) {
-    const row = pending.filter(node => {
-      const parentId = parent.get(node.id)
+  while (pendingAgents.length > 0 && guard++ < 200) {
+    const row = pendingAgents.filter(node => {
+      const parentId = agentParent.get(node.id)
       return !parentId || placed.has(parentId)
     })
     if (row.length === 0) break
     placeRow(row)
     const placedIds = new Set(row.map(node => node.id))
-    pending = pending.filter(node => !placedIds.has(node.id))
+    pendingAgents = pendingAgents.filter(node => !placedIds.has(node.id))
   }
-  if (pending.length > 0) {
-    const cols = Math.max(1, Math.ceil(Math.sqrt(pending.length)))
-    pending.forEach((node, index) => {
+  if (pendingAgents.length > 0) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(pendingAgents.length)))
+    pendingAgents.forEach((node, index) => {
       pos.set(node.id, { x: CENTER + (index % cols - (cols - 1) / 2) * COL_GAP, y: rowY + Math.floor(index / cols) * ROW_GAP })
     })
+    rowY += ROW_GAP
   }
+
+  // 3. Tools and Skills placed to the side of their parent agent ("الجنب يعني تولز وskills")
+  const toolsByParent = new Map<string, CanvasNode[]>()
+  for (const toolNode of toolNodes) {
+    const pId = toolParent.get(toolNode.id)
+    if (pId) {
+      const list = toolsByParent.get(pId) ?? []
+      list.push(toolNode)
+      toolsByParent.set(pId, list)
+    }
+  }
+
+  toolsByParent.forEach((tools, parentId) => {
+    const parentPos = pos.get(parentId)
+    if (!parentPos) return
+    const count = tools.length
+    tools.forEach((tool, index) => {
+      const yOffset = count === 1 ? -6 : -6 + (index - (count - 1) / 2) * 72
+      pos.set(tool.id, {
+        x: parentPos.x + 190,
+        y: parentPos.y + yOffset,
+      })
+      placed.add(tool.id)
+    })
+  })
+
+  // 4. Any dangling tools without placed parent
+  const unplacedTools = toolNodes.filter(node => !placed.has(node.id))
+  if (unplacedTools.length > 0) {
+    unplacedTools.forEach((tool, index) => {
+      pos.set(tool.id, {
+        x: CENTER + 190,
+        y: rowY + index * 72,
+      })
+      placed.add(tool.id)
+    })
+  }
+
   return pos
 }
 
@@ -248,11 +356,58 @@ export default function AgentCanvas({
     const layout = buildHierarchicalLayout(graph)
     const newNodes: Node[] = graph.nodes.map((node) => {
       const position = userPositionsRef.current[node.id] ?? layout.get(node.id) ?? { x: 300, y: 20 }
+
+      const incomingEdges = graph.edges.filter(e => e.to === node.id)
+      const outgoingEdges = graph.edges.filter(e => e.from === node.id)
+
+      let targetSide: 'left' | 'right' | 'top' = 'left'
+      if (incomingEdges.length > 0) {
+        const edge = incomingEdges[0]
+        const isTool = isToolOrSkill(node.kind) || edge.kind === 'tool_call' || edge.kind === 'skill_read'
+        if (isTool) {
+          const fromPos = userPositionsRef.current[edge.from] ?? layout.get(edge.from)
+          if (fromPos && position.x < fromPos.x) {
+            targetSide = 'right'
+          } else {
+            targetSide = 'left'
+          }
+        } else {
+          targetSide = 'top'
+        }
+      }
+
+      let hasRightConnection = false
+      let hasLeftConnection = false
+      let hasBottomConnection = false
+      for (const edge of outgoingEdges) {
+        const targetNode = graph.nodes.find(n => n.id === edge.to)
+        const isTool = targetNode ? isToolOrSkill(targetNode.kind) : (edge.kind === 'tool_call' || edge.kind === 'skill_read')
+        if (isTool) {
+          const targetPos = userPositionsRef.current[edge.to] ?? layout.get(edge.to)
+          if (targetPos && targetPos.x < position.x) {
+            hasLeftConnection = true
+          } else {
+            hasRightConnection = true
+          }
+        } else {
+          hasBottomConnection = true
+        }
+      }
+
       return {
         id: node.id,
         type: 'agentNode',
         position,
-        data: { ...node, selected: node.id === selectedId, onSelect } as AgentNodeData,
+        data: {
+          ...node,
+          selected: node.id === selectedId,
+          onSelect,
+          hasTopConnection: incomingEdges.length > 0,
+          hasBottomConnection,
+          hasRightConnection,
+          hasLeftConnection,
+          targetSide,
+        } as AgentNodeData,
       }
     })
     if (previewPosts.length > 0) {
@@ -285,17 +440,37 @@ export default function AgentCanvas({
       const from = graph.nodes.find(node => node.id === edge.from)
       const to = graph.nodes.find(node => node.id === edge.to)
       const stroke = to?.state === 'failed' ? '#ef4444' : from?.state === 'running' || to?.state === 'running' ? '#6366f1' : to?.state === 'completed' ? '#10b981' : '#cbd5e1'
+
+      const isToolOrSkillTarget = to ? isToolOrSkill(to.kind) : (edge.kind === 'tool_call' || edge.kind === 'skill_read')
+
+      let sourceHandle = 'bottom'
+      let targetHandle = 'top'
+
+      if (isToolOrSkillTarget) {
+        const fromPos = flowNodes.find(n => n.id === edge.from)?.position
+        const toPos = flowNodes.find(n => n.id === edge.to)?.position
+        if (fromPos && toPos && toPos.x < fromPos.x) {
+          sourceHandle = 'left'
+          targetHandle = 'right'
+        } else {
+          sourceHandle = 'right'
+          targetHandle = 'left'
+        }
+      }
+
       return [{
         id: edge.id,
         source: edge.from,
         target: edge.to,
+        sourceHandle,
+        targetHandle,
         type: 'smoothstep',
         animated: edge.animated,
         style: { stroke, strokeWidth: edge.kind === 'delegation' ? 2.4 : 1.6 },
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
       }]
     })
-  }, [graph])
+  }, [graph, flowNodes])
 
   const selected = graph.nodes.find(node => node.id === selectedId) ?? null
 
