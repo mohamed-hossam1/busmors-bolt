@@ -101,6 +101,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
     const base = {
       runId: null,
       attempt: 1,
+      instanceId: event.instanceId,
       startedAt: event.startedAt,
       endedAt: event.endedAt,
       error: event.failureReason ?? null,
@@ -259,7 +260,13 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       }
     },
     recordRun: (record) => {
-      trace.setResult({ status: record.outcome, route: record.path, finalReply: record.reply || null, durationMs: record.metrics.totalMs })
+      // A task path already set the concrete status/route/reply from the task
+      // executor; keep those and only stamp the total latency.
+      if (record.outcome === 'task') {
+        trace.setResult({ durationMs: record.metrics.totalMs })
+      } else {
+        trace.setResult({ status: record.outcome, route: record.path, finalReply: record.reply || null, durationMs: record.metrics.totalMs })
+      }
       return safe('record_orchestrator_run', () => supabase.rpc('record_orchestrator_run', {
       p_conversation_id: conversationId,
       p_idempotency_key: idempotencyKey,

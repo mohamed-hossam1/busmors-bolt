@@ -38,8 +38,8 @@ export interface ModelRecord {
     reasoningTokens?: number
   } | null
   durationMs?: number
-  startedAt?: string
-  endedAt?: string
+  startedAt?: string | null
+  endedAt?: string | null
   fallbackUsed?: boolean
   retryAttempt?: number
   error?: string | null
@@ -51,12 +51,13 @@ export interface ToolRecord {
   toolName: string
   agentId?: string
   agentRole?: string
+  instanceId?: string | null
   provider?: string | null
   operation?: string | null
   callId?: string | null
   status?: string | null
-  startedAt?: string
-  endedAt?: string
+  startedAt?: string | null
+  endedAt?: string | null
   durationMs?: number
   input?: unknown
   output?: unknown
@@ -71,10 +72,11 @@ export interface AgentRecord {
   agentId: string
   agentRole?: string | null
   parentAgentId?: string | null
+  instanceId?: string | null
   label?: string | null
   status?: string | null
-  startedAt?: string
-  endedAt?: string
+  startedAt?: string | null
+  endedAt?: string | null
   error?: string | null
   parentEventId?: string | null
   runId?: string | null
@@ -160,7 +162,7 @@ function num(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
-function duration(start?: string, end?: string): number | undefined {
+function duration(start?: string | null, end?: string | null): number | undefined {
   if (!start || !end) return undefined
   const ms = Date.parse(end) - Date.parse(start)
   return Number.isFinite(ms) && ms >= 0 ? ms : undefined
@@ -239,8 +241,8 @@ export class TraceCollector {
     const input = record.input
       ? {
           operation: record.operation,
-          systemHead: input?.systemPrompt ? scrubString(input.systemPrompt, MODEL_TEXT_CAP) : null,
-          userHead: input?.userPrompt ? scrubString(input.userPrompt, MODEL_TEXT_CAP) : null,
+          systemHead: record.input.systemPrompt ? scrubString(record.input.systemPrompt, MODEL_TEXT_CAP) : null,
+          userHead: record.input.userPrompt ? scrubString(record.input.userPrompt, MODEL_TEXT_CAP) : null,
         }
       : { operation: record.operation }
     const output = record.outputText ? { textHead: scrubString(record.outputText, MODEL_TEXT_CAP) } : null
@@ -290,7 +292,7 @@ export class TraceCollector {
       agent_role: record.agentRole ?? 'tool',
       run_id: record.runId ?? this.runId,
       attempt: record.attempt ?? this.attempt,
-      instance_id: null,
+      instance_id: uuidOrNull(record.instanceId),
       correlation_id: null,
       tool_name: record.toolName,
       operation: record.operation ?? null,
@@ -329,6 +331,7 @@ export class TraceCollector {
       parent_agent_id: record.parentAgentId ?? null,
       run_id: record.runId ?? this.runId,
       attempt: record.attempt ?? this.attempt,
+      instance_id: uuidOrNull(record.instanceId),
       status: record.status ?? null,
       started_at: record.startedAt ?? null,
       ended_at: record.endedAt ?? null,

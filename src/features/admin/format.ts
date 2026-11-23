@@ -115,11 +115,23 @@ type GraphEvent = Record<string, unknown>
 
 const GRAPH_TYPES = new Set(['agent_started', 'agent_completed', 'agent_error', 'tool_call', 'delegation', 'skill_read', 'flow_connection'])
 
+/** Map an admin event to a canvas event_type, or null when it is not a graph node. */
+function graphTypeFor(event: AdminTraceEventRow): string | null {
+  if (event.event_type === 'tool') return 'tool_call'
+  if (event.event_type === 'agent') {
+    if (event.status === 'failed') return 'agent_error'
+    if (event.status === 'running') return 'agent_started'
+    return 'agent_completed'
+  }
+  if (GRAPH_TYPES.has(event.event_type)) return event.event_type
+  return null
+}
+
 /** Map admin events to the persisted-event shape buildAgentGraph consumes. */
 export function toGraphEvents(events: AdminTraceEventRow[]): GraphEvent[] {
   const mapped: GraphEvent[] = []
   for (const event of events) {
-    const type = GRAPH_TYPES.has(event.event_type) ? event.event_type : null
+    const type = graphTypeFor(event)
     if (!type) continue
     const label = eventLabel(event)
     const redacted =

@@ -146,11 +146,17 @@ LEFT JOIN LATERAL (
 ) ag ON true
 WHERE COALESCE(a.id, t.trace_id) IS NOT NULL;
 
+-- The view runs with the owner's privileges so it can span tasks and traces;
+-- only the service role (admin API) may read it.
+REVOKE ALL ON admin_trace_list FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON admin_trace_list TO service_role;
+
 -- 5. enqueue_task gains an optional trace id ------------------------------------
 -- The old 4-argument function is replaced by a 5-argument one whose trace id
 -- defaults to NULL, so the existing 'submit' path keeps working unchanged while
 -- the Orchestrator handoff can persist trace_id in the same awaited insert.
 DROP FUNCTION IF EXISTS enqueue_task(uuid,text,jsonb,uuid);
+DROP FUNCTION IF EXISTS enqueue_task(uuid,text,jsonb,uuid,uuid);
 
 CREATE FUNCTION enqueue_task(p_conversation_id uuid,p_request text,p_origin jsonb,p_idempotency_key uuid,p_trace_id uuid DEFAULT NULL)
 RETURNS tasks LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
@@ -184,6 +190,7 @@ RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE
   pid uuid := (p_trace->>'id')::uuid;
   agg record;
+  inserted_count integer := 0;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role' THEN RAISE EXCEPTION 'NOT_AUTHORIZED'; END IF;
   IF pid IS NULL THEN RAISE EXCEPTION 'INVALID_TRACE'; END IF;
@@ -267,9 +274,12 @@ BEGIN
     coalesce(e->'metadata','{}'::jsonb)
   FROM jsonb_array_elements(p_events) e
   ON CONFLICT (id) DO NOTHING;
+  GET DIAGNOSTICS inserted_count = ROW_COUNT;
 
   -- Recompute the aggregate cache from the full, uniquely-identified event set
   -- (all attempts). Order-independent and idempotent: nothing is overwritten.
+  -- An empty re-flush (no new rows) must not zero out a prior attempt's totals.
+  IF inserted_count > 0 THEN
   SELECT
     coalesce(sum(llm_input_tokens)  FILTER (WHERE event_type='model'),0)  AS in_tok,
     coalesce(sum(llm_output_tokens) FILTER (WHERE event_type='model'),0)  AS out_tok,
@@ -293,6 +303,7 @@ BEGIN
     agent_count       = agg.agents,
     max_attempt       = agg.max_attempt
   WHERE t.id = pid;
+  END IF;
 
   RETURN pid;
 END $$;

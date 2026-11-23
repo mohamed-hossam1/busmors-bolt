@@ -80,18 +80,6 @@ export async function listTraces(filters: AdminTraceListFilters): Promise<AdminT
   }
 }
 
-export interface AdminTraceDetail {
-  trace: AdminTraceListItem
-  events: AdminTraceEventRow[]
-  fallback: {
-    agentEvents: Record<string, unknown>[]
-    steps: Record<string, unknown>[]
-    usage: Record<string, unknown>[]
-  }
-  /** True when the detail had to be reconstructed from durable task tables. */
-  reconstructed: boolean
-}
-
 export async function getTraceDetail(id: string): Promise<AdminTraceDetail | null> {
   const admin = createAdminClient()
   const { data: traceRow, error: traceError } = await admin
