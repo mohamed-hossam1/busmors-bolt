@@ -19,11 +19,11 @@ import {
   Maximize2,
   FileText,
   CheckCircle2,
-  Loader2,
   X,
   ArrowUpRight,
   Gauge,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
@@ -511,7 +511,7 @@ export default function EmployeePage() {
             <div className="animate-fade-up rounded-2xl border border-primary-200/90 bg-gradient-to-r from-primary-50/95 to-accent-50/80 p-3.5 shadow-xs">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
-                  <Loader2 size={16} className="animate-spin" />
+                  <Spinner size={16} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
@@ -598,7 +598,7 @@ export default function EmployeePage() {
         </div>
         <div className="min-h-0 flex-1">
           {conversationLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Loader2 size={16} className="animate-spin" />{t('loadingConversationGraph')}</div>
+            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-500"><Spinner size={16} />{t('loadingConversationGraph')}</div>
           ) : canvasLoadError ? (
             <p role="alert" className="m-5 rounded-xl border border-red-100 bg-white p-4 text-sm text-red-600">{canvasLoadError}</p>
           ) : (

@@ -1,5 +1,3 @@
-import { supabase } from './supabase'
-
 export type BrainCategory =
   | 'company_profile'
   | 'offering'
@@ -90,19 +88,6 @@ export interface FormField {
   type: 'text' | 'single' | 'multi' | 'select' | 'number' | 'url'
   options?: string[]
   value?: string | string[]
-}
-
-export interface Task {
-  id: string
-  workspace_id: string
-  conversation_id: string | null
-  type: string
-  status: 'pending' | 'running' | 'awaiting_input' | 'completed' | 'failed'
-  user_request: string
-  plan: { agent: string; label: string }[]
-  result_summary: string | null
-  created_at: string
-  updated_at: string
 }
 
 export interface AgentEvent {
@@ -203,14 +188,6 @@ export interface WorkspaceSettings {
   updated_at: string
 }
 
-export interface PlatformConnection {
-  id: string
-  platform: Platform
-  account_name: string
-  status: 'connected' | 'expired' | 'disconnected'
-  connected_at: string
-}
-
 export interface AuditEntry {
   id: string
   action: string
@@ -218,10 +195,4 @@ export interface AuditEntry {
   entity_id: string | null
   details: Record<string, unknown>
   created_at: string
-}
-
-export async function getWorkspaceId(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession()
-  const user = data.session?.user
-  return user?.id ?? null
 }

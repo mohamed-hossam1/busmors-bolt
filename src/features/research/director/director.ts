@@ -1,4 +1,5 @@
 import {
+  addUsage,
   emptyUsage,
   type BusinessProfile,
   type EvidenceObservation,
@@ -428,12 +429,4 @@ export function createStubSubagent(track: ResearchTrack, options: { summary?: st
       }
     },
   }
-}
-
-export function addUsage(target: UsageRecord, addition: Partial<UsageRecord>): UsageRecord {
-  target.calls += addition.calls ?? 0
-  target.pages += addition.pages ?? 0
-  target.tokens += addition.tokens ?? 0
-  target.credits += addition.credits ?? 0
-  return target
 }

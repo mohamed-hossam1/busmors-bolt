@@ -110,8 +110,6 @@ export const AI_MODELS = {
   },
 } as const satisfies Record<string, ModelConfig>
 
-export type AiModelRole = keyof typeof AI_MODELS
-
 /** Helper to get model config for a given operation */
 export function getModelConfigForOperation(operation: string): ModelConfig {
   switch (operation) {

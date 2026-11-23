@@ -12,13 +12,13 @@ import {
   Sparkles,
   Trash2,
   Pencil,
-  Loader2,
   Globe,
   AlertCircle,
   CheckCircle2,
   Search,
   X,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
@@ -734,7 +734,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
               {reorganizing && (
                 <div className="rounded-lg bg-primary-50/70 p-3.5 border border-primary-200/70">
                   <div className="flex items-center gap-2 text-primary-800 text-sm font-medium">
-                    <Loader2 size={16} className="animate-spin text-primary-600" />
+                    <Spinner size={16} className="text-primary-600" />
                     <span>{reorganizeStatus || t('reorganizing')}</span>
                   </div>
                   <div className="mt-2.5 h-1.5 w-full bg-primary-200 rounded-full overflow-hidden">
@@ -767,7 +767,7 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
                 >
                   {reorganizing ? (
                     <>
-                      <Loader2 size={15} className="animate-spin" />
+                      <Spinner size={15} />
                       {t('reorganizing')}
                     </>
                   ) : (

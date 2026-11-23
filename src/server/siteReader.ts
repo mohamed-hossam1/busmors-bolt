@@ -1,9 +1,10 @@
 import 'server-only'
 import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
+import { DEFAULT_CRAWL_PAGES } from '../lib/crawlConstants'
 import { firecrawlScrape } from './research/providers'
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
-export const DEFAULT_CRAWL_PAGES = 3
+export { DEFAULT_CRAWL_PAGES }
 /** Per-page ceiling for the Firecrawl escalation; short enough to keep the crawl fast. */
 const FIRECRAWL_PAGE_TIMEOUT = 10000
 export interface CrawlOptions {
@@ -63,7 +64,7 @@ function discoverLinks(page: CrawledPage, base: string): string[] {
  * Probes the target website's sitemap.xml to instantly discover high-value canonical pages
  * (e.g. products, pricing, about) without waiting for recursive link discovery.
  */
-export async function discoverSitemapLinks(baseUrl: string, signal?: AbortSignal): Promise<string[]> {
+async function discoverSitemapLinks(baseUrl: string, signal?: AbortSignal): Promise<string[]> {
   try {
     const origin = new URL(baseUrl).origin
     const candidatePaths = ['/sitemap.xml', '/sitemap_index.xml']

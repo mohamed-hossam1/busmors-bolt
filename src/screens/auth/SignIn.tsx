@@ -1,31 +1,26 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from '@/shared/i18n'
 import { useSearchParams } from 'next/navigation'
 import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
 import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthLayout'
-import { useAuth } from '../../context/AuthContext'
 
 import GoogleButton from '../../components/auth/GoogleButton'
 import { safeReturnPath } from '../../lib/authRouting'
+import { useRedirectIfAuthenticated } from '../../hooks/useRedirectIfAuthenticated'
 
 export default function SignIn() {
   const { t } = useCopy()
-  const { session, loading } = useAuth()
   const params = useSearchParams()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { error, busy, run } = useAuthError()
 
-  useEffect(() => {
-    if (session) {
-      router.replace(safeReturnPath(params.get('next')) ?? '/employee')
-    }
-  }, [session, params, router])
+  const session = useRedirectIfAuthenticated(safeReturnPath(params.get('next')) ?? '/employee')
 
   if (session) {
     return null

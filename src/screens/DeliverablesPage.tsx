@@ -6,7 +6,8 @@ import { useDialog } from '../hooks/useDialog'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLocaleRouter as useRouter } from '@/context/I18nContext'
-import { FolderOpen, X, Download, FileText, ArrowUpRight, Search, Copy, Pencil, Trash2, Send, History, Loader2 } from 'lucide-react'
+import { FolderOpen, X, Download, FileText, ArrowUpRight, Search, Copy, Pencil, Trash2, Send, History } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { supabase } from '../lib/supabase'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
@@ -369,7 +370,7 @@ export default function DeliverablesPage() {
             {hasMore && (
               <div className="mt-6 flex justify-center">
                 <button onClick={() => void loadMore()} disabled={loadingMore} className="btn-secondary px-4 py-2 text-xs">
-                   {loadingMore ? <><Loader2 size={13} className="animate-spin" /> {t('loading')}</> : t('loadMoreDocs')}
+                   {loadingMore ? <><Spinner size={13} /> {t('loading')}</> : t('loadMoreDocs')}
                 </button>
               </div>
             )}

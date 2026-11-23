@@ -7,13 +7,13 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Loader2,
   LockKeyhole,
   RefreshCw,
   Route,
   Save,
   Sparkles,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { RoadmapSkeleton } from '../../components/skeletons'
 import { useAuth } from '../../context/AuthContext'
 import { useCopy } from '../../hooks/useCopy'
@@ -794,7 +794,7 @@ export default function DiscoveryWizard() {
           ))}
         </div>
 
-        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Loader2 size={15} className="animate-spin" /> {t('savingGoal')}</p>}
+        {busy && <p role="status" className="mt-4 flex items-center gap-2 text-sm text-ink-600"><Spinner size={15} /> {t('savingGoal')}</p>}
         {draft && goalPicker && (
           <button type="button" onClick={() => setGoalPicker(false)} className="btn-secondary mt-5">{t('backToCurrentGoal')}</button>
         )}
@@ -817,7 +817,7 @@ export default function DiscoveryWizard() {
 
       <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white/95 p-3 backdrop-blur">
         <span role="status" className={`badge ${saveState === 'error' ? 'bg-red-50 text-red-700' : saveState === 'saving' ? 'bg-primary-50 text-primary-700' : 'bg-emerald-50 text-emerald-700'}`}>
-          {saveState === 'saving' ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} {saveLabel}
+          {saveState === 'saving' ? <Spinner size={12} /> : <CheckCircle2 size={12} />} {saveLabel}
         </span>
         <span className="text-xs text-ink-500">{t('answeredCount', { count: positiveCount, total: activeQuestions.length })}</span>
         <button type="button" onClick={() => void saveAll()} disabled={saveState === 'saving'} className="btn-primary ms-auto min-h-9 px-3 py-1.5 text-xs">
@@ -974,7 +974,7 @@ export default function DiscoveryWizard() {
                 {t('preliminaryPlanHelp')}
               </p>
               <button type="button" onClick={() => void continuePreliminary()} disabled={planning} className="btn-secondary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
-                {planning ? <><Loader2 size={13} className="animate-spin" /> {t('saving')}</> : t('continuePreliminary')}
+                {planning ? <><Spinner size={13} /> {t('saving')}</> : t('continuePreliminary')}
               </button>
               <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('preliminaryPlanNote')}</p>
             </section>

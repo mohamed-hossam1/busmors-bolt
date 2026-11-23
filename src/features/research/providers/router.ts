@@ -1,7 +1,6 @@
 import type { ProviderName, SourceRecord, UsageRecord } from '../contracts'
-import { emptyUsage } from '../contracts'
+import { addUsage, emptyUsage } from '../contracts'
 import type { FreeTierLedger } from '../ledger/ledger'
-import { InsufficientAllowanceError } from '../ledger/ledger'
 import { normalizeQuery, type CandidateUrl } from './normalize'
 import type { ProviderAdapter, ProviderContext, ProviderOutcome, ProviderErrorCode } from './types'
 
@@ -208,22 +207,4 @@ export class ProviderRouter {
           : { query, maxResults: options.maxResults ?? 8, sector: options.sector ?? null, geography: options.geography ?? null }
     return executeProvider(this.ledger, adapter, input, { taskId: this.taskId, signal: options.signal })
   }
-}
-
-/** Router errors stay typed: an exhausted allowance is never retried. */
-export async function searchOrReduce<T>(operation: () => Promise<T>, reduce: (error: InsufficientAllowanceError) => T): Promise<{ result: T; reduced: boolean }> {
-  try {
-    return { result: await operation(), reduced: false }
-  } catch (error) {
-    if (error instanceof InsufficientAllowanceError) return { result: reduce(error), reduced: true }
-    throw error
-  }
-}
-
-export function addUsage(target: UsageRecord, addition: Partial<UsageRecord>): UsageRecord {
-  target.calls += addition.calls ?? 0
-  target.pages += addition.pages ?? 0
-  target.tokens += addition.tokens ?? 0
-  target.credits += addition.credits ?? 0
-  return target
 }

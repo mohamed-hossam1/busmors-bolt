@@ -105,39 +105,3 @@ export class FreeTierLedger {
     }
   }
 }
-
-/** In-memory ledger for tests and for a single in-process research run. */
-export function memoryLedgerBackend(initial: ResearchBudget) {
-  const allowance = { ...initial }
-  const calls = new Map<string, { calls: number; pages: number; credits: number; tokens: number }>()
-  let sequence = 0
-  return {
-    allowance,
-    backend: {
-      async reserve(input: { callId: string; estimate: { calls: number; pages: number; credits: number; tokens: number } }): Promise<Reservation> {
-        sequence += 1
-        calls.set(input.callId, { calls: input.estimate.calls, pages: input.estimate.pages, credits: input.estimate.credits, tokens: input.estimate.tokens })
-        allowance.calls -= 1
-        allowance.pages -= input.estimate.pages
-        allowance.credits -= input.estimate.credits
-        return { reservationId: `res-${sequence}`, callId: input.callId, allowance: { ...allowance } }
-      },
-      async settle(input: { callId: string; usage: { calls: number; pages: number; credits: number; tokens: number } }): Promise<SettleResult> {
-        const reserved = calls.get(input.callId) ?? { calls: 0, pages: 0, credits: 0, tokens: 0 }
-        calls.delete(input.callId)
-        allowance.tokens -= input.usage.tokens
-        allowance.pages = Math.max(0, allowance.pages - Math.max(0, input.usage.pages - reserved.pages))
-        allowance.credits = Math.max(0, allowance.credits - Math.max(0, input.usage.credits - reserved.credits))
-        return { reservationId: 'res', settled: true, usage: input.usage, allowance: { ...allowance } }
-      },
-      async release(input: { callId: string }): Promise<void> {
-        const reserved = calls.get(input.callId)
-        if (!reserved) return
-        calls.delete(input.callId)
-        allowance.calls += reserved.calls
-        allowance.pages += reserved.pages
-        allowance.credits += reserved.credits
-      },
-    } satisfies LedgerBackend,
-  }
-}

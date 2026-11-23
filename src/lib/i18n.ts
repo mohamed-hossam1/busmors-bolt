@@ -14,7 +14,7 @@ export function hasLocale(value: string): value is Locale {
   return (locales as readonly string[]).includes(value)
 }
 
-export function isRtl(locale: string): boolean {
+function isRtl(locale: string): boolean {
   return locale === 'ar'
 }
 

@@ -286,16 +286,3 @@ function addConsumption(current: UsageRecord, addition: { calls?: number; pages?
 function normalizeConsumption(value: { calls?: number; pages?: number; tokens?: number; credits?: number } | null | undefined): UsageRecord {
   return addConsumption(emptyUsage(), value)
 }
-
-/** The same persisted rows always rebuild the same sequence. */
-export function graphFingerprint(graph: CanvasGraph): string {
-  return graph.order.join('|') + '#' + graph.edges.map(edge => `${edge.from}>${edge.to}`).join(',')
-}
-
-export function nodeById(graph: CanvasGraph, id: string): CanvasNode | undefined {
-  return graph.nodes.find(node => node.id === id)
-}
-
-export function failedNodes(graph: CanvasGraph): CanvasNode[] {
-  return graph.nodes.filter(node => node.state === 'failed' || node.state === 'partial')
-}

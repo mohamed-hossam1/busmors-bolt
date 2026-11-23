@@ -26,12 +26,12 @@ import {
   FileText,
   Check,
   AlertCircle,
-  Loader2,
   Network,
   ExternalLink,
   X,
   BrainCircuit,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import type { AgentEvent } from '../../lib/types'
 import { useCopy } from '../../hooks/useCopy'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
@@ -68,7 +68,7 @@ const NODE_ICON: Record<CanvasNodeKind, typeof Bot> = {
 }
 
 function statePill(node: CanvasNode, t: ReturnType<typeof useCopy>['t']) {
-  if (node.state === 'running') return <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold text-primary-800"><Loader2 size={10} className="animate-spin" />{t('stateRunning')}</span>
+  if (node.state === 'running') return <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-semibold text-primary-800"><Spinner size={10} />{t('stateRunning')}</span>
   if (node.state === 'completed') return <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"><Check size={10} />{t('stateDone')}</span>
   if (node.state === 'failed') return <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"><AlertCircle size={10} />{t('stateFailed')}</span>
   if (node.state === 'partial') return <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{t('statePartial')}</span>

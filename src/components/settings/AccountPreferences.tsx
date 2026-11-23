@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Globe2, Loader2, UserRound } from 'lucide-react'
+import { Globe2, UserRound } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { useAuth } from '../../context/AuthContext'
 import { useCopy } from '../../hooks/useCopy'
 import { supabase } from '../../lib/supabase'
@@ -66,7 +67,7 @@ export default function AccountPreferences() {
         <p className="text-xs text-ink-500">{t('timezonePreview')}<span suppressHydrationWarning>{formatWorkspaceTime(previewTime,timezone)}</span></p>
         {error && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{error}</p><button type="button" className="mt-2 underline" onClick={()=>void refreshSettings()}>{t('reloadSavedSettings')}</button></div>}
         {saved && <p role="status" className="text-sm text-emerald-700">{t('regionPreferencesSaved')}</p>}
-        <button type="submit" onClick={save} className="btn-primary" disabled={busy || !version}>{busy && <Loader2 size={16} className="animate-spin"/>}{t('savePreferences')}</button>
+        <button type="submit" onClick={save} className="btn-primary" disabled={busy || !version}>{busy && <Spinner size={16} />}{t('savePreferences')}</button>
       </form>
     </section>
   </>

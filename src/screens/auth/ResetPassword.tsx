@@ -1,25 +1,18 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from '@/shared/i18n'
-import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
 import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthLayout'
-import { useAuth } from '../../context/AuthContext'
+import { useRedirectIfAuthenticated } from '../../hooks/useRedirectIfAuthenticated'
 
 export default function ResetPassword() {
   const { t } = useCopy()
-  const { session, loading } = useAuth()
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const { error, notice, setNotice, busy, run } = useAuthError()
 
-  useEffect(() => {
-    if (session) {
-      router.replace('/employee')
-    }
-  }, [session, router])
+  const session = useRedirectIfAuthenticated('/employee')
 
   if (session) {
     return null

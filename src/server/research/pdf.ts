@@ -71,7 +71,3 @@ export function createPdfInspector(): PdfInspectTransport {
     },
   }
 }
-
-export async function pdfBytes(pdfPath: string): Promise<Buffer> {
-  return readFile(pdfPath)
-}

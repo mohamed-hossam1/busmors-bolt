@@ -23,14 +23,6 @@ export const COMMON_MISSPELLINGS: readonly string[] = Object.freeze([
   'tuck pointing',
 ])
 
-/** Arabizi numerals and letters, used to normalise Egyptian chat-style queries. */
-export const ARABIZI_MAP: Readonly<Record<string, string>> = Object.freeze({
-  '2': 'أ', '3': 'ع', '4': 'ش', '5': 'خ', '6': 'ط', '7': 'ح', '8': 'ق', '9': 'ص',
-  a: 'ا', b: 'ب', d: 'د', e: 'ي', f: 'ف', g: 'ج', h: 'ه', i: 'ي', j: 'ج',
-  k: 'ك', l: 'ل', m: 'م', n: 'ن', o: 'و', r: 'ر', s: 'س', t: 'ت', u: 'و',
-  w: 'و', y: 'ي', z: 'ز',
-})
-
 export const QUERY_LEXICON: readonly LexiconEntry[] = Object.freeze([
   {
     concept: 'ceramic repair',
@@ -133,10 +125,6 @@ export function normalizeText(value: string): string {
     .trim()
 }
 
-export function arabiziToArabic(value: string): string {
-  return [...value.toLowerCase()].map(char => ARABIZI_MAP[char] ?? char).join('').replace(/\s+/g, ' ').trim()
-}
-
 export function detectLanguage(value: string): ResearchLanguage | 'mixed' {
   const arabic = (value.match(/[\u0600-\u06FF]/g) ?? []).length
   const latin = (value.match(/[A-Za-z]/g) ?? []).length
@@ -164,10 +152,4 @@ export function buildQueryPack(concept: string, options: { includeMisspellings?:
     queries.push({ language, query: term, script: /[\u0600-\u06FF]/.test(term) ? 'arabic' : isArabizi(term) ? 'arabizi' : 'latin' })
   }
   return queries
-}
-
-/** One code-switched query per concept: Egyptian Arabic plus English terms. */
-export function codeSwitchedQueries(concept: string): string[] {
-  const entry = lexiconEntry(concept)
-  return entry ? [...entry.codeSwitched] : []
 }

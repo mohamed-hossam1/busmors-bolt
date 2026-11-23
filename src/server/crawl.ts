@@ -1,19 +1,12 @@
 import 'server-only'
 import type { BrainCategory } from '../lib/types'
 import { callAi } from './call-ai'
-import { createServerSupabase } from './supabase'
-import { saveCrawlKnowledge } from './crawlStorage'
 export { saveCrawlKnowledge } from './crawlStorage'
 import { CRAWL_CATEGORIES, CRAWL_PROMPTS } from './ai/crawl-prompts'
 import { getModelConfigForOperation } from '../config/ai-models'
 import { buildPageBlocks, cleanTitle, dedupeCandidates, extractCandidates, normalizedEvidence, sanitizeEvidence, truncateWords, type CrawledPage, type ExtractedCandidate } from '../lib/crawlContent'
 import { crawlPages, DEFAULT_CRAWL_PAGES, normalizeSiteUrl, type CrawlDiagnostics, type CrawlOptions, type CrawlProgressCallback } from './siteReader'
 import { fetchSiteJsonLd } from './jsonLd'
-
-export { cleanPageForAi, cleanTitle } from '../lib/crawlContent'
-export type { CrawledPage, ExtractedCandidate } from '../lib/crawlContent'
-export type { CrawlOptions, CrawlProgressCallback } from './siteReader'
-export { DEFAULT_CRAWL_PAGES } from './siteReader'
 
 export interface CrawlResult {
   pages_read: number
@@ -120,10 +113,6 @@ const CATEGORY_SYNONYMS: Record<string, BrainCategory> = {
   competitors: 'competitor',
 }
 
-export async function aiExtractKnowledge(pages: CrawledPage[], options: SiteAnalysisOptions = {}): Promise<ExtractedCandidate[]> {
-  return (await analyzeSiteKnowledge(pages, options)).candidates
-}
-
 export interface SiteAnalysis {
   candidates: ExtractedCandidate[]
   relations: ExtractedRelation[]
@@ -225,13 +214,6 @@ async function analyzeBatch(pages: CrawledPage[], options: SiteAnalysisOptions =
   }
 }
 
-/** Try the server for authenticated crawls; never probe availability by reading a secret. */
-export async function isAiExtractionAvailable(): Promise<boolean> {
-  const supabase = await createServerSupabase()
-  const { data } = await supabase.auth.getSession()
-  return Boolean(data.session)
-}
-
 export type RelationType = 'TARGETS' | 'COMPETES_WITH' | 'HAS_TONE' | 'SOLVES_PAIN_POINT' | 'RELATED_TO'
 export interface ExtractedRelation {
   source_index: number
@@ -240,22 +222,6 @@ export interface ExtractedRelation {
   source_url: string
   evidence_quote: string
   confidence: number
-}
-
-export async function aiExtractRelations(candidates: ExtractedCandidate[]): Promise<ExtractedRelation[]> {
-  if (candidates.length < 2 || !candidates.some((c) => c.properties.extracted_by === 'ai')) return []
-  const input = candidates.map((c, index) => ({ index, category: c.category, title: c.title, summary: c.summary,
-    source_url: c.source_url, evidence_quote: c.properties.evidence_quote }))
-  const relateConfig = getModelConfigForOperation('relate')
-  const ai = await callAi({ systemPrompt: CRAWL_PROMPTS.relate, userPrompt: JSON.stringify(input),
-    maxTokens: relateConfig.maxTokens ?? 2500, temperature: relateConfig.temperature ?? 0.1, jsonMode: true, useSharedCrawlKey: true, crawlOperation: 'relate',
-    reasoningEffort: relateConfig.reasoningEffort ?? 'high' })
-  if (!ai.ok || !ai.text) return []
-  try {
-    const parsed = parseJson(ai.text)
-    if (!Array.isArray(parsed.edges)) return []
-    return validateRelations(candidates, parsed.edges)
-  } catch { return [] }
 }
 
 export function validateRelations(candidates: ExtractedCandidate[], values: unknown[]): ExtractedRelation[] {
@@ -275,7 +241,6 @@ export function validateRelations(candidates: ExtractedCandidate[], values: unkn
       HAS_TONE: ['company_profile', 'offering'].includes(source.category) && target.category === 'brand_rule',
       SOLVES_PAIN_POINT: source.category === 'offering' && target.category === 'audience', RELATED_TO: true,
     }
-    const evidence = normalizedEvidence(e.evidence_quote)
     if (!compatibility[String(e.relation_type)] || e.evidence_quote.length > 500) continue
     const key = `${e.source_index}:${e.target_index}:${e.relation_type}`
     if (seen.has(key)) continue
@@ -311,25 +276,4 @@ export function prepareSiteKnowledge(pages: CrawledPage[], fallback: ExtractedCa
     }
   }
   return { candidates, relations: validateRelations(candidates, relations) }
-}
-
-export async function organizeBrainWithAi(websiteUrl: string, workspaceId: string, onProgress?: (status: string) => void): Promise<{ success: boolean; nodesCount: number; edgesCount: number; error?: string; warning?: string }> {
-  const supabase = await createServerSupabase()
-  try {
-    const { data } = await supabase.auth.getSession()
-    if (data.session?.user.id !== workspaceId) throw new Error('Please sign in to your workspace again.')
-    const token = data.session?.access_token
-    const result = await extractKnowledgeFromSite(websiteUrl, (read, total) => onProgress?.(`Reading website content (${read}/${total} pages)...`), DEFAULT_CRAWL_PAGES, { forceRefresh: true })
-    if (!result.pages.length) throw new Error('Could not read useful website content. Your existing knowledge has been kept.')
-    onProgress?.('Extracting supported business knowledge...')
-    const analysis = await analyzeSiteKnowledge(result.pages, { token })
-    const aiCandidates = analysis.candidates
-    const { candidates, relations } = prepareSiteKnowledge(result.pages, result.candidates, analysis)
-    onProgress?.('Saving website knowledge...')
-    // Degraded extraction may add review candidates, but must not replace a better Brain.
-    const counts = await saveCrawlKnowledge(websiteUrl, candidates, relations, result.pages_read, aiCandidates.length > 0 && analysis.warnings.length === 0, workspaceId)
-    return { success: true, ...counts, warning: counts.warning || (analysis.warnings.length ? analysis.warnings.join(' ') + ' Source-backed suggestions were saved for review; existing knowledge was kept.' : undefined) }
-  } catch (error) {
-    return { success: false, nodesCount: 0, edgesCount: 0, error: error instanceof Error ? error.message : 'Could not organize website knowledge.' }
-  }
 }

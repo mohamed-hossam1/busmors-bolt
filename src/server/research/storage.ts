@@ -174,26 +174,6 @@ export async function storeResearchProposals(client: SupabaseClient, workspaceId
   return { inserted, pending: inserted }
 }
 
-export async function decideResearchProposal(client: SupabaseClient, proposalId: string, decision: 'approved' | 'rejected'): Promise<{ proposalId: string; status: string; nodeId: string | null }> {
-  const { data, error } = await client.rpc('decide_research_proposal', { p_proposal_id: proposalId, p_decision: decision })
-  if (error) throw new ResearchStorageError(error.code ?? 'STORAGE_ERROR', error.message)
-  const record = data as Record<string, unknown>
-  return { proposalId: String(record.proposalId ?? proposalId), status: String(record.status ?? decision), nodeId: (record.nodeId as string | null) ?? null }
-}
-
-/** The DB-side policy snapshot used by the acceptance suite. */
-export async function researchPolicyChecks(client: SupabaseClient): Promise<{ freeTierOnly: boolean; noUnapprovedResearchNodes: boolean; pendingProposals: number; brainWritesUnapproved: number }> {
-  const { data, error } = await client.rpc('research_policy_checks')
-  if (error) throw new ResearchStorageError(error.code ?? 'STORAGE_ERROR', error.message)
-  const record = data as Record<string, unknown>
-  return {
-    freeTierOnly: Boolean(record.freeTierOnly),
-    noUnapprovedResearchNodes: Boolean(record.noUnapprovedResearchNodes),
-    pendingProposals: Number(record.pendingProposals ?? 0),
-    brainWritesUnapproved: record.noUnapprovedResearchNodes === false ? 1 : 0,
-  }
-}
-
 /** Loading the brief allowance so the Director starts from the persisted ledger. */
 export async function loadAllowance(client: SupabaseClient, mode: ResearchBudget): Promise<ResearchBudget> {
   const { data, error } = await client.from('free_tier_allowance').select('*').maybeSingle()

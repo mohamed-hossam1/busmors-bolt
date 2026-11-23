@@ -5,8 +5,9 @@ import { useDialog } from '../hooks/useDialog'
 import { Link } from '@/shared/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CalendarDays, CheckCheck, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink, Loader2, XCircle,
+  CalendarDays, CheckCheck, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink, XCircle,
 } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { loadPosts, recoverPosts, updatePosts } from '../server/calendar-actions'
 import { preparePostRetry, publishNow, resolveContextHolds, schedulePost } from '../server/publishing-actions'
 import { useCopy } from '../hooks/useCopy'
@@ -480,7 +481,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setConfirmPublish(null)} disabled={busy} className="btn-secondary flex-1 sm:flex-initial">{t('cancel')}</button>
               <button onClick={() => void confirmPublishNow()} disabled={busy} className="btn-primary flex-1 sm:flex-initial justify-center">
-                {busy && <Loader2 size={14} className="animate-spin" />}{busy ? t('publishing') : t('publishNow')}
+                {busy && <Spinner size={14} />}{busy ? t('publishing') : t('publishNow')}
               </button>
             </div>
           </div>

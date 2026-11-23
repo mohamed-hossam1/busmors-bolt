@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { KeyRound, Trash2, Check, Loader2, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react'
+import { KeyRound, Trash2, Check, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { removeAiKey as removeKey, saveAiKey as saveKey } from '../server/key-actions'
 import { supabase } from '../lib/supabase'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -163,7 +164,7 @@ function SettingsContent() {
 
           {loadingInitial ? (
             <div className="flex items-center justify-center p-6 text-ink-400 text-sm gap-2">
-              <Loader2 size={16} className="animate-spin" />
+              <Spinner size={16} />
               {t('loadingSettings')}
             </div>
           ) : (
@@ -194,7 +195,7 @@ function SettingsContent() {
                     title={t('removeKeyTitle')}
                     className="btn-danger px-3 py-2 text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-red-50 self-start sm:self-auto"
                   >
-                    {keyBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={14} />}
+                    {keyBusy ? <Spinner size={13} /> : <Trash2 size={14} />}
                     <span>{t('removeKey')}</span>
                   </button>
                 </div>
@@ -307,7 +308,7 @@ function SettingsContent() {
                 }
                 className="btn-primary mt-5 flex items-center justify-center gap-2 shadow-lift w-full sm:w-auto"
               >
-                {keyBusy && <Loader2 size={16} className="animate-spin" />}
+                {keyBusy && <Spinner size={16} />}
                 <span>{aiKey ? t('updateKey') : t('saveKey')}</span>
                 {keySaved && <Check size={16} />}
               </button>

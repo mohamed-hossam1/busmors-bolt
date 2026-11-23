@@ -31,10 +31,6 @@ export function hashText(text: string): string {
   return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')
 }
 
-export function normalizeWhitespace(text: string): string {
-  return text.replace(/\s+/g, ' ').trim()
-}
-
 /** A readable excerpt. An empty source stays empty instead of being invented. */
 export function excerptOf(markdown: string, maxLength = 600): string {
   const cleaned = markdown

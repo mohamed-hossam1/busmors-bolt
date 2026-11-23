@@ -1,6 +1,6 @@
-import { emptyUsage, type SourceRecord } from '../contracts'
+import { emptyUsage } from '../contracts'
 import type { ProviderAdapter, ProviderContext, ProviderEstimate, ProviderOutcome, SearchTransport } from './types'
-import { dedupeCandidates, toSourceRecord, type CandidateUrl } from './normalize'
+import { dedupeCandidates, type CandidateUrl } from './normalize'
 
 export interface SearchInput {
   query: string
@@ -64,30 +64,4 @@ export function createExaProvider(transport: SearchTransport, options: { version
       return { ok: true, sources: [], candidates, usage, notes }
     },
   }
-}
-
-/** Promote a discovery candidate into an opened source (Firecrawl). */
-export function promotedSource(candidate: CandidateUrl, input: {
-  title: string
-  markdown: string
-  capturedAt?: string
-  sector?: string | null
-  geography?: string | null
-  callId: string
-}): SourceRecord {
-  return toSourceRecord({
-    id: `fc:${input.callId}`,
-    url: candidate.url,
-    title: input.title || candidate.title,
-    provider: 'firecrawl',
-    toolAction: 'scrape',
-    toolkitVersion: 'firecrawl-1',
-    excerpt: input.markdown,
-    availability: 'retrieved',
-    usage: { calls: 1, pages: 1, tokens: 0, credits: 1 },
-    capturedAt: input.capturedAt,
-    sector: input.sector ?? null,
-    geography: input.geography ?? null,
-    sourceType: 'website',
-  })
 }
