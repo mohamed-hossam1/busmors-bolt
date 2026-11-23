@@ -1,13 +1,38 @@
-# Busmora — Project Context
+# Busmora — Project Business & Technical Context
 
-> **Purpose of this document.** This is a business-first and architecture-second knowledge base for an AI partner (Business Analyst / Product Strategist / Business-Logic Designer / Technical Consultant) who will **not** have access to the source code. It explains *what the product does, why, how its business processes work, and how the technical pieces fit together*, so that partner can reason about features, edge cases, and dependencies, and produce implementation prompts for a coding agent.
+> **Purpose of this document.** This is a complete, business-oriented and technically accurate
+> knowledge base for an AI assistant that will act as a **Business Analyst, Product Strategist,
+> Business-Logic Designer, Technical Consultant, and Feature-Planning Partner** for the Busmora
+> product — **without access to the source code**. It explains *what the system does, why, how its
+> business processes work, and how its technical components interact*, rather than how individual
+> functions are written.
 >
 > **Confidence labels used throughout:**
-> - **[Verified]** — directly supported by the current code/migrations.
-> - **[Inferred]** — strongly implied by the implementation but not stated explicitly.
-> - **[Unknown]** — cannot be established from the repository.
+> - **[Verified]** — directly supported by the existing implementation (code, schema, tests).
+> - **[Inferred]** — strongly suggested by the implementation but not explicitly confirmed.
+> - **[Unknown]** — cannot be established from the repository; listed again in Section O.
 >
-> Every important claim carries a repository path (and often a line reference) so it can be verified later. Nothing here exposes secret values — only environment variable *names*.
+> **Traceability:** important findings cite repository file paths so they can be checked later.
+
+---
+
+## Table of Contents
+
+- [A. Project Overview](#a-project-overview)
+- [B. Business Model & Product Structure](#b-business-model--product-structure)
+- [C. User Types, Roles & Permissions](#c-user-types-roles--permissions)
+- [D. Complete Feature Inventory](#d-complete-feature-inventory)
+- [E. Business Logic & Rules](#e-business-logic--rules)
+- [F. User Journeys & End-to-End Workflows](#f-user-journeys--end-to-end-workflows)
+- [G. Data Model & Business Entities](#g-data-model--business-entities)
+- [H. High-Level Technical Architecture](#h-high-level-technical-architecture)
+- [I. Integrations & External Dependencies](#i-integrations--external-dependencies)
+- [J. Notifications, Events & Automation](#j-notifications-events--automation)
+- [K. Business-Critical Dependencies](#k-business-critical-dependencies)
+- [L. Current Project State](#l-current-project-state)
+- [M. Important Technical & Business Constraints](#m-important-technical--business-constraints)
+- [N. Glossary & Project Terminology](#n-glossary--project-terminology)
+- [O. Open Questions & Unverified Assumptions](#o-open-questions--unverified-assumptions)
 
 ---
 
@@ -15,678 +40,703 @@
 
 ### What this product is
 
-**Busmora** is a web application that acts as an **AI Marketing Director for small-business owners**. The owner teaches the system about their business once (their "Business Brain"), and thereafter either (a) **chats with an AI marketing employee** to get marketing work done (market research, competitor analysis, social posts, campaigns, performance diagnosis), or (b) follows a **guided Roadmap** toward a business goal. The product is **Egyptian-first** (Arabic/English, Egypt market data, Egyptian pricing conventions) but the interface is currently **English-only**. **[Verified]**
+**Busmora** is an **AI Marketing Director for small and mid-sized businesses**, built Egyptian-first
+(Egypt market, Arabic + English). Instead of a business owner hiring a marketing agency or guessing,
+Busmora acts as an always-available marketing director that:
 
-The product tagline from the marketing site: *"Marketing, made clear. Your AI Marketing Director. Understand your priorities, prepare the work, and stay in control."* (`src/features/marketing/model/messages.json`) **[Verified]**
+1. **Learns the business** by reading the company's own website and building a structured,
+   verified **"Business Brain"** (a knowledge graph of facts about the company).
+2. **Answers questions** about the business using that verified knowledge.
+3. **Researches the market** (competitors, pricing, audience, positioning) using real, cited public
+   sources — never invented data.
+4. **Produces marketing deliverables**: social posts, campaign plans, performance diagnoses, and
+   research reports.
+5. **Publishes** approved social posts to the owner's **Facebook Page**, with a strict human-approval
+   gate and exactly-once sending.
+
+The product metaphor is a **"Marketing Director"** who delegates to specialist "agents" and owns the
+overall plan, budget, and quality bar — analogous to a human director managing a small team.
+
+> Evidence: `README.md`, `src/server/ai/operations.ts` (system prompt: *"You are Busmora, a marketing
+> director for a small business"*), `src/features/research/director/director.ts`.
 
 ### What problem it solves
 
-Small-business owners typically lack a marketing team, marketing expertise, and time. Busmora aims to give them an always-available "marketing director" that: understands *their specific* business, proposes a practical next step, and prepares real deliverables (research reports, competitor comparisons, post drafts, content calendars) that the owner **reviews and approves before anything goes live**. It emphasizes *owner control* and *no invented data* over automation. **[Verified]**
+Small Egyptian businesses typically cannot afford a full-time marketing director or agency, and
+struggle with: not knowing their real market/competitors, producing consistent content, understanding
+why inquiries are falling, and staying "grounded" (not making false claims about prices, results, or
+customers). Busmora addresses this by being **evidence-grounded and owner-governed**: it refuses to
+invent facts, requires owner approval before knowledge or posts go live, and is honest about unknowns.
 
-### Who the target users are
+### Target users
 
-- **Primary user: the business owner** of a small or medium business (shops, e-commerce, professional services, restaurants, real estate, education, health, SaaS, FMCG, etc. — see the 10 "golden industries" in `src/features/research/golden/index.ts:20-91`). **[Verified]**
-- The system is **single-user-per-workspace**: each account = one private workspace containing that owner's business. There is **no staff/team/multi-seat concept** in the code. **[Verified]**
+- **Primary user:** the **owner/founder/marketing lead of a small or mid-sized Egyptian business**
+  (single-user account per business). Each account gets one private **workspace**.
+- The product is **single-tenant per user**: one account = one workspace = one company. There is no
+  multi-user team/role system in the implemented product. **[Verified]**
 
-### Value provided
+### Value proposition
 
-1. **One-time business context capture** (website crawl or manual form) that becomes reusable "knowledge." **[Verified]**
-2. **Evidence-based research** with citations, so the owner can trust (and verify) findings. **[Verified]**
-3. **Concrete deliverables** (reports, post drafts, calendars) rather than vague advice. **[Verified]**
-4. **Owner-approval gate** on everything consequential (publishing, Brain updates from research). **[Verified]**
-5. **Free-tier-only operation** — the system will not spend money on the owner's behalf (no paid ads, no paid API fallback). **[Verified]**
+- **Grounded, not hallucinated:** every AI claim is tied to evidence; prices/results are never
+  fabricated (`src/server/ai/operations.ts`, `src/features/research/policy.ts`).
+- **Owner control:** the owner approves knowledge changes and every published post; nothing goes live
+  silently.
+- **Free to operate:** research runs on free provider tiers with a metered allowance and **no paid
+  fallback** — structurally enforced in the database (`free_tier_allowance`, `paid_fallback` cannot be
+  stored).
+- **Egyptian realism:** pricing (14% VAT, landed price), geography (27 governorates, "Greater Cairo ≠
+  all Egypt"), search language (MSA / Egyptian colloquial / Arabizi), and official-source routing are
+  built in (`src/features/research/references/*`).
 
-### Main business objectives (as evidenced)
+### Main business objectives
 
-- Reduce the gap between "I have a business" and "I have marketing work ready to review."
-- Keep a human in the loop for every consequential action (approval-first).
-- Build trust through citations, confidence levels, and explicit unknowns.
-- Contain cost (free-tier research budgets, no paid fallback). **[Verified]**
-
-### Overall product concept
-
-A single authenticated **workspace** per owner, with:
-- a **Business Brain** (approved business-knowledge graph),
-- a **Marketing Director chat** (the "Employee") that routes every message through an **Orchestrator**,
-- a **Roadmap** (guided Discovery wizard to a goal),
-- **Deliverables** (document library),
-- **Scheduling/Calendar** (content + Facebook publishing with two-step approval),
-- **Settings** (account, region, BYO AI key, Facebook page). **[Verified]**
+- Make the owner's business knowledge reusable across every feature (the Brain is the shared contract).
+- Produce trustworthy marketing work product the owner can act on.
+- Keep operating cost at/near zero (free-tier only).
+- Maintain strict safety: no cross-tenant data access, no forged approvals, no double-publishing.
 
 ### Primary use cases
 
-1. **Onboard**: point Busmora at your website (or fill a form) → get a starter Brain. **[Verified]**
-2. **Chat**: "Do market research on X", "Analyze my competitors", "Write 5 social posts", "Create a content calendar." **[Verified]**
-3. **Follow a Roadmap**: pick a goal ("win first customers") → answer guided questions → get a plan. **[Verified]**
-4. **Review & publish**: approve a post's text, then Publish now or Schedule via Facebook. **[Verified]**
-5. **Ask the Director what it knows about the business** ("what do you know about me?") → answers from the Brain. **[Verified]**
-
-> **Product status:** The product is explicitly labeled **"in development"** across the marketing site, pricing, and footer. Pricing is **"to be announced."** See Section L.
+1. **Onboarding:** "Tell Busmora about my business" — via website crawl or a manual form.
+2. **Ask the Director:** "What service do we offer?" / "What's our brand voice?" (answered from the Brain).
+3. **Research:** "Research my competitors in Cairo," "What do customers complain about?" → cited report.
+4. **Content:** "Write 2 posts about our X service," "Plan a 3-post campaign."
+5. **Diagnose:** "Why did inquiries fall even though site visits are steady?"
+6. **Publish:** approve posts and publish/schedule them to Facebook.
 
 ---
 
 ## B. Business Model & Product Structure
 
-### How the business operates (as far as the repo establishes)
+### How the business operates
 
-- Busmora is delivered as a **single-tenant SaaS-style web app**. Each owner gets one private workspace. **[Verified]**
-- **Monetization is not yet implemented.** There is a **plan concept** (`workspace_settings.plan` ∈ `starter|growth|scale`, default `starter`) and a marketing pricing page with three illustrative tiers (Starter / Growth / Director), but **all prices are "To be announced" and the plans are explicitly labeled "PROPOSED PLAN" / illustrative** (`src/features/marketing/ui/Pricing.tsx:56-81`, `messages.json:208-243`). **[Verified]**
-- There is **no payment/billing/subscription code**, no checkout, no invoicing. The pricing page FAQ explicitly says *"Can I subscribe today? No — product in development."* **[Verified]**
-- The only real "cost control" mechanism is the **free-tier research allowance** (a rolling 24-hour budget of provider calls/pages/tokens/credits) and a **BYO-AI-key** option. There is **no paid fallback** anywhere. **[Verified]**
+Busmora is a **self-serve SaaS product** with a single account type (business owner). The architecture
+and code strongly imply a **freemium / tiered SaaS** intended model, but **pricing is explicitly
+unannounced / not implemented**:
 
-> **Do not invent a business model.** Based on the repository: the intended model is *presumably* a subscription SaaS (tiered plans), but the actual billing logic, prices, and limits are **not implemented**. Treat monetization as **planned but unbuilt**. **[Verified]** for status; **[Inferred]** for the eventual intent.
+- A `plan` field exists on workspace settings with values `starter | growth | scale`, defaulting to
+  `starter` (`supabase/migrations/20261017171908_busmora_core_schema.sql`). **[Verified — field exists]**
+- **No payment processor, subscription billing, checkout, or invoicing exists in the code.** **[Verified — no such modules/routes]**
+- `DESIGN.md` states: *"Pricing remains explicitly unannounced; account creation routes to the actual
+  signup flow."* **[Verified]**
+- A **free-tier usage allowance** system exists and is the de-facto "plan" enforcement today (see
+  Section E). There is **no paid fallback** — a structural business decision (`free_tier_allowance`
+  table has `CHECK (NOT paid_fallback)`). **[Verified]**
 
-### Main product components
+> **Conclusion:** Busmora currently operates as a **free product** with a metered usage allowance. A
+> paid tier is *anticipated* (plan field, "Select a plan" UI entry point) but **not built**. Do not
+> assume any billing logic exists. **[Verified gap]**
 
-| Component | Route | What it is |
+### Main product components (modules)
+
+| Module | What it is | Primary surfaces |
 |---|---|---|
-| Marketing site | `/[lang]` | Public landing page, product story, illustrative pricing, guest demo anchor. |
-| Auth | `/[lang]/(auth)/signin,signup,reset,auth/new-password` | Email/password + Google OAuth; password recovery. |
-| Onboarding | `/[lang]/onboarding` | Capture business context (website crawl or manual form) → seed Brain. |
-| Employee (Marketing Director) | `/[lang]/(workspace)/employee` | Chat with the AI Director + live Agent Canvas. |
-| Roadmap | `/[lang]/(workspace)/roadmap` | Discovery wizard toward a business goal. |
-| Brain | `/[lang]/(workspace)/brain` | Business knowledge graph: nodes, relationships, review, evidence. |
-| Scheduling/Calendar | `/[lang]/(workspace)/scheduling` | Content calendar, post approval, Facebook scheduling/publishing. |
-| Deliverables | `/[lang]/(workspace)/deliverables` | Saved document library with versioning. |
-| Settings | `/[lang]/(workspace)/settings` | Account & region, BYO AI key, Facebook page connection. |
+| **Onboarding** | Gathers business knowledge (website crawl or manual form), builds the Brain. | `/onboarding` |
+| **Business Brain** | The verified company knowledge graph (nodes + edges) the AI reasons over. | `/brain` |
+| **Conversations / "Employee"** | Chat with the AI Marketing Director; shows a live "agent canvas." | `/employee` |
+| **Orchestrator** | The router that decides how each message is handled (direct / brain / task). | (server-side) |
+| **Tasks / Director** | Async execution engine that produces deliverables. | (server-side, surfaced in chat) |
+| **Research** | Multi-agent, evidence-first market research → cited bilingual report + PDF. | (runs inside a task) |
+| **Roadmap / Discovery** | Guided questionnaire that captures business challenges; drafts a marketing plan. | `/roadmap` |
+| **Deliverables** | Library of saved outputs (reports, content, calendars, diagnoses). | `/deliverables` |
+| **Scheduling / Publishing** | Approve, schedule, and publish posts to a Facebook Page. | `/scheduling` |
+| **Settings** | Account, region/market, AI provider key (BYOK), Facebook connection. | `/settings` |
 
-All six workspace destinations appear in the sidebar/bottom nav (`src/components/AppShell.tsx:25-32`). **[Verified]**
+### How modules relate
 
-### Relationship between modules
+The **Business Brain is the hub**. Onboarding populates it; the Orchestrator and Director read only
+**approved** Brain facts; Research proposes *new* Brain facts that the owner approves; content and
+diagnosis tasks read Brain facts and produce **deliverables**; deliverables can spawn **planned
+posts**; posts are approved and published to **Facebook**.
 
-- **Brain is the hub.** Onboarding seeds it; research proposes additions to it; the Director chat reads from it to answer "what do you know about me?"; the Discovery wizard reuses approved Brain facts to prefill/skip questions; and deliverables/posts record **dependencies on Brain node versions** so that if a fact changes or is deleted, dependent content is flagged stale or held. **[Verified]** (see `context_dependencies`, `mark_brain_context_changed` in `supabase/migrations/20261118025000_brain_governance.sql`).
-- **Tasks flow through the Orchestrator.** Every user message in the Employee chat is classified by the Orchestrator into *direct answer*, *brain answer*, or *task* (hand-off to a research/content/campaign/diagnosis pipeline). **[Verified]** (`src/features/orchestrator/*`).
-- **Deliverables come from tasks.** Chat output can be saved as a Deliverable (via an explicit "Save this?" offer), and deliverables can be continued in chat ("Continue with Director") as a new task. **[Verified]**
-- **Posts flow from tasks → Calendar → Facebook.** Generated posts become draft `planned_posts`; the owner approves the text, then schedules/publishes via Facebook. **[Verified]**
+### How users interact
 
-### How users interact with the product
+- A **locale-prefixed** web app (`/ar/...`, `/en/...`; default locale is `ar`). **[Verified — `src/lib/i18n.ts`]**
+- Protected routes require auth; unfinished onboarding redirects to `/onboarding`.
+- Chat is the main interaction; a live **agent canvas** visualizes the orchestrator → director →
+  subagents → tools as a graph (`src/components/chat/AgentCanvas.tsx`).
 
-Primarily through **chat** (natural language) and **forms/wizards** (onboarding, discovery, settings), plus **review surfaces** (Brain review, Deliverables, Calendar approvals). The chat is polled every ~1.8–2.5 s for near-real-time agent progress (no websockets). **[Verified]**
+### Customer-facing vs internal-facing
 
-### Revenue-generating mechanisms
-
-**None implemented.** See "How the business operates" above. Plan tiers exist only as a data field and illustrative marketing content. **[Verified]**
-
-### Customer-facing vs internal-facing features
-
-- **Customer-facing**: all workspace screens + marketing site.
-- **Internal/operational**: BYO AI key management (encrypted server-side), service-role-only RPCs (publishing claims, usage reservation), server-owned prompts, the free-tier allowance ledger, and the acceptance/golden evaluation harness (used for quality assurance, not exposed to owners). **[Verified]**
+- **Customer-facing:** all `/onboarding`, `/employee`, `/brain`, `/roadmap`, `/deliverables`,
+  `/scheduling`, `/settings` screens, plus the public marketing landing page
+  (`src/features/marketing/`).
+- **Internal / server-only:** the orchestrator gateway, task dispatcher/executor, research director,
+  publishing provider, AI key encryption, and all "SECURITY DEFINER" database functions. These are not
+  user screens; they enforce the rules. **[Verified]**
 
 ---
 
 ## C. User Types, Roles & Permissions
 
-### There is exactly one real user role: the **Workspace Owner**
+### The single user role: Workspace Owner
 
-The system is single-user-per-workspace. There is **no admin vs customer, no staff, no vendor, no manager distinction** in the code or schema. Every authenticated user owns exactly one workspace (id = `auth.users.id`). **[Verified]**
+Busmora implements **one real user type**: the authenticated **workspace owner**. There is **no admin
+panel, no staff role, no vendor role, no multi-user teams, no RBAC tier** in the implemented code.
+**[Verified — RLS is owner-scoped; no role tables]**
 
-### What the owner can do
-
-- Manage their **business context** (onboarding draft, Brain knowledge, region preferences). **[Verified]**
-- **Chat** with the Marketing Director and create tasks. **[Verified]**
-- **Review, edit, approve, reject** Brain nodes/edges, deliverable edits, post approvals. **[Verified]**
-- **Connect/disconnect** one Facebook Page and **schedule/publish** posts. **[Verified]**
-- **Manage their own AI key** (BYO key, stored encrypted server-side). **[Verified]**
-- Read their own **audit log**. **[Verified]**
-
-### What the owner cannot do
-
-- Cannot access any other workspace's data — enforced by **RLS** (`workspace_id = auth.uid()` on every table) and by every RPC scoping on `auth.uid()`. **[Verified]**
-- Cannot write most business tables directly — writes go through **`SECURITY DEFINER` RPCs**. Direct INSERT/UPDATE/DELETE on `tasks`, `brain_nodes`, `brain_edges`, `planned_posts`, `research_proposals`, `platform_connections`, `workspace_settings` (most columns), etc. have been revoked. **[Verified]**
-- Cannot publish without completing the **two-step approval + schedule/publish** flow. **[Verified]**
-- Cannot force research findings into the Brain except through the **approval RPC**. **[Verified]**
-
-### Permission model in detail (conceptually)
-
-| Capability | How it's enforced |
+| Attribute | Detail |
 |---|---|
-| Read own data | RLS policies `USING (auth.uid() = workspace_id)` |
-| Write business data | `SECURITY DEFINER` RPCs granted to `authenticated`, validating ownership + version |
-| Sensitive ops (publish claim, usage reservation, credentials, connection upsert) | `service_role` only (browser cannot call) |
-| Connection metadata | Server-owned; client has read access only |
-| AI credentials | Encrypted (`pgp_sym_decrypt` with `app_secrets.ai_key_root`); client may **submit** a key but never read plaintext |
+| **Who** | The business owner/founder who signs up. |
+| **Identity** | A Supabase Auth user; `auth.users.id` **is** the workspace id (1:1). |
+| **Responsibilities** | Provide business info, review/approve knowledge, approve & publish posts, configure AI key and social connection. |
+| **Can do** | Everything in their own workspace: crawl website, edit/approve/reject Brain items, chat, run tasks, save deliverables, create/approve/publish posts, manage settings and Facebook connection. |
+| **Cannot do** | Access any other workspace's data (enforced by Postgres Row-Level Security); bypass approval gates; publish without a connected Facebook Page; exceed the free-tier allowance. |
+| **Permissions model** | **Owner-scoped RLS** — every table policy is `workspace_id = auth.uid()`. Mutations go through `SECURITY DEFINER` RPCs that derive the workspace from the session, never trusting a client-supplied workspace id. |
 
-Sources: `supabase/migrations/20261017171908_busmora_core_schema.sql`, `20261118021000_server_credentials.sql`, `20261118024000_workspace_preferences.sql`, `20261119035000_workspace_settings_setup_state_lock.sql`. **[Verified]**
+### Authentication states (not roles)
 
-### "Actor" concept
+- **Anonymous visitor** → sees marketing page and auth screens only.
+- **Authenticated, onboarding incomplete** → forced to `/onboarding`.
+- **Authenticated, onboarding complete** → full workspace access.
 
-`audit_log.actor_id` records who performed an action (added in `20261118020000_competition_contracts.sql:13`). In practice this is always the owner. **[Verified]**
+### Permission boundaries worth knowing (for feature design)
 
-### Relationship with other "user types"
+- **AI keys are write-only to the client.** A user can save/remove their own AI provider key, but the
+  browser only ever sees a masked hint (last 4 chars), never the key or ciphertext
+  (`ai_keys` table; `src/server/key-actions.ts`). **[Verified]**
+- **Publishing is Facebook-only and owner-driven.** No role can auto-publish; publishing requires an
+  explicit owner click, and `SECURITY DEFINER` send-gates (`claim_post_publish`) are service-role only.
+- **Some settings columns are RPC-only.** `onboarding_state`, `plan`, language, and region fields
+  cannot be changed by direct client writes — only via RPCs (prevents state forgery). **[Verified]**
 
-There are **no other user types**. The "Marketing Director," "Research Director," and named research agents are **AI system components**, not users (see Section D and the Glossary). **[Verified]**
+> **Implication for new features:** Any "team members / roles / approval chains / multi-approver"
+> feature would be a **net-new capability**; the data model has no user↔user relationships beyond the
+> single owner per workspace.
 
 ---
 
 ## D. Complete Feature Inventory
 
-> Grouped by module. Status refers to **verified implementation** (see Section L for the status legend).
+Features are grouped by module. Each entry states purpose, users, behavior, rules, dependencies, and
+status.
 
-### Module 1 — Marketing Website (public)
+### D.1 Onboarding
 
-| Feature | Purpose | User | How it works | Rules / notes | Status |
-|---|---|---|---|---|---|
-| **Landing page** | Tell the product story and convert visitors. | Guests / owners | Scroll scenes, feature sections, process flow, testimonials, FAQ, footer. | Auth-aware CTA (Login/Get Started vs Dashboard). | Implemented |
-| **Product tour / interactive tabs** | Show Director Chat, Brain, Calendar screenshots. | Guests | Static tabbed screenshots. | — | Implemented |
-| **Pricing page** | Communicate (future) plans. | Guests | Three illustrative tiers (Starter/Growth/Director), monthly/yearly toggle, comparison table. | All prices/limits = "To be announced"; no checkout. | Implemented (illustrative) |
-| **Pricing FAQ** | Answer objections. | Guests | Static Q&A. | States: no marketing experience needed, website optional, English, no auto-publish/spend, cannot subscribe yet. | Implemented |
-| **Guest demo** | Let guests try the product. | Guests | Hero CTA scrolls to `#product-demo` (the tabs section). A richer `InteractiveDemo` exists but is **not imported** (dead code). | — | Partial (anchor only) |
-| **i18n / RTL** | Arabic + English. | All | Locale-prefixed routes `/[lang]/...`, default `ar` (RTL), cookie-remembered. | Workspace content is English-only; UI supports both. | Implemented |
+**D.1.1 Website Crawl → Business Brain**
+- **Purpose:** Auto-build the Business Brain by reading the company's public website.
+- **User:** Owner.
+- **How it works:** Owner enters a URL → system crawls a bounded set of same-site commercial pages →
+  a reader stack (direct fetch → Jina reader → Firecrawl) retrieves them → JSON-LD/Schema.org and AI
+  extraction produce typed facts (the 9 Brain categories) + relationships → facts are saved **as
+  approved** Brain nodes with verbatim evidence quotes and source URLs.
+- **Business rules:** Single-host only; commercial pages only (skips login/cart/legal/blog/careers);
+  hard caps on pages (default 3, 1–5), concurrency (1–3), AI candidates (→ ≤20); same-host evidence
+  enforcement; website content treated as untrusted (prompt-injection guarded). **[Verified]**
+- **Status:** Fully implemented; covered by E2E (`e2e/specs/02-onboarding-crawl-brain.spec.ts`).
 
-Sources: `src/features/marketing/*`, `src/app/[lang]/page.tsx`, `src/context/I18nContext.tsx`, `src/lib/i18n.ts`. **[Verified]**
+**D.1.2 Manual Business Intake**
+- **Purpose:** Alternative to crawl — owner fills a structured business form.
+- **How it works:** Form captures name, description, country, service area, 1–20 offerings (with
+  pricing model / amount / currency), and a "conversion route" (how customers contact/buy; ready vs
+  not_ready). On confirm, the system writes `company_profile` + `offering` Brain nodes as
+  `owner_reported`/`approved`, marks onboarding complete, and syncs the workspace name.
+- **Business rules:** Required fields validated; offering price must match `^\d+(\.\d{1,2})?$` with a
+  3-letter currency; `conversionRoute: ready` requires a type + value; invalid → `INVALID_BUSINESS`. **[Verified]**
+- **Status:** Fully implemented; E2E-covered (`e2e/specs/01-auth-database.spec.ts`).
 
-### Module 2 — Authentication
+**D.1.3 Onboarding state gating**
+- **Purpose:** Force completion before using the workspace.
+- **States:** `awaiting_url → crawling → complete` (the `review_pending` state exists in schema/RPC but
+  is **not used by the current UI** — vestigial). **[Verified — see Section L]**
+- **Status:** Implemented.
 
-| Feature | Purpose | How it works | Rules | Status |
-|---|---|---|---|---|
-| **Sign up** | Create account. | Email+password (min 8) or Google OAuth. | → `/onboarding`. | Implemented |
-| **Sign in** | Authenticate. | Email+password or Google. Honors `?next=` safe redirect. | Signed-in users are redirected away to `/employee`. | Implemented |
-| **Reset password** | Recover account. | Emails a recovery link → `/auth/callback?flow=recovery`. | — | Implemented |
-| **New password** | Set new password. | After recovery link; routes to `/employee` or `/onboarding`. | — | Implemented |
-| **Auth callback** | OAuth/recovery code exchange. | Exchanges code, bootstraps workspace, routes onward. | — | Implemented |
-| **Route protection** | Keep private pages private. | Server-side `requireWorkspace()` redirects to `/signin` or `/onboarding`. | Open-redirect protection via `safeReturnPath()` allow-list. | Implemented |
-| **Auth context** | Client session state. | `AuthContext` subscribes to `onAuthStateChange`, detects `PASSWORD_RECOVERY`, reloads settings. | — | Implemented |
+### D.2 Business Brain
 
-Sources: `src/screens/auth/*`, `src/context/AuthContext.tsx`, `src/server/auth.ts`, `src/lib/authRouting.ts`, `src/app/auth/callback/route.ts`. **[Verified]**
+**D.2.1 Brain knowledge graph (nodes + edges)**
+- **Purpose:** The verified company knowledge the AI reasons over.
+- **Nodes — 9 categories:** `company_profile, offering, audience, brand_rule, positioning,
+  strategic_goal, channel, competitor, company_fact`. **[Verified]**
+- **Edges — relations:** `TARGETS, COMPETES_WITH, HAS_TONE, SOLVES_PAIN_POINT, RELATED_TO`. **[Verified]**
+- **Lifecycle:** nodes have `status ∈ {candidate, approved, rejected, retired}` plus
+  `approval_state ∈ {pending, approved, rejected, legacy}` and
+  `verification_state ∈ {unverified, source_supported, contradicted, owner_reported}`.
+  **Only approved + current + non-contradicted facts are usable by the AI.** **[Verified]**
 
-### Module 3 — Onboarding
+**D.2.2 Brain review & approval (list + graph UI)**
+- **Purpose:** Let the owner inspect, approve, reject, edit, and bulk-manage knowledge.
+- **How it works:** Two views — **list** (tabs All/Approved/Pending; search; category filter; per-card
+  Approve/Edit/Reject; bulk Approve-all/Reject-all) and **graph** (React-Flow mind-map: hub → category
+  pills → knowledge cards, cross-links, status/category filters, inspector). **[Verified]**
+- **Rules:** `update_brain_item` validates categories, title/summary bounds, offering price format,
+  optimistic `version`, stamps `user_edited`, writes a `brain_versions` snapshot + audit, and triggers
+  a context-change cascade. Deleting a node cascades to edges and holds dependent posts. **[Verified]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Choose method** | Start setup. | Three options: **Website**, **Manual**, **Social import (disabled, "Coming soon")**. | — | Implemented (social disabled) |
-| **Website path** | Auto-capture business context. | Enter URL → crawl up to 3 public pages → AI extracts candidates → map onto editable draft → organize Brain with AI. | URL must be a real host (not email); fields the site supports are merged without blanking owner edits; on failure reverts to `awaiting_url`. | Implemented |
-| **Manual path** | Enter business details. | `BusinessForm`: name, what you do, offerings (1–20), country + service area, conversion route, optional brand tone/color. | Save draft or Finish setup; version-checked. | Implemented |
-| **Draft safety** | Don't lose work. | Versioned draft with `expected_version`; stale save → `STALE_VERSION` → reload. | Owner-confirmed only. | Implemented |
-| **Completion** | Mark setup done. | On success: state `complete`, show pages-read + facts-collected, offer "Contact the Director" or "Select a Plan." | `confirm_business_draft` sets `onboarding_state='complete'`. | Implemented |
+**D.2.3 Brain proposals (crawler/AI-suggested *changes*)**
+- **Purpose:** When a re-crawl proposes a *change* to an existing fact, the owner reviews it (approve /
+  edit-and-approve / reject) rather than silently overwriting. **[Verified]**
+- **Note:** First-crawl facts are auto-approved; proposals mainly cover **changes** and **research**
+  findings. (See E for the auto-approval evolution.)
 
-Sources: `src/screens/Onboarding.tsx`, `src/features/onboarding/*`, `supabase/migrations/20261118022000_business_confirmation.sql`, `20261119040000_onboarding_state_rpc.sql`. **[Verified]**
+**D.2.4 Research proposal review**
+- **Purpose:** Research-derived facts arrive as **pending proposals** (never auto-write to the Brain);
+  owner approves/rejects (with bulk approve). Approval is the **only** path that creates a
+  `research`-sourced Brain node. **[Verified — `decide_research_proposal`]**
 
-### Module 4 — Marketing Director Chat ("Employee")
+### D.3 Conversations / AI Marketing Director ("Employee")
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Conversations** | Threaded chat. | Per-workspace conversations; last active restored from `localStorage` or `?conversation=`; history drawer with new/select/delete. | First message sets conversation title. | Implemented |
-| **Send message → Orchestrator** | Understand & route. | `runner.orchestrate()` → server Orchestrator classifies intent (direct / brain / task). | Idempotency key prevents double-processing. | Implemented |
-| **Quick prompts** | Onboarding to chat. | "Do market research", "Analyze my competitors", "Write 5 social posts", "Create a content calendar." | — | Implemented |
-| **Live progress card** | Show agent work. | Derived from agent events (Orchestrator / Research Director / Content Writer / Campaign Planner / Performance Analyst), current step + last 3 steps. | Polled ~2.5s. | Implemented |
-| **Agent Canvas** | Transparent "how the AI reached this answer." | React Flow graph built from persisted agent events; node kinds user/orchestrator/director/subagent/tool/skill/auditor/synthesis; state pills; inspector. | Node positions persisted per conversation in localStorage. | Implemented |
-| **Message types** | Rich results. | text, deliverable_card (with post grid or doc card), deliverable_offer (Save/Not now), post_reference (FB preview), form/structured_form (question wizard), budget_extension_request, knowledge_notification, task_status, error. | Legacy forms render read-only. | Implemented |
-| **Question wizard** | Ask a clarifying question. | Structured form with choice chips + free text + unknown/skip/not-applicable; submitting resumes the waiting task. | Only one pending input per task. | Implemented |
-| **Deep links** | Continue work. | `?task=`, `?compose=&document=&version=` prefill composer and mark document continuation. | — | Implemented |
+**D.3.1 Chat with the Director**
+- **Purpose:** Conversational interface to the AI marketing director.
+- **How it works:** Every message → **Orchestrator** → one of: **direct** answer, **brain** answer
+  (from approved facts), or **task** (delegated to the Director/executor). **[Verified]**
+- **Features:** conversation list/history, per-conversation canvas layout persistence (local browser),
+  markdown rendering, post-reference cards, deliverable-offer cards, Facebook post previews. **[Verified]**
 
-Sources: `src/screens/EmployeePage.tsx`, `src/features/tasks/*`, `src/features/orchestrator/*`, `src/components/chat/*`, `src/lib/chatCanvasStorage.ts`. **[Verified]**
+**D.3.2 Live agent canvas**
+- **Purpose:** Visualize *how* the AI is working (transparency).
+- **How it works:** A React-Flow graph reconstructed from persisted `agent_events`:
+  user → orchestrator → director → subagents → tools/skills, with live states
+  (queued/running/completed/failed/partial), source/credit counts, and a per-node inspector. **[Verified]**
 
-### Module 5 — Business Brain
+**D.3.3 Chat auto-titling**
+- **Purpose:** Give each conversation a short title from the first user message (≤60 chars).
+- **Rules:** Only retitles while it's still the first user message. **[Verified — `src/server/chat-title.ts`]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Graph view** | Visualize knowledge. | Hub-and-spoke: central company profile, category pills, leaf knowledge cards, dashed labeled edges. Deterministic layout. | Status/category filters, search, minimap >6 nodes. | Implemented |
-| **List view** | Review & edit. | Filter tabs (All/Approved/Pending), search, category dropdown; candidate cards vs approved groups. | — | Implemented |
-| **Candidate review** | Approve crawler/task facts. | Approve/reject/edit/evidence; bulk Approve all / Reject all. | `update_brain_item` / `decide_brain_proposal`. | Implemented |
-| **Proposal review** | Approve proposed *changes*. | Diff view + base-version guard; Approve / Edit & approve / Reject. | `decide_brain_proposal` with optimistic concurrency. | Implemented |
-| **Research proposal review** | Approve research findings. | Typed findings (market fact / competitor / audience insight / positioning claim / price observation / opportunity hypothesis) with confidence + evidence + geography. | Only `decide_research_proposal` creates research-backed nodes. | Implemented |
-| **Editing** | Maintain knowledge. | `NodeEditor` (title/summary/category/pricing), `RelationshipEditor` (5 relation types), delete with confirm. | Amount+currency validation; delete cascades edges + holds dependent posts. | Implemented |
-| **Evidence panel** | Show provenance. | Origin, statement type, updated, confidence, source URL, evidence quote, full version history. | — | Implemented |
-| **Reorganize with AI** | Re-crawl & re-organize. | Re-reads saved `company_url`, re-organizes Brain. | Additive; never overwrites owner edits. | Implemented |
-| **Audit log** | Transparency. | Last 50 audit rows. | Append-only. | Implemented |
+### D.4 Orchestrator (routing)
 
-Sources: `src/screens/BrainPage.tsx`, `src/components/brain/*`, `src/server/workspace-data.ts`, `src/lib/brainGraphLayout.ts`, `20261118025000_brain_governance.sql`. **[Verified]**
+**D.4.1 Intent routing**
+- **Purpose:** Decide how each message is handled, cheaply and safely.
+- **Paths:** `direct | brain | task` (+ `refuse` / `error`). **[Verified]**
+- **Order:** idempotent replay → guardrails (refuse/out-of-scope) → instant greeting (zero model calls)
+  → one classification model call → dispatch. **[Verified — `src/features/orchestrator/gateway.ts`]**
+- **Rules:** quantity clamped 1–12; never fabricate; treat retrieved data as data, not instructions.
 
-### Module 6 — Roadmap (Discovery wizard)
+**D.4.2 Guardrails (safety boundary)**
+- **Purpose:** Deterministic, pre-model refusal of unsafe/off-topic requests.
+- **Refuses:** system-prompt/instruction probes, override/jailbreak attempts, secret/credential probes
+  (`refuse`); politics/sports/weather/other off-topic domains (`out_of_scope`). Bilingual (EN/AR).
+  **[Verified — `src/features/orchestrator/guardrails.ts`]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Goal picker** | Choose objective. | Six goals: win first customers / grow customers / convert inquiries / launch an offer / increase repeat/referral / something else. | Choosing a goal saves a draft and generates a question plan. | Implemented |
-| **Adaptive questions** | Gather what's missing. | Deterministic planner reuses eligible Brain facts to prefill/skip; missing info becomes explicit questions or explicit "unknown." | Goal-specific branches (first-customer route, growth motion, inquiry breakpoint, launch scope, repeat trigger). | Implemented |
-| **Question cards** | Answer flexibly. | Choice options (some sourced from Brain, badged), "other" free text, long text, statuses Not sure / Skip / Not applicable / Clear answer. | Autosave with debounce + manual Save. | Implemented |
-| **Progress sidebar** | Track completion. | Answered/total, "From your brain" facts used, open unknowns, "Preliminary plan" action. | "Preliminary plan" does not generate a roadmap. | Implemented |
-| **Concurrency safety** | Protect across tabs. | Expected-version checks; conflict → "Load latest" vs "Save mine over it." | `beforeunload` warns on unsaved. | Implemented |
-| **Goal change** | Preserve earlier answers. | Changing goal keeps earlier answers under "Saved earlier answers"; can restore a prior goal. | — | Implemented |
+### D.5 Tasks / Director (execution engine)
 
-Sources: `src/features/roadmap/*`, `src/screens/RoadmapPage.tsx`, `20261119014000_adaptive_discovery.sql`. **[Verified]**
+**D.5.1 Task lifecycle & state machine**
+- **Purpose:** Run heavier work asynchronously and resumably.
+- **Statuses:** `queued → running → awaiting_input → (awaiting_approval) → completed | failed |
+  cancelled | interrupted | partial`. The real state machine is the checkpoint phase:
+  `route → generate → persist → done`. **[Verified]**
+- **Mechanics:** persisted leases, heartbeats, checkpoints, max 5 attempts, max 2 concurrent running
+  tasks per workspace (research runs **alone** because it shares one allowance). **[Verified]**
 
-### Module 7 — Deliverables
+**D.5.2 Content creation (posts)**
+- **Purpose:** Generate grounded social posts (captions + hashtags + visual brief + suggested time).
+- **Rules:** Exactly the requested quantity (1–12; campaign default ≥3); caption ≤6000 chars, hashtags
+  ≤1000; proposed times 1h–60d out, 09:00–21:00 workspace-local, ≥1 day apart unless specified;
+  **suggestions only, never a schedule**; no fabricated prices. Partial results are kept and flagged;
+  zero valid drafts = hard failure. **[Verified]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Document library** | Browse outputs. | Searchable/filterable list; types research_report / competitor_analysis / content_posts / content_calendar / performance_diagnosis / general. | Cursor pagination. | Implemented |
-| **Save offer** | Bridge chat → library. | Substantial chat output creates a `deliverable_offers` row + `deliverable_offer` card; owner Save / Not now. | One offer per type per task; save is idempotent. | Implemented |
-| **Viewer** | Read & act. | Markdown render, type/version/origin/timestamps/staleness, version selector. Actions: Edit, Copy, Download .md/.txt, Reuse, Continue with Director, Delete. | Older versions read-only; Edit creates new version. | Implemented |
-| **Origin labels** | Provenance. | Saved from chat / document / discovery / roadmap step. | — | Implemented |
-| **Versioning** | History. | Immutable `deliverable_versions`. | Expected-version guard on edit/delete. | Implemented |
+**D.5.3 Campaign planning**
+- **Purpose:** Multi-post campaign with a markdown planning brief + a post set.
+- **Rules:** Produces a brief + 3–12 posts (or the requested number); posts become drafts; brief saved
+  as a deliverable. **[Verified]**
 
-Sources: `src/screens/DeliverablesPage.tsx`, `src/lib/deliverableRouting.ts`, `src/lib/deliverableMarkdown.ts`, `20261119013000_document_library.sql`, `20261121100000_deliverable_save_offers.sql`. **[Verified]**
+**D.5.4 Performance diagnosis**
+- **Purpose:** Diagnose marketing problems (e.g., falling inquiries) with observations vs hypotheses,
+  constraints, alternatives, and recommended actions — explicitly *not* "always post more/spend more."
+  **[Verified]**
 
-### Module 8 — Scheduling / Calendar / Publishing
+**D.5.5 Task clarification (awaiting_input)**
+- **Purpose:** When indispensable info is missing, the task pauses and asks the owner one structured
+  question (with options + Other/Unknown); the answer resumes the task. **[Verified]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Calendar views** | Plan content. | Month + week views, per-day post chips, day detail, Unscheduled section. Times in workspace timezone (DST-safe). | — | Implemented |
-| **Post review (step 1)** | Approve text. | Approve/reject/edit caption, approve-all/reject-all, copy caption, "publish yourself." | Content edit invalidates approval → back to pending_approval. | Implemented |
-| **Schedule / Publish now (step 2)** | Send to Facebook. | Datetime bounded to Facebook's 10-min–30-day window (Busmora margin: 15 min–29 days) or Publish now. | Two-step: text approval then owner click. One send per version. | Implemented |
-| **Facebook preview** | Show post. | Page-name card with caption/hashtags and Like/Comment/Share chrome. No invented metrics. | — | Implemented |
-| **Holds & recovery** | Handle blockers. | Held (context review → "Reviewed, keep text"), failed (prepare retry), uncertain (confirm retry). | Errors mapped to owner copy. | Implemented |
-| **Facebook-native scheduling** | Reliable delivery. | Busmora sends once with `published=false` + `scheduled_publish_time`; **Facebook publishes** at that time. | No BUSMORA scheduler. | Implemented |
+**D.5.6 Task recovery / resume**
+- **Purpose:** Recover tasks orphaned by crashes/timeouts and allow retry after failure.
+- **Rules:** `recover_tasks` reaps expired leases (>120s) → `interrupted`; `resume_task` requeues
+  failed/interrupted (not publishing), max 5 attempts. **[Verified]**
 
-Sources: `src/screens/CalendarPage.tsx`, `src/components/publishing/*`, `src/server/publishing/*`, `src/server/calendar-actions.ts`, `20261119020000_planned_posts_rpcs.sql`, `20261121130000_post_approval_and_publish.sql`. **[Verified]**
+### D.6 Research (market intelligence)
 
-### Module 9 — Settings
+**D.6.1 Five specialist research agents (a dependency chain)**
+1. **Market Scout** (`market_demand`) — market frame: competitor count, governorates, categories,
+   demand seasonality, Egyptian query lexicon; classifies competitors.
+2. **Competitor Intelligence** (`competitor_commercial`) — competitor profiles + **landed-price**
+   comparison (VAT 14% + delivery + unit normalization), not shelf prices.
+3. **Audience Intelligence** (`customer_audience`) — bounded public social sample (FB/IG/TikTok via
+   Composio), preserving original quotes, with an explicit "who is missing" frame.
+4. **Brand Positioning** (`brand_positioning`) — positioning hypotheses from audience language;
+   "white space" declared only under 4 conditions.
+5. **Benchmark & Strategy** (`benchmark_strategy`) — weighted competitor benchmark + opportunity-gap
+   scoring + recommendations as **bounded experiments**.
+   **[Verified — `src/features/research/agents/*`]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Account & region** | Preferences. | Email, sign-in provider, country, currency, target market, timezone (live preview). | `save_workspace_preferences` with expected-timestamp guard. | Implemented |
-| **AI key (BYOK)** | Bring your own model. | Choose provider (OpenAI/Groq/Anthropic/Google/OpenRouter/Custom), model, optional base URL, API key (password). | Stored encrypted; masked hint; managed-model banner. | Implemented |
-| **Facebook connection** | Link a Page. | Connect (OAuth → choose page → select), status, disconnect. | One Page per workspace. | Implemented |
+**D.6.2 Research Director**
+- **Purpose:** Plans tracks, allocates one shared budget, runs specialists concurrently by dependency
+  layer (≤3 concurrent), shares an entity registry + content cache, and can **reduce scope** (drop a
+  layer) when the allowance is low — never buys credits. **[Verified]**
 
-Sources: `src/screens/SettingsPage.tsx`, `src/components/settings/*`, `20261118024000_workspace_preferences.sql`. **[Verified]**
+**D.6.3 Research report (bilingual, cited) + PDF**
+- **Purpose:** Produce a structured, cited report with a claim ledger, unknowns/limitations sections,
+  and audit (citation coverage, claim quality).
+- **PDF:** headless-Chromium print-to-PDF with **automated QA gates** (openability, page count, Arabic
+  glyph coverage ≥80%, clickable citations, visual QA). Completion is gated on passing. **[Verified]**
 
-### Module 10 — Notifications
+**D.6.4 Free-tier allowance / metering**
+- **Purpose:** Keep research free and bounded. Per-mode budgets (quick/standard/deep); one shared
+  ledger (reserve → execute → settle); **rolling 24-hour window**; paid fallback structurally
+  impossible. **[Verified]**
 
-| Feature | Purpose | How it works | Business rules | Status |
-|---|---|---|---|---|
-| **Notification center** | Surface events. | Bell with unread badge; latest 50; mark-all-read; relative timestamps. | Display-only (items not clickable / no deep links). | Implemented |
+### D.7 Roadmap / Discovery
 
-Sources: `src/features/notifications/NotificationCenter.tsx`, `AppShell.tsx`. **[Verified]**
+**D.7.1 Guided discovery questionnaire**
+- **Purpose:** Capture the owner's real business challenge in plain language (8 goals: validate_idea,
+  win_first_customers, grow_customers, convert_inquiries, unprofitable_marketing, launch_offer,
+  increase_repeat_referral, something_else).
+- **How it works:** A **deterministic** question planner (no AI) asks a baseline set + goal-specific
+  branch + a success signal; pre-fills from **approved** Brain facts where eligible; missing info
+  becomes an explicit question or "unknown." Answers saved with optimistic concurrency. **[Verified]**
 
-### Module 11 — Marketing Research engine (backend capability)
+**D.7.2 Preliminary plan**
+- **Purpose:** Save a "preliminary plan state" capturing open unknowns for the next step.
+- **Current behavior (important):** The wizard saves a *preliminary plan state* and explicitly does
+  **not** generate or activate a Roadmap yet ("No Roadmap was generated or activated; open unknowns
+  are recorded for the next step."). The `roadmaps` / `roadmap_steps` tables and a `roadmap` AI
+  operation exist, but **no code currently writes a roadmap** or calls the roadmap model operation.
+  **[Verified — see Section L]**
 
-This is the **evidence engine** behind "Do market research" / "Analyze my competitors." See Section D.11 detail and Section E for rules.
+### D.8 Deliverables
 
-| Feature | Purpose | How it works | Status |
-|---|---|---|---|
-| **Research Director** | Plan & run research. | Brief → layered plan → up to 3 concurrent retrievals → collect. | Implemented |
-| **5 specialist agents** | Domain analysis. | Market demand scout, competitor commercial, customer/audience, brand positioning, benchmark strategy. | Implemented |
-| **6 data providers** | Gather evidence. | Tavily, Exa, Firecrawl, Egypt-official, OSM/Overpass, Composio. | Implemented |
-| **Auditor** | Quality gate. | Blocks indefensible claims. | Implemented |
-| **Synthesis + bilingual report** | Produce report. | Structured, cited, Arabic/English. | Implemented |
-| **PDF deliverable** | Polished artifact. | HTML → Chromium PDF + automated QA. | Implemented |
-| **Brain proposals** | Feed knowledge base. | Typed, pending owner approval. | Implemented |
-| **Acceptance suite / golden data** | QA harness. | Thresholds, labeled fixtures. | Implemented (internal) |
+**D.8.1 Deliverable library**
+- **Purpose:** Store, search, view, version, edit, delete saved outputs.
+- **Types:** `research_report, competitor_analysis, content_posts, content_calendar,
+  performance_diagnosis, general`. **[Verified]**
+- **Rules:** Cursor-paged, server-filtered listing (limit 1–50); edits are copy-on-write with immutable
+  `deliverable_versions`; version/CAS checks. **[Verified]**
 
-Sources: `src/features/research/*`, `src/server/research/*`, `20261121000000_marketing_research.sql`, `20261121001000_research_allowance_window.sql`. **[Verified]**
+**D.8.2 Deliverable offers (save/dismiss)**
+- **Purpose:** Instead of auto-saving substantial task results, the system *offers* to save them;
+  owner Saves or Dismisses. **[Verified — `deliverable_offers`, `accept/dismiss_deliverable_offer`]**
 
-### Module 12 — Onboarding website crawl / Brain organization (backend)
+### D.9 Scheduling & Publishing
 
-| Feature | Purpose | How it works | Status |
-|---|---|---|---|
-| **Website reading** | Read public pages. | Homepage first, then sitemap/links; same-host only; tiered transport (direct → Jina → Firecrawl). | Implemented |
-| **AI extraction** | Turn text into facts. | Schema.org JSON-LD + AI `extract` with evidence quotes; confidence 0.65–0.98. | Implemented |
-| **Relations** | Connect facts. | 5 relation types, category compatibility matrix, no self-edges. | Implemented |
-| **Atomic save** | Persist Brain. | `save_crawl_brain` RPC (or add-only compatibility fallback). | Implemented |
+**D.9.1 Post approval & two-step publish**
+- **Purpose:** Owner approves post text, then explicitly publishes/schedules to Facebook.
+- **Rules:** Two-step owner action; **exactly-once** send per version; sent posts are **locked**
+  (no edit/delete); publishing is **Facebook-only**. **[Verified]**
 
-Sources: `src/server/crawl.ts`, `src/server/siteReader.ts`, `src/server/jsonLd.ts`, `src/server/crawlStorage.ts`, `src/lib/siteUrl.ts`, `src/lib/crawl.ts`. **[Verified]**
+**D.9.2 Facebook Page connection (OAuth via Composio)**
+- **Purpose:** Connect the owner's Facebook Page so posts can be published.
+- **How it works:** Composio-managed OAuth "Connect Link"; nonce-protected callback; page chooser if
+  the account manages multiple pages; one Page per workspace. **[Verified]**
 
-### Module 13 — Task execution engine (backend)
+**D.9.3 Calendar / scheduling UI**
+- **Purpose:** Visualize and manage posts (month/week/unscheduled/day-plan), with Facebook-style
+  previews and contextual actions (Approve/Reject/Edit/Schedule/Publish now/Publish yourself/Retry).
+- **Rules:** Times interpreted in **workspace timezone**, never the browser's. **[Verified]**
 
-| Feature | Purpose | How it works | Status |
-|---|---|---|---|
-| **Task lifecycle** | Run agent work. | `enqueue → admit → execute (route/generate/persist) → complete/partial/failed`. | Implemented |
-| **Dispatcher/runner/executor** | Execute tasks. | In-request dispatcher, resumable executor with checkpoints + heartbeats. | Implemented |
-| **Attempts & recovery** | Bound retries. | Max 5 attempts; stale-lease recovery. | Implemented |
-| **Idempotency & concurrency** | Safety. | Idempotency keys; max 2 concurrent tasks per workspace; research runs alone. | Implemented |
-| **Budgets** | Contain cost. | Per-task token/call budgets + provider allowance. | Implemented |
+**D.9.4 Post recovery**
+- **Purpose:** If a workspace has zero posts, reconstruct **drafts** from recent deliverable cards
+  (deterministic idempotency key); never sends anything. **[Verified]**
 
-Sources: `src/server/task-dispatcher.ts`, `src/server/task-executor.ts`, `20261118028000_task_execution.sql`, `20261119070000_task_attempts.sql`. **[Verified]**
+### D.10 Settings
 
-### Not-implemented / dead code (feature inventory caveats)
+**D.10.1 Account & region preferences**
+- Region/market: country, currency (ISO 3-letter), target market, timezone (with live preview);
+  optimistic-version save. UI/conversation language are locked to **English** at the DB level
+  (region stays free). **[Verified]**
 
-- **Social import during onboarding** — disabled ("Coming soon"). **[Verified]**
-- **Full interactive guest demo** (`InteractiveDemo.tsx` + `demoStorage.ts`) — **not imported anywhere**; dead code. **[Verified]**
-- **`QuestionWizard.tsx`** — not imported; live question UI is inline in `EmployeePage.tsx`. **[Verified]**
-- **`statusChip.ts`** — unused. **[Verified]**
-- **`/api/cron/publish-due`** — referenced by `CRON_SECRET` in `.env.example:52` but **no such route exists**; stale/aspirational. **[Verified]**
-- **Paid ad management** — explicitly "belongs to a later phase." **[Verified]**
+**D.10.2 AI provider key (BYOK)**
+- **Purpose:** Let the owner supply their own AI provider key (one per workspace), AES-256-GCM
+  encrypted server-side; browser sees only a masked hint. Providers: openai/groq/anthropic/google/
+  openrouter/dahl/sovereigneg/custom. Custom base URLs must be in a server allowlist. If absent, a
+  **managed model** (server env) is used. **[Verified]**
+
+**D.10.3 Facebook connection card**
+- Connect/disconnect, page chooser, status badges, result banners. **[Verified]**
 
 ---
 
 ## E. Business Logic & Rules
 
-This section extracts the actual business rules implemented across the system, in plain language.
+This section captures the *business meaning* of the enforced rules. Unless noted, all are **[Verified]**
+in migrations and/or server modules.
 
-### E.1 The Orchestrator (every message passes through it)
+### E.1 Knowledge governance (the Brain)
 
-- **Every user message is classified before any task exists.** The Orchestrator chooses exactly one of three paths: **direct** (answer now, no Brain, no task), **brain** (retrieve approved company knowledge then answer), or **task** (hand off to the Director/executor). **[Verified]** (`src/features/orchestrator/gateway.ts`, `contracts.ts`)
-- **Guardrails run before any model call** (defense in depth):
-  - **Internal-probe detection** (prompt extraction, "ignore previous instructions," jailbreaks, secrets, architecture questions) → **refuse** with a fixed safe message. **[Verified]** (`guardrails.ts:21-28`)
-  - **Off-topic detection** (politics, sports, weather, poems, legal advice, car diagnosis) → **out_of_scope** (English + Arabic). **[Verified]** (`guardrails.ts:31-36`)
-  - **Greetings** answered instantly with **zero model calls**. **[Verified]** (`guardrails.ts:54-71`)
-- **Idempotent replay**: the same `idempotencyKey` returns the prior outcome without reprocessing. **[Verified]** (`gateway.ts`, `orchestrator_runs` table)
-- **Brain retrieval is read-only and data-only**: only approved + current facts are retrieved; retrieved text is treated as **data, never instructions**; scoring boosts company_profile/brand_rule/offering/positioning/audience. **[Verified]** (`brain-tool.ts`)
-- **Never fabricate company facts**: if Brain retrieval is unavailable, the system replies with a refusal (`REFUSAL_BRAIN_UNAVAILABLE`) rather than inventing answers. **[Verified]** (`gateway.ts:230-233`, `prompt.ts:54-56`)
-- **Only four execution intents exist**: `marketing_research`, `content_creation`, `campaign_planning`, `performance_diagnosis`. Others are answered directly. **[Verified]** (`director-handoff.ts:17-22`)
+- **Only approved + current + non-contradicted facts are usable by the AI.** Candidates, rejected, and
+  retired nodes are excluded from orchestrator answers, task context, and discovery prefill.
+- **Confidence never grants approval.** A crawler/AI confidence score does not equal owner approval.
+  (Historically crawl facts required approval; the current `save_crawl_brain` **auto-approves**
+  source-backed website facts, while *changes* and *research* still require owner approval.)
+- **Owner edits are sacred.** Re-crawls are additive: they never overwrite `user_edited` facts, manual
+  edges, or rejected/retired nodes.
+- **Context-change cascade.** Editing/deleting a Brain node marks dependent deliverables **stale** and
+  places dependent scheduled posts **on hold** (a `context_hold` notification), requiring owner review.
+- **Epistemic honesty.** Facts carry `epistemic_kind ∈ {fact, claim, inference, unknown}` and
+  `verification_state`; unknowns are preserved, not coerced to zero.
 
-### E.2 Task execution rules
+### E.2 Business intake validation
 
-- **Task types**: `simple_answer`, `marketing_research`, `content_creation`, `campaign_planning`, `performance_diagnosis` (plus a DB-only `publishing` type that is **deliberately excluded** from the generic runner). **[Verified]**
-- **Statuses**: `queued → running → (awaiting_input | awaiting_approval | partial | completed | failed | cancelled | interrupted)`. **[Verified]**
-- **Concurrency cap**: at most **2 running tasks per workspace**; **research runs alone** (shares one allowance). **[Verified]** (`20261119070000_task_attempts.sql:11-16`, `task-dispatcher.ts:10-12`)
-- **Max 5 attempts**; `resume_task` raises `MAX_ATTEMPTS` at `attempts >= 5` (permanent failures like `research_unavailable`, `no_active_key` can't retry forever). **[Verified]**
-- **Resumable checkpoint phases**: `route → generate → persist → done`. A crash resumes at the next phase without redoing model work. **[Verified]** (`task-executor.ts`)
-- **Heartbeat**: every ~5 s during execution; a task with no heartbeat for >120 s is recovered as `interrupted`. **[Verified]**
-- **Idempotency**: task keyed on `idempotency_key` + `request_hash = md5(request + origin)`; same key + same request → returns existing; same key + different request → `IDEMPOTENCY_CONFLICT`. **[Verified]**
-- **Origin is a validated discriminated type**: `direct | wizard_question | roadmap_step | document`, each validated to belong to the same workspace (and for document, the deliverable version must exist). Rejected origins create no task/message. **[Verified]** (`20261119011000_task_origin.sql`, `20261119013000_document_library.sql`)
+- Required: name (1–150), description (1–3000), country (1–100), serviceArea (1–300), 1–20 offerings,
+  conversion route ready/not_ready.
+- Offering price must match `^[0-9]+(\.[0-9]{1,2})?$` and currency `^[A-Z]{3}$`.
+- On confirm: writes `company_profile` + one `offering` per offering (source=manual, approved,
+  owner_reported), sets `onboarding_state='complete'`, records `confirmed_intake_version`, syncs
+  workspace name, writes audit. Invalid → `INVALID_BUSINESS`.
 
-### E.3 Content generation rules (posts / campaigns)
+### E.3 Onboarding state machine
 
-- **Captions** 1–6,000 chars; **hashtags** ≤1,000 chars; **max 12 posts** per task. **[Verified]** (`save_task_result`, `task-executor.ts:66-99`)
-- **AI-proposed times are suggestions only** (`proposed_for`), never a schedule (`scheduled_for`). A past/invalid proposed time becomes NULL. **[Verified]** (`20261121110000_post_proposed_time.sql`)
-- **Proposed time rules** (for copy generation): local wall-clock in the workspace timezone, **1 hour–60 days ahead, 09:00–21:00**, ≥1 day apart unless the user specified otherwise. Destination is a Facebook Page. **[Verified]** (`src/server/ai/operations.ts` copy contract)
-- **Campaign document** includes a schedule table only when at least one post has a proposed time. **[Verified]**
-- **Malformed posts are dropped; valid subset kept; `partial` set if fewer than requested; zero valid posts = hard failure.** **[Verified]**
+`awaiting_url → crawling → complete`. State is server-owned (clients cannot UPDATE it directly). The
+workspace is usable only when `complete`. `review_pending` exists but is unused by the UI.
 
-### E.4 Research rules (the evidence engine)
+### E.4 Orchestrator decision rules
 
-**Free-tier-only, enforced in SQL:**
-- `free_tier_allowance` per workspace: `calls_limit 24`, `pages_limit 18`, `tokens_limit 24000`, `credits_limit 24`; `paid_fallback` has a `CHECK (NOT paid_fallback)` constraint — **paid fallback is unstorable**. **[Verified]** (`20261121000000_marketing_research.sql:65-77`)
-- **Rolling 24-hour window**: when the window elapses, usage counters reset and the window restarts. **[Verified]** (`20261121001000_research_allowance_window.sql`)
-- **Reserve → settle → release** accounting per provider call; unused reservations are refunded; if calls/pages/credits would exceed limits → `INSUFFICIENT_ALLOWANCE`. **[Verified]**
+- **One model call** classifies intent into direct/brain/task. Guardrails and instant greetings run
+  **before** any model call.
+- **Brain path is read-only** and scored (category boost, token/stem match, verification preference);
+  if the Brain is unavailable, it returns an honest "Brain unavailable" refusal rather than fabricating.
+- **Task handoff** pre-seeds a checkpoint at phase `generate`, so the executor does **not** re-route.
+- Quantity clamped 1–12; replies ≤12000 chars; brain query ≤1000 chars.
 
-**Research modes & budgets:**
-| Mode | Calls | Pages | Tokens | Seconds | Credits |
-|---|---|---|---|---|---|
-| quick | 8 | 4 | 7,000 | 45 | 8 |
-| standard | 18 | 10 | 18,000 | 90 | 18 |
-| deep | 36 | 26 | 40,000 | 160 | 36 |
+### E.5 Task budgets & limits
 
-Source: `src/features/research/policy.ts:52-56`. **[Verified]**
-- **Track budget weights**: market 0.30, competitor 0.30, audience 0.20, positioning 0.10, benchmark 0.10. **[Verified]**
-- **Dependency layers**: market_demand → (competitor, audience) → brand_positioning → benchmark_strategy; each layer runs with concurrency ceiling 3. **[Verified]** (`brief.ts:150-195`)
+- Per-task `allowance = {calls, pages, tokens, seconds}` + `consumption`; AI calls **reserve** then
+  **settle** tokens. Exhaustion → `BUDGET_EXHAUSTED` (non-retryable).
+- Per-operation token caps (e.g., route 800, campaign 6000, else 3500).
+- Max 2 concurrent running tasks per workspace; research runs alone (shared allowance).
+- Max 5 attempts per task; expired lease reaped at >120s.
 
-**Evidence & claim rules:**
-- **A search hit is only a candidate; only an opened page (Firecrawl) becomes evidence.** **[Verified]** (`search.ts:33`, `source-registry.ts:101-102`)
-- **Every consequential claim must be cited**; acceptance requires **citation coverage ≥ 0.95**. **[Verified]** (`acceptance/suite.ts:10,196`)
-- **Auditor blocks** claims that: lack any citation; fall below quality 0.5; assert a voice-of-customer claim without a stored quote; generalize reviews to "everyone/always"; rest a nationwide claim on Greater Cairo evidence; or claim free/zero price without a source. **[Verified]** (`auditor/auditor.ts:64-94`)
-- **Claim confidence model**: score = authority 0.30 + directness 0.25 + relevance 0.15 + recency 0.15 + corroboration 0.15; recency decays linearly to 0.1 after 24 months; score maps to hypothesis/supported/validated/strong. **[Verified]** (`rubric.ts:35,56-61`)
-- **"Missing is not zero"** — a missing price is "comparison unknown," never "free." **[Verified]** (`pricing.ts:137`, `rubric.ts:104-108`)
-- **Egyptian pricing**: VAT 14%, landed price = VAT + delivery, per-unit; "cheapest" is never a bare verdict; only comparable rows are compared. **[Verified]** (`pricing.ts:2,99-135`)
-- **Composio (social) is read-only allowlist**: PII/enrichment actions are blocked before any transport call; instant actions refuse if payment is required. Per-run caps: 12 profiles / 30 posts / 12 videos / 4 comment pages / 40 comments per page / 8 transcripts / 20 ad results. **[Verified]** (`policy.ts:72-114`, `composio.ts:104-114`)
-- **Owner approval gates the Brain**: `ownerApprovalRequired()` is a constant `true`; every research proposal is `status:'pending'`; **only `decide_research_proposal` creates a research-backed Brain node**. **[Verified]** (`proposals.ts:95,104-106`, `20261121000000_marketing_research.sql`)
-- **If no cited claim survives the audit, the run is reported blocked and no report is published.** **[Verified]** (`runner.ts:130-152`)
-- **PDF validation gates completion** — an unpassing PDF marks the run partial and is recorded as a coverage gap. **[Verified]** (`runner.ts:202-248`)
+### E.6 Content generation rules
 
-### E.5 Brain governance rules
+- **Exactly the requested quantity** (1–12). Campaign default ≥3.
+- Caption 1–6000 chars; hashtags ≤1000; ≤12 posts per result.
+- **Proposed times are suggestions only** (1h–60d out, 09:00–21:00 workspace-local, ≥1 day apart unless
+  the user specifies; explicit dates honored). The AI never schedules.
+- No fabricated prices, discounts, stats, testimonials, or deadlines. Partial results flagged `partial`.
 
-- **Brain categories** (9): company_profile, offering, audience, brand_rule, positioning, strategic_goal, channel, competitor, company_fact. **[Verified]**
-- **Brain statuses**: `candidate | approved | rejected | retired`; plus `epistemic_kind` (`fact|claim|inference|unknown`), `approval_state` (`pending|approved|rejected|legacy`), `verification_state` (`unverified|source_supported|contradicted|owner_reported`). **[Verified]**
-- **Relationships** (5): `TARGETS`, `COMPETES_WITH`, `HAS_TONE`, `SOLVES_PAIN_POINT`, `RELATED_TO`; no self-edges; both endpoints must exist and not be rejected/retired; new edges are approved weight 1. **[Verified]** (`20261118025000_brain_governance.sql`)
-- **Context dependencies & staleness**: deliverables/posts record the exact Brain node versions they used. If a node is **deleted** → documents get `stale_reason`, posts get a `post_holds` row and `execution_state='held'`. If a node **changes version / loses approval** → `mark_brain_context_changed` sets staleness/holds and inserts a `context_hold` notification. **[Verified]**
-- **Optimistic concurrency** on all Brain edits via `expected_version` (`STALE_VERSION` on mismatch). **[Verified]**
-- **Audit**: every knowledge action writes to `audit_log` (append-only). **[Verified]**
+### E.7 Research rules (free-tier + epistemic)
 
-### E.6 Crawl / knowledge-extraction rules
+- **Free-tier only.** Rolling 24h allowance (calls/pages/tokens/credits); **paid fallback impossible to
+  store** (`CHECK (NOT paid_fallback)`) and rejected at runtime (`POLICY_VIOLATION`).
+- **Track weighting** splits the run budget (market 0.30, competitor 0.30, audience 0.20, positioning
+  0.10, benchmark 0.10).
+- **Owner approval required** for research facts to enter the Brain; research writes **pending
+  proposals**, never nodes directly.
+- **Epistemic rules:** missing ≠ zero; absence of evidence ≠ evidence of absence; discovery (search hit)
+  ≠ evidence (a page must be opened & extracted).
+- **Geography integrity:** "Greater Cairo is never all Egypt" — nationwide claims need nationwide
+  evidence. **Pricing integrity:** 14% VAT applied once, landed-price comparison, `comparable()` gate.
+- **Composio social caps** bound the public sample (profiles/posts/videos/comments/transcripts).
 
-- **Auto-approval history (current behavior):** the final `save_crawl_brain` (`20261119090000_crawl_approve_all.sql`) persists **every website-crawl candidate as approved**, on the rationale that website intelligence is source-backed with an evidence quote + fetched URL. (Earlier migrations gated this on confidence ≥0.8 or made them proposals; the latest migration approves all and backfills pending crawler nodes.) **[Verified]**
-- **Every accepted AI fact requires a validated source page and supporting quote**; AI candidates preferred over regex heuristics; heuristics used only if AI produced zero. **[Verified]** (`crawl.ts`)
-- **Evidence quote** sanitized/truncated to 500 chars; confidence clamped 0.65–0.98; `verification_state='source_supported'`. **[Verified]**
-- **Site reading safety**: same-host only; rejects assets/login/cart/checkout/legal/careers; rejects <80 cleaned chars, 4xx/5xx markers, block-page signatures; dedupes near-duplicates. **[Verified]** (`siteReader.ts`)
-- **SSRF guard**: rejects non-HTTP(S), credentials, IP literals, localhost/.local/.internal/.lan/.home/.onion, explicit ports, credential-like query params. **[Verified]** (`src/lib/siteUrl.ts`)
-- **Onboarding page limit default = 3** (`DEFAULT_CRAWL_PAGES = 3`, clamp 1–5). **[Verified]**
+### E.8 Publishing rules
 
-### E.7 Publishing rules (two-step + Facebook-native scheduling)
+- **Two-step owner approval:** (1) approve text → `approved`; (2) Publish now / Schedule →
+  `authorize_post_publish` binds the exact version + Page + time, then the server sends **once**.
+- **Exactly-once send:** `publish_attempts UNIQUE(post_version_id)`; a second attempt yields
+  `ALREADY_ATTEMPTED`. Never auto-retried.
+- **No scheduler in Busmora:** "schedule" uses **Facebook native scheduling** (send now with a future
+  `scheduled_publish_time`). Busmora itself runs no cron/scheduler. **[Verified — migration comments;
+  no cron route in code]**
+- **Schedule window:** 15 min–29 days ahead (server/UI); Facebook 10 min–30 days; lateness allowance = 0.
+- **Sent posts are locked:** no edit/delete; `delete_post` raises `HAS_PUBLISH_HISTORY`.
+- **Authorization generation:** changing the Page/provider account bumps it, **invalidating prior
+  approvals**; disconnect **holds** scheduled posts (time → `proposed_for`) and requires re-scheduling.
+- **Uncertain outcomes** → `execution_state='uncertain'` + a hold ("Needs review"); a stale `claimed`
+  attempt (no result within 10 min) becomes "Needs review." Never auto-published.
+- **Production refuses the fake provider** (`PUBLISHING_PROVIDER=fake` + production → disabled).
 
-- **Step 1 — Approve text**: owner approves the exact post **version**. Content edit creates a new version and **revokes any unsent approval** (→ `pending_approval`, `approval_state='unapproved'`). **[Verified]** (`20261121130000_post_approval_and_publish.sql`)
-- **Step 2 — Authorize publish**: owner clicks **Publish now** or **Schedule**, which binds the exact version + Page + time into a `post_approvals` row **without sending**. **[Verified]**
-- **Schedule window**: Busmora allows **15 minutes to 29 days** ahead (Facebook allows 10 min–30 days; Busmora keeps a safety margin). Claim rejects anything <10 minutes ahead as `too_soon`. **[Verified]**
-- **One send per version**: `publish_attempts` has `UNIQUE(post_version_id)`; `claim_post_publish` returns `already_attempted` if any attempt exists. **[Verified]**
-- **Connection safety at send time**: claim verifies the connection is `connected`, matches the approval's `connection_id` + `authorization_generation`; otherwise revokes approval, holds the post (`kind='connection'`), returns `held/auth_changed`. **[Verified]**
-- **Holds**: unresolved `post_holds` block claiming. `resolve_context_holds` ("I reviewed it, keep this text") clears `context` holds; editing clears `connection`/`missed_window` holds. **[Verified]**
-- **Locking**: posts in `publishing|scheduled|published` cannot be edited or deleted (`LOCKED`); delete refuses any post with publish history (`HAS_PUBLISH_HISTORY`). **[Verified]**
-- **Outcomes**: confirmed+schedule → `scheduled` (Facebook publishes); confirmed+now → `published`; failed+`auth_expired` → connection marked `expired`; uncertain → `failed` + `uncertain` hold for human review. **[Verified]**
-- **Stale claims**: claims older than 10 minutes with no recorded result become `uncertain`/`stale_claim` → "Needs review"; **never auto-retried**. This is triggered when the owner loads the calendar. **[Verified]** (`calendar-actions.ts:12`, `mark_stale_publish_attempts`)
-- **No BUSMORA scheduler**: Facebook publishes scheduled posts natively; Busmora sends each version exactly once. **[Verified]**
-- **Disconnect behavior**: scheduled posts → back to `status='approved'`, `execution_state='held'`, `scheduled_for` preserved as `proposed_for`, publish approvals revoked, `connection` hold created; content approval stays; **nothing auto-releases on reconnect** (owner schedules again). **[Verified]** (`20261121120000_facebook_connection_rpcs.sql:34-45`)
+### E.9 State machines (summary)
 
-### E.8 Onboarding / intake rules
-
-- **Business form fields**: name 1–150, description 1–3000, country 1–100, serviceArea 1–300, offerings array 1–20; each offering name 1–150, pricingModel `fixed|starting_from|quote_required|unknown`, optional amount `^[0-9]+(\.[0-9]{1,2})?$` + 3-letter currency. **[Verified]** (`20261118022000_business_confirmation.sql:30-45`)
-- **Conversion route**: `ready|not_ready`; if ready, a contact `value` + type (`website|whatsapp|phone|social|booking|marketplace|other`) required. **[Verified]**
-- **Confirmation effects**: inserts approved `company_profile` node + one approved `offering` node per offering (all `verification_state='owner_reported'`, provenance `owner_confirmed`), marks draft `confirmed`, sets `onboarding_state='complete'` + `confirmed_intake_version` + country, updates `workspaces.name`, writes audit `business_confirmed`. Idempotent on already-confirmed. **[Verified]**
-
-### E.9 Region / preferences rules
-
-- **English-only** enforced: `language`, `ui_language`, `conversation_language` all forced to `en`; `content_register='english'`. Region/country/currency remain independent. **[Verified]** (`20261118023000_english_only.sql`)
-- **Preferences validation**: country ≤100, target_market ≤300, currency `^([A-Z]{3})?$`, timezone must exist in `pg_timezone_names`, expected updated_at must match (`STALE_VERSION`). **[Verified]** (`20261118024000_workspace_preferences.sql`)
-
-### E.10 Task input (clarification) rules
-
-- Only **one pending input per task** (unique partial index). `await_task_input` pauses a task with a single-choice question (≤8 options). Owner answers (`answered|unknown|skipped|not_applicable`); answered needs a value 1–3000. Task is re-queued with answers appended to checkpoint. **[Verified]** (`20261118029000_task_inputs_usage.sql`)
-
-### E.11 AI key / model rules
-
-- **Supported providers**: `groq | openai | anthropic | google | openrouter | dahl | custom` (Groq added; `ai_keys.provider` check expanded). **[Verified]**
-- **Managed vs BYOK**: a server-side managed model (`AI_API_KEY` + `AI_PROVIDER`/`AI_MODEL`) is used by default; BYO keys are optional and stored encrypted. The browser **can submit** a key but **never reads plaintext**. **[Verified]**
-- **Per-task token budget reservation**: `ceil((systemPrompt+userPrompt) bytes / 3) + maxTokens + 256`, capped 50,000; exhaustion → `budget_exhausted`. **[Verified]** (`ai-generate.ts:196-206`)
-- **System prompts are server-owned**; the caller can never supply the system prompt. **[Verified]**
-- **Fallbacks are within-tier** (never paid): Groq gpt-oss-120b → Groq gpt-oss-20b → Dahl DeepSeek-V4-Flash. **[Verified]** (`ai-models.ts:29-48`)
-
-### E.12 State machines (summary)
-
-- **Onboarding**: `awaiting_url → crawling → review_pending → complete`. **[Verified]**
-- **Task**: `queued → running → awaiting_input / awaiting_approval / partial / completed / failed / cancelled / interrupted`. **[Verified]**
-- **Planned post**: `draft → pending_approval → approved → scheduled → publishing → published | failed | rejected` (plus `held`/`uncertain` execution states). **[Verified]**
-- **Brain node/edge**: `candidate → approved | rejected | retired`. **[Verified]**
-- **Research proposal**: `pending → approved | rejected`. **[Verified]**
-- **Discovery question**: `unanswered → answered | unknown | skipped | not_applicable | researching | confirmed`. **[Verified]**
-- **Deliverable offer**: `offered → saved | dismissed`. **[Verified]**
+- **Post (`planned_posts`):** `status` draft → approved → publishing → published/failed (plus
+  scheduled, rejected); orthogonal `approval_state` (unapproved/approved/rejected) and `execution_state`
+  (idle/scheduled/submitted/confirmed/failed/uncertain/held/cancelled/owner_reported).
+- **Task:** queued → running → (awaiting_input) → completed/failed/cancelled/interrupted/partial.
+- **Brain node:** candidate → approved → (retired/rejected); `approval_state` pending/approved/rejected/legacy.
+- **Discovery question:** unanswered/answered/unknown/skipped/not_applicable/researching/confirmed.
+- **Deliverable offer:** offered → saved / dismissed.
+- **Connection:** connected / expired / disconnected.
 
 ---
 
 ## F. User Journeys & End-to-End Workflows
 
-### F.1 Sign-up → Onboarding → Workspace
+### F.1 Onboarding (website path)
 
-1. **Sign up** (email/password or Google) → route `/onboarding` (or OAuth callback → bootstrap → onboarding). **[Verified]**
-2. **Choose method**: Website or Manual (Social import disabled). **[Verified]**
-3. **Website path**: enter URL → crawl up to 3 pages → AI extracts candidates → map onto editable draft → organize Brain (all crawler candidates approved) → `complete`. **Manual path**: fill `BusinessForm` → Save draft or Finish setup → `confirm_business_draft`. **[Verified]**
-4. **Confirmation** inserts company_profile + offerings into Brain, sets onboarding complete, updates workspace name. **[Verified]**
-5. **Done screen** offers "Contact the Director" (`/employee`) or "Select a Plan" (`/settings`). **[Verified]**
+1. Owner signs up → `bootstrap_workspace` creates workspace + settings (`awaiting_url`).
+2. Owner lands on `/onboarding`, chooses **Website**, enters a URL.
+3. Client validates URL; `set_onboarding_state('crawling', url)`.
+4. `POST /api/crawl` `read` → server crawls pages (3-tier reader), extracts facts (JSON-LD + AI),
+   streams progress; candidates returned for draft prefill.
+5. `POST /api/crawl` `organize` → `save_crawl_brain` persists **approved** nodes + edges + sources,
+   updates crawl_status, syncs workspace name, writes audit.
+6. `set_onboarding_state('complete')` → summary screen → "Contact the Director" (`/employee`) or
+   "Select a Plan" (`/settings`).
+- **Failure:** reverts to `awaiting_url`, preserves draft fields.
+- **Side effects:** Brain populated; `website_proposals_saved` audit; notifications deduped.
 
 ```mermaid
 flowchart TD
-  A[Sign up / Google] --> B[/onboarding]
+  A[Sign up] --> B[bootstrap_workspace: awaiting_url]
   B --> C{Choose method}
-  C -->|Website| D[Enter URL]
-  D --> E[Crawl up to 3 pages]
-  E --> F[AI extract candidates]
-  F --> G[Map onto draft, review]
-  G --> H[Organize Brain]
-  C -->|Manual| I[BusinessForm]
-  I --> J{Save draft or Finish?}
-  J -->|Finish| K[confirm_business_draft]
-  H --> K
-  K --> L[B] 
-  L[workspaces + settings created]
-  K --> M[Onboarding complete: profile + offerings in Brain]
-  M --> N[Done: Contact Director / Select Plan]
+  C -->|Website| D[Validate URL → crawling]
+  D --> E[/api/crawl read: 3-tier reader + AI extract/]
+  E --> F[/api/crawl organize: save_crawl_brain/]
+  F --> G[Auto-approved Brain nodes + edges + sources]
+  G --> H[onboarding_state = complete]
+  C -->|Manual| I[Fill business form]
+  I --> J[confirm_business_draft → Brain + complete]
+  H --> K[/employee]
+  J --> K
 ```
 
-### F.2 Chat → Task → Deliverable/Posts
+### F.2 Asking the Director (chat message → answer/task)
 
-1. **Owner sends a message** in `/employee` → `runner.orchestrate()` with an idempotency key. **[Verified]**
-2. **Orchestrator** classifies:
-   - *direct* → answer now (no task).
-   - *brain* → retrieve approved facts → answer (or refuse if unavailable).
-   - *task* → `handoffToDirector` → `enqueue_task` → `admit_task` → `executeTask` (route/generate/persist). **[Verified]**
-3. **Execution** produces deliverable(s) and/or draft posts; `save_task_result` records them, a `deliverable_card`/`deliverable_offer` message, draft `planned_posts` + versions, `post_reference` messages, context dependencies, a text reply, and a `task_complete` notification. **[Verified]**
-4. **Owner** saves the deliverable (or "Not now"), reviews posts in Calendar. **[Verified]**
+1. Owner sends a message in `/employee`.
+2. Client `POST /api/tasks` `orchestrate` (idempotency key).
+3. **Orchestrator gateway**: idempotent replay check → guardrails → greeting? → one classify call.
+4a. **direct** → return reply.
+4b. **brain** → scored retrieval over approved facts → answer; if Brain down, honest refusal.
+4c. **task** → `planDirectorHandoff` → enqueue + admit + run `executeTask` (route→generate→persist).
+5. Executor persists deliverable(s)/posts (or a deliverable **offer**), messages, canvas events.
+6. Background `dispatchTasks` (via `after()`) drains any queued tasks.
+- **Failure:** honest error message; task marked failed/interrupted (resumable).
 
 ```mermaid
-sequenceDiagram
-  participant U as Owner
-  participant UI as Employee UI
-  participant O as Orchestrator
-  participant D as Director/Executor
-  participant DB as Supabase (RPCs)
-  U->>UI: send message
-  UI->>O: orchestrate(idempotencyKey, request)
-  O->>O: guardrails + decide
-  alt direct
-    O-->>UI: reply (no task)
-  else brain
-    O->>DB: retrieve approved facts
-    O-->>UI: answer from Brain
-  else task
-    O->>DB: enqueue_task + admit_task
-    O->>D: executeTask (route→generate→persist)
-    D->>DB: save_task_result (deliverable/posts/messages)
-    D-->>UI: task_complete + canvas events
-  end
+flowchart TD
+  M[Owner message] --> O[Orchestrator gateway]
+  O --> G{Guardrails}
+  G -->|refuse/out_of_scope| X[Refusal reply]
+  G -->|allow| C{Classify}
+  C -->|direct| D[Direct reply]
+  C -->|brain| B[Retrieve approved Brain facts → answer]
+  C -->|task| T[Director handoff: checkpoint phase=generate]
+  T --> E[Executor: route → generate → persist]
+  E --> P[Deliverables / Posts / Offer + canvas events]
+  B --> R[Reply to owner]
+  D --> R
 ```
 
-### F.3 Research engagement (market research / competitor analysis)
+### F.3 Research (market intelligence)
 
-1. **Request routed to research** (explicit research verb + evidence ask bypasses small talk). **[Verified]**
-2. **Brief** built (mode quick/standard/deep, tracks, geography, budget, stop-rules). **[Verified]**
-3. **Director** plans dependency layers, runs up to 3 retrievals concurrently across 6 providers, drawing from one allowance ledger. **[Verified]**
-4. **Auditor** blocks indefensible claims; coverage gaps declared. **[Verified]**
-5. **Synthesis** builds a bilingual, cited report. **[Verified]**
-6. **PDF** rendered + QA'd (gates completion). **[Verified]**
-7. **Proposals** generated (pending owner approval) — nothing enters the Brain automatically. **[Verified]**
-8. **Persistence**: report + sources + claims + events + proposals saved in one transaction. **[Verified]**
+1. Owner asks a research question → orchestrator forces a `marketing_research` task.
+2. `runMarketingResearch`: build brief → Research Director plans tracks & budget → specialists run
+   concurrently by dependency layer over metered providers (reserve/settle against the 24h allowance).
+3. Synthesis → bilingual cited report (markdown) → PDF with QA gates.
+4. `save_research_result` persists report, sources, claims, context deps, messages, task result.
+5. Claims → `analyzeClaims` → **pending** `research_proposals` (+ `task_complete` notification).
+6. Owner reviews proposals in Brain UI → `decide_research_proposal` (approve) creates `research` Brain
+   nodes.
+- **Failure/limits:** low allowance → scope reduced (tracks dropped); blocked sources stored with reason;
+  run marked `partial` if tracks skipped/failed.
 
-### F.4 Roadmap / Discovery
+### F.4 Content / Campaign / Diagnosis
 
-1. **Pick a goal** (6 goals) → save draft + generate question plan. **[Verified]**
-2. **Answer questions** (prefilled from Brain where possible; explicit unknown/skip/not-applicable). Autosave + manual save with version guard. **[Verified]**
-3. **Preliminary plan** (optional) — records open question keys without generating a roadmap. **[Verified]**
+1. Orchestrator routes to task → executor `generate` calls the appropriate model operation
+   (`copy` / `campaign` / `diagnose`) with approved Brain facts in context.
+2. Posts validated (caption/hashtags/time caps); drafts created; brief/document built.
+3. `save_task_result` persists deliverable + posts + context deps; a **deliverable offer** may be
+   created instead of auto-saving.
+4. Owner reviews in chat (post-reference cards) and/or Deliverables; posts appear in Calendar as drafts.
 
-### F.5 Publish a post (two-step)
+### F.5 Publishing a post (two-step, owner-driven)
 
-1. **Task generates drafts** → appear in Calendar as `draft`. **[Verified]**
-2. **Step 1**: owner approves text (`update_post('approved')`). **[Verified]**
-3. **Step 2**: owner clicks **Publish now** or **Schedule** → `authorize_post_publish` binds version + Page + time (no send). **[Verified]**
-4. **Send**: `claim_post_publish` (service-role, one gate) → provider `publishText` → `record_publish_result`. **[Verified]**
-5. **Outcome**: `published` (now) / `scheduled` (Facebook will publish) / `failed` / `uncertain` (review hold). **[Verified]**
+1. Owner opens `/scheduling`; posts shown as drafts (or "Proposed" if only `proposed_for`).
+2. **Step 1:** Owner clicks **Approve** → `update_post 'approved'` (creates immutable version).
+3. **Step 2:** Owner clicks **Publish now** or **Schedule** → `authorize_post_publish` (binds exact
+   version + Page + time; schedule must be 15 min–29 days ahead).
+4. Server `publishPost`: `claim_post_publish` (single send gate) → provider `FACEBOOK_CREATE_POST`
+   (`published: true` now, or future `scheduled_publish_time`) → `record_publish_result`.
+5. Outcomes: confirmed→published/scheduled; failed→failed (auth_expired marks connection expired);
+   uncertain→hold + "Needs review."
+- **Failure:** never auto-retried; owner uses Retry (new version) or "Reviewed keep text."
 
 ```mermaid
-stateDiagram-v2
-  [*] --> draft
-  draft --> pending_approval: edited
-  draft --> approved: owner approves text
-  pending_approval --> approved: owner approves
-  approved --> scheduled: authorize publish (schedule)
-  approved --> publishing: authorize publish (now)
-  publishing --> published: confirmed (now)
-  publishing --> failed: failed
-  publishing --> uncertain: timeout/unknown → review
-  scheduled --> failed: provider failed
-  scheduled --> uncertain: unclear
-  failed --> approved: prepare retry (new version)
-  uncertain --> approved: confirm retry
-  published --> [*]
+flowchart TD
+  D[Draft post] --> A[Owner: Approve]
+  A --> S{Publish now or Schedule?}
+  S -->|Publish now| P1[authorize_post_publish mode=now]
+  S -->|Schedule| P2[authorize_post_publish mode=schedule, 15m–29d]
+  P1 --> C[claim_post_publish: exactly-once gate]
+  P2 --> C
+  C --> FB[Facebook FACEBOOK_CREATE_POST]
+  FB --> R{Result}
+  R -->|confirmed now| PUB[published]
+  R -->|confirmed schedule| SCH[scheduled on Facebook]
+  R -->|failed| F[failed]
+  R -->|uncertain/timeout| H[held: Needs review]
 ```
 
-### F.6 Cross-workflow handoffs
+### F.6 Facebook Page connection
 
-- **Onboarding → Brain → Chat**: seeded Brain facts power "what do you know about me?" answers.
-- **Task → Deliverables → Chat**: "Continue with Director" on a deliverable creates a new task with a `document` origin (version-validated). **[Verified]**
-- **Task → Brain**: research proposals → owner approval → Brain nodes.
-- **Brain change → Deliverables/Posts**: `context_dependencies` cause staleness/holds. **[Verified]**
-- **Calendar load → stale-claim reconciliation**: loading the calendar triggers `mark_stale_publish_attempts`. **[Verified]**
+1. Owner clicks Connect in Settings → `start` (nonce cookie) → redirect to Facebook consent.
+2. Callback verifies nonce + account ownership/ACTIVE → if 1 page auto-save; if many → page chooser.
+3. `select` re-verifies and `upsert_facebook_connection` (bumps authorization_generation).
+4. Disconnect → deletes Composio account + `disconnect_facebook_connection` (holds scheduled posts).
 
 ---
 
 ## G. Data Model & Business Entities
 
-> Conceptual view. All tables are tenant-scoped by `workspace_id` with RLS `workspace_id = auth.uid()`. Almost all writes go through `SECURITY DEFINER` RPCs. Composite FKs `(workspace_id, id)` prevent cross-workspace references. **[Verified]**
-
-### Core entities
-
-| Entity | Business meaning | Key attributes | Relationships |
-|---|---|---|---|
-| **workspaces** | One per owner account (id = auth user id). | name | 1–1 workspace_settings; 1–N everything else. |
-| **workspace_settings** | Setup/onboarding/region/plan state. | company_url, onboarding_state, language (en), country, currency, timezone, target_market, plan, brand_colors, confirmed_intake_version, crawl_status | 1–1 workspace. |
-| **brain_nodes** | Business-knowledge facts (9 categories). | category, title, summary, properties, status, epistemic_kind, approval_state, verification_state, source, confidence, version, is_current | N–N via brain_edges; referenced by context_dependencies. |
-| **brain_edges** | Typed relationships between facts. | relation_type (5), status, weight, provenance | between brain_nodes. |
-| **brain_versions** | Immutable history of each node. | node_id, version, snapshot | per brain_node. |
-| **brain_proposals** | Pending edits/creations awaiting owner decision. | status, diff, base_version, fingerprint | → brain_nodes. |
-| **conversations** | Chat threads. | title | 1–N messages; 1–N tasks. |
-| **messages** | Chat messages. | role (user/agent/system), type (text/form/structured_form/deliverable_card/deliverable_offer/task_status/post_reference/knowledge_notification/budget_extension_request/error), content, payload | per conversation. |
-| **tasks** | Agent work units. | type, status, origin, plan, allowance, consumption, checkpoint, attempts, run_id, heartbeat_at, idempotency_key, request_hash | per conversation; 1–N task_steps/agent_events; 1–1 task_results. |
-| **task_steps** | Agent execution steps. | status (planned/running/completed/failed/cancelled), agent, label, output | per task. |
-| **task_inputs** | Mid-task clarification questions. | status, label, options | per task. |
-| **task_usage** | Per-call token accounting. | state, reserved_tokens | per task. |
-| **task_results** | Final task output. | output jsonb | 1–1 task. |
-| **agent_events** | Canvas events (task- or conversation-scoped). | event_type, agent_role, seq, payload, timing | per task/conversation. |
-| **deliverables** | Saved documents. | type (6), title, content, version, origin, source_refs, context_refs, limitations, stale_reason | 1–N deliverable_versions; source of planned_posts. |
-| **deliverable_versions** | Immutable document versions. | version, snapshot | per deliverable. |
-| **deliverable_offers** | Proposed saves from chat. | proposed_type, title, content, state (offered/saved/dismissed) | per task. |
-| **planned_posts** | Post drafts & their lifecycle. | platform (facebook/instagram), caption, hashtags, status, scheduled_for, proposed_for, approval_state, execution_state, idempotency_key, publish_result | 1–N post_versions; 1–N publish_attempts. |
-| **post_versions** | Immutable post revisions. | revision, caption, hashtags, media, scheduled_time | per post. |
-| **post_approvals** | Owner approval binding exact version+Page+time. | post_version_id (unique) | per version. |
-| **publish_attempts** | One row per send attempt (exactly-once). | state, mode, provider id/permalink | per version (unique). |
-| **post_holds** | Reasons a post is blocked. | kind (context/connection/missed_window/uncertain), reason, resolved_at | per post. |
-| **platform_connections** | Connected social accounts. | platform, account_name, external_account_id, status, authorization_generation, page_id, page_name, permissions | per workspace+platform. |
-| **connection_credentials** | Encrypted OAuth tokens. | (service_role only) | per connection. |
-| **oauth_transactions** | OAuth state handshake. | state_hash, platform, intent | per connect attempt. |
-| **business_drafts** | Single versioned intake form. | status (draft/confirmed), path (manual/website), crawl_status/result | 1–1 workspace. |
-| **sources** | Fetched evidence with excerpt + hash. | url, provider, availability, content_hash, authority, geography, period | linked to claims. |
-| **claim_sources** | Claim ↔ source links. | support (supports/contradicts/context) | between claims and sources. |
-| **context_dependencies** | Which consumer depends on which Brain fact/source at which version. | consumer_type (task/document/post/roadmap), consumer_version, node_version | drives staleness. |
-| **free_tier_allowance** | Per-workspace research budget. | calls/pages/tokens/credits limits+used, window_started_at, window_hours, paid_fallback (must be false) | 1–1 workspace. |
-| **provider_usage** | Per-call provider accounting. | provider, status, usage | per task. |
-| **research_reports** | Persisted research report. | mode, request, reply, report jsonb, citation_coverage, claim_quality, coverage_gaps, pdf paths/checks | per task. |
-| **research_claims** | Structured claim ledger. | confidence, evidence_ids, source_ids, geography, claim_quality, conflicts | per report. |
-| **research_proposals** | Typed Brain proposals from claims. | proposal_kind, confidence, status | → Brain. |
-| **roadmaps / roadmap_versions / roadmap_steps / step_actions** | Strategic plan + steps. | status, responsibility (owner/system), execution_mode (director/owner) | at most one active roadmap per workspace. |
-| **discovery_drafts / discovery_questions / question_research_links** | Discovery wizard state. | status, active, version | per workspace. |
-| **campaigns** | Marketing campaign linking task + deliverable. | — | — |
-| **media_assets** | Uploaded media. | mime, size (≤10MB), status | per workspace. |
-| **analysis_imports / metric_observations** | Performance-analysis spreadsheet import. | status, metrics | per workspace. |
-| **notifications** | In-app notifications with dedupe. | dedupe_key, read_at | per workspace. |
-| **audit_log** | Append-only action record. | action, entity_type, entity_id, actor_id, details | per workspace. |
-| **orchestrator_runs** | Idempotency + latency metrics for orchestration. | idempotency_key, outcome, path, metrics | per conversation. |
-| **ai_keys** | Encrypted BYO AI keys. | provider, encrypted key | per workspace. |
-
-### Key relationships (cardinality)
-
-- workspace **1—1** workspace_settings, business_drafts, free_tier_allowance.
-- workspace **1—N** brain_nodes, conversations, tasks, deliverables, planned_posts, platform_connections, sources, notifications, audit_log.
-- brain_node **N—N** brain_node (via brain_edges).
-- conversation **1—N** messages, tasks; task **1—N** task_steps, agent_events, task_usage; task **1—1** task_results.
-- deliverable **1—N** deliverable_versions; task **1—N** deliverable_offers; deliverable_offer **0..1—1** deliverable.
-- planned_post **1—N** post_versions; post_version **0..1—1** post_approval; post_version **1—N** publish_attempts (logically one successful); post **1—N** post_holds.
-- report **1—N** research_claims; research_proposal **0..1—1** brain_node (on approval).
-- Any consumer (task/document/post/roadmap) **N—N** brain_nodes/sources via context_dependencies (version-pinned).
-
-### Important data-lifecycle rules
-
-- **Immutability**: `brain_versions`, `deliverable_versions`, `post_versions`, `deliverable_versions` are insert-only snapshots. **[Verified]**
-- **Additive/non-destructive migrations**: legacy rows preserved; ownership FKs added `NOT VALID` (reject new forged refs, allow legacy inconsistencies). **[Verified]**
-- **Cascades**: deleting a Brain node cascades edges, deletes dependent context_dependencies and brain_proposals, nulls post_holds, and flags dependent content (with special handling during account deletion). **[Verified]** (`20261119030000_fix_user_delete_trigger.sql`)
-- **Staleness via context dependencies**: see E.5. **[Verified]**
-
-### Conceptual ER sketch
+### Conceptual ER overview
 
 ```mermaid
 erDiagram
   WORKSPACES ||--|| WORKSPACE_SETTINGS : has
-  WORKSPACES ||--o{ BRAIN_NODES : contains
+  WORKSPACES ||--o{ BRAIN_NODES : owns
   BRAIN_NODES ||--o{ BRAIN_EDGES : "source/target"
-  BRAIN_NODES ||--o{ BRAIN_VERSIONS : versions
-  BRAIN_NODES ||--o{ BRAIN_PROPOSALS : proposed_changes
-  WORKSPACES ||--o{ CONVERSATIONS : has
+  WORKSPACES ||--o{ CONVERSATIONS : owns
   CONVERSATIONS ||--o{ MESSAGES : contains
   CONVERSATIONS ||--o{ TASKS : spawns
-  TASKS ||--o{ TASK_STEPS : has
   TASKS ||--o{ AGENT_EVENTS : emits
-  TASKS ||--|| TASK_RESULTS : produces
-  TASKS ||--o{ DELIVERABLE_OFFERS : offers
+  TASKS ||--o{ TASK_STEPS : logs
+  TASKS ||--o| TASK_RESULTS : produces
+  TASKS ||--o{ DELIVERABLES : produces
   DELIVERABLES ||--o{ DELIVERABLE_VERSIONS : versions
-  DELIVERABLE_OFFERS }o--o| DELIVERABLES : saved_as
-  DELIVERABLES ||--o{ PLANNED_POSTS : source_of
+  DELIVERABLES ||--o{ PLANNED_POSTS : "spawns drafts"
+  WORKSPACES ||--o{ PLANNED_POSTS : owns
   PLANNED_POSTS ||--o{ POST_VERSIONS : versions
-  POST_VERSIONS ||--o| POST_APPROVALS : approved_by
-  POST_VERSIONS ||--o{ PUBLISH_ATTEMPTS : send_attempts
-  PLANNED_POSTS ||--o{ POST_HOLDS : blocked_by
-  WORKSPACES ||--o{ PLATFORM_CONNECTIONS : connects
-  TASKS ||--o{ RESEARCH_REPORTS : produces
+  PLANNED_POSTS ||--o{ POST_APPROVALS : "binds approvals"
+  PLANNED_POSTS ||--o{ PUBLISH_ATTEMPTS : "send gates"
+  PLANNED_POSTS ||--o{ POST_HOLDS : "blocks"
+  WORKSPACES ||--o| PLATFORM_CONNECTIONS : "Facebook Page"
+  WORKSPACES ||--o{ RESEARCH_REPORTS : owns
   RESEARCH_REPORTS ||--o{ RESEARCH_CLAIMS : contains
-  RESEARCH_CLAIMS ||--o{ RESEARCH_PROPOSALS : yields
-  RESEARCH_PROPOSALS }o--o| BRAIN_NODES : approved_into
-  WORKSPACES ||--|| FREE_TIER_ALLOWANCE : budgeted_by
-  CONVERSATIONS ||--o{ ORCHESTRATOR_RUNS : records
+  RESEARCH_CLAIMS ||--o{ RESEARCH_PROPOSALS : "become proposals"
+  WORKSPACES ||--o{ DELIVERABLE_OFFERS : receives
+  WORKSPACES ||--o{ NOTIFICATIONS : receives
+  WORKSPACES ||--o{ AUDIT_LOG : records
 ```
+
+### Key entities (business meaning)
+
+| Entity | Represents | Notable fields / lifecycle |
+|---|---|---|
+| **workspaces** | The tenant root; one per account (`id = auth.users.id`). | `name` (synced from company_profile). |
+| **workspace_settings** | Onboarding/setup state + region + plan. | `onboarding_state`, `company_url`, `country/currency/timezone`, `brand_colors`, `plan`, `crawl_status`. |
+| **brain_nodes** | One verified company fact in 9 categories. | `category`, `status`, `approval_state`, `verification_state`, `epistemic_kind`, `confidence`, `source`, `version`, `provenance`, `is_current`. |
+| **brain_edges** | Semantic relationship between nodes. | `relation_type`, `status`, `weight`, `provenance`. |
+| **brain_versions** | Immutable snapshots of node history. | written on each edit (service-role). |
+| **brain_proposals** | A proposed *change* to a node, pending owner decision. | `diff`, `base_version`, `status`, fingerprint dedupe. |
+| **sources** / **claim_sources** | Retrieved evidence + which source supports a claim. | `url`, `excerpt`, `content_hash`, `availability`, `provider`. |
+| **context_dependencies** | Which task/doc/post/roadmap consumed which node version (drives staleness/holds). | polymorphic consumer. |
+| **conversations** / **messages** | Chat threads + messages (many structured types). | `messages.type` includes text/form/task_status/deliverable_card/deliverable_offer/post_reference/knowledge_notification/error. |
+| **tasks** | An execution unit. | `type`, `status`, `origin` (direct/wizard_question/roadmap_step/document), `research_mode`, `attempts`, `allowance`, `consumption`, `checkpoint`. |
+| **task_steps / agent_events / task_results** | Per-run step log, canvas replay stream, final result. | `agent_events.seq` monotonic; conversation-scoped + task events. |
+| **deliverables / deliverable_versions** | Saved outputs + immutable versions. | `type`, `stale_reason`, `context_refs`, `source_refs`, `limitations`. |
+| **deliverable_offers** | An offer to save a substantial result. | `state` offered/saved/dismissed. |
+| **planned_posts** | A social post. | `status`, `approval_state`, `execution_state`, `scheduled_for`, `proposed_for`, `current_version_id`, `idempotency_key`. |
+| **post_versions / post_approvals / publish_attempts / post_holds** | Immutable content revisions, bound approvals, the single send-gate record, and blocks. | `publish_attempts UNIQUE(post_version_id)`; `post_holds.kind`. |
+| **platform_connections** | The connected Facebook Page (one per workspace). | `status`, `authorization_generation` (in connection_credentials). |
+| **connection_credentials / oauth_transactions** | Encrypted page tokens + OAuth handshake state (service-role). | never client-readable. |
+| **research_reports / research_claims / research_proposals** | Cited report, claim ledger, and typed proposals. | `mode`, `citation_coverage`, `claim_quality`, `confidence` (hypothesis→strong). |
+| **free_tier_allowance / provider_usage** | The metered free-tier budget + per-call ledger. | rolling 24h window; `paid_fallback` cannot be true. |
+| **notifications** | In-app notifications (deduped). | `type`, `dedupe_key` unique. |
+| **audit_log** | Append-only record of knowledge & approval actions. | insert/select only. |
+| **ai_keys / app_secrets** | Encrypted BYOK AI key + server secret root. | browser never sees ciphertext. |
+
+### Important relationships
+
+- **One-to-one:** workspace ↔ workspace_settings; workspace ↔ platform_connections (Facebook); task ↔
+  task_results.
+- **One-to-many:** workspace → brain_nodes/edges, conversations, tasks, deliverables, posts, etc.
+- **Graph (many-to-many via edges):** brain_nodes ↔ brain_edges ↔ brain_nodes.
+- **Polymorphic consumers:** context_dependencies link tasks/documents/posts/roadmaps to brain versions.
+
+### Data lifecycle rules
+
+- **Immutable versions** for deliverables, posts, brain nodes (history preserved; copy-on-write edits).
+- **Soft governance:** rejected/retired nodes are kept, never hard-erased (except account deletion
+  cascade).
+- **Auto-approval of crawl facts** (source-backed) vs **owner approval for research/changes/manual**.
+- **Staleness propagation:** editing a node can stale deliverables and hold posts.
 
 ---
 
@@ -694,446 +744,354 @@ erDiagram
 
 ### Stack
 
-- **Frontend + backend**: **Next.js 16 (App Router) + React 19 + TypeScript**, Tailwind CSS, React Flow (canvas/graph), `marked` + DOMPurify (markdown), `lucide-react` (icons). **[Verified]** (`package.json`)
-- **Database / auth / storage**: **Supabase** (Postgres + RLS + Auth + Storage). **[Verified]**
-- **AI**: server-side only, via a custom gateway supporting Groq/OpenAI/Anthropic/Google/OpenRouter/Dahl/custom. **[Verified]**
-- **Publishing**: **Composio** managed Facebook integration (`@composio/core`), plus a legacy direct-Graph OAuth path. **[Verified]**
-- **Research data providers**: Firecrawl, Tavily, Exa, Egypt-official (direct fetch), OSM/Overpass, Composio. **[Verified]**
-- **PDF**: Chromium headless print + `pdfinfo`/`pdftotext`/`pdftoppm` QA. **[Verified]**
+- **Frontend:** Next.js 16 (App Router) + React 19 + TypeScript; Tailwind CSS; React Flow for graphs;
+  `lucide-react` icons. **[Verified — `package.json`]**
+- **Backend:** Next.js server **API routes** (`src/app/api/*`) + server modules (`src/server/*`).
+  **No Supabase Edge Functions** are used for core logic (a legacy OAuth edge-style route exists but the
+  current path is server routes). **[Verified — `README.md`]**
+- **Database/Auth/Storage:** **Supabase** (Postgres + RLS + Auth + Storage).
+- **AI:** Multi-provider gateway (`src/server/ai-generate.ts`) over Groq / SovereignEG / Dahl / OpenAI /
+  Anthropic / Google / OpenRouter / custom, with a 4-tier fallback template.
+- **Publishing:** **Composio** (`@composio/core`) as managed OAuth broker + Facebook tool executor.
 
-### Layered architecture
+### Layers
 
-| Layer | Location | Responsibility |
-|---|---|---|
-| **UI / Screens** | `src/screens/*`, `src/features/*/ui`, `src/components/*` | Render screens, collect input, poll for updates. |
-| **Feature logic (client)** | `src/features/*` | Orchestrator contracts, task client, roadmap discovery, notifications. |
-| **API routes** | `src/app/api/**/route.ts` | HTTP endpoints; auth + CSRF checks; delegate to server modules. |
-| **Server actions / modules** | `src/server/*` | Business operations; call RPCs; publishing; crawl; AI gateway. |
-| **Database** | Supabase Postgres | Source of truth; RLS + `SECURITY DEFINER` RPCs enforce business rules. |
-| **External services** | Composio, Firecrawl, Tavily, Exa, OSM, Facebook Graph, AI providers | Evidence gathering, publishing, inference. |
+1. **Presentation:** locale-prefixed app (`/[lang]/...`), workspace screens, marketing site.
+2. **API / server actions:** Next.js route handlers + server actions enforce auth, same-origin, size
+   limits, and call into server modules.
+3. **Domain / orchestration:** orchestrator gateway, task dispatcher/executor, research director,
+   publishing core — pure-ish modules with injected dependencies (testable).
+4. **Data:** Postgres via Supabase; **all mutations go through SECURITY DEFINER RPCs**; RLS on every
+   table. Two Supabase clients: **anon/session** (user) and **admin/service-role** (server-only).
 
-Sources: `src/server/*`, `src/app/api/*`, `supabase/migrations/*`. **[Verified]**
+### Request/data flow
 
-### API architecture
+- Browser uses the **session-scoped** Supabase client for reads and RPC calls; sensitive sends use
+  server modules with the **service-role** client.
+- `requireApiIdentity` enforces auth + **same-origin** on mutating requests (CSRF protection).
+- Background work runs via Next.js `after()` (`dispatchTasks`) — **not** a durable queue; leases +
+  checkpoints in Postgres make interrupted work recoverable.
 
-- **REST-ish route handlers** under `src/app/api`:
-  - `POST /api/workspace` — bootstrap workspace + report managed model.
-  - `POST /api/tasks` — task lifecycle: `refresh`, `orchestrate`, `submit`, `cancel`, `resume`, `answer`. (`maxDuration = 300`.)
-  - `POST /api/ai` — authenticated AI gateway proxy (keys never reach browser).
-  - `POST /api/crawl` — read/organize a website; NDJSON progress stream.
-  - `POST /api/oauth/[action]` — legacy direct-Graph OAuth (`start`/`callback`).
-  - `POST/GET /api/connections/facebook/{start,callback,pages,select,disconnect}` — Composio publishing connection.
-- **Server Actions** (`'use server'`) for publishing (`publishNow`, `schedulePost`, etc.) and calendar (`loadPosts`). **[Verified]**
-- **Auth**: every non-GET route runs `requireApiIdentity()` which enforces an **Origin/host CSRF check** + a Supabase session. **[Verified]** (`src/server/auth.ts:35-44`)
+### AuthN/AuthZ
 
-### Authentication & authorization
-
-- **Identity source**: cookie-bound SSR Supabase client → `auth.getUser()` (`getIdentity()`). **[Verified]**
-- **Two Supabase clients**: a **cookie-bound user client** (RLS applies) and an **admin client** (service role, `SUPABASE_SECRET_KEY`) for privileged ops. **[Verified]** (`src/server/supabase.ts`, `src/server/supabase-admin.ts`)
-- **Authorization**: RLS at the DB layer (`workspace_id = auth.uid()`); RPCs re-check ownership; sensitive ops are `service_role`-only. **[Verified]**
+- Supabase Auth (email/password; PKCE OAuth callback). Workspace = `auth.users.id`.
+- **RLS** owner-scoped everywhere; **column-level grants** for least privilege (e.g., ai_keys
+  ciphertext never granted to clients); **SECURITY DEFINER** functions derive workspace from the session.
 
 ### File storage
 
-- **Supabase Storage**: private `owner-media` bucket, 10 MB max, image mimes only (`png|jpeg|webp`), RLS on `storage.objects` scoped to `foldername[1]=auth.uid()`; media is immutable (replacements use a fresh path). **[Verified]** (`20261118020000_competition_contracts.sql:532-537`)
-- **PDF artifacts** are written to paths recorded on `research_reports` (`report_json_path`, `report_html_path`, `pdf_path`). **[Verified]**
+- Supabase Storage bucket **`owner-media`** (private, ≤10MB, image MIME only), objects keyed by
+  `auth.uid()` as first folder; immutable (replacements use new paths). **[Verified]**
 
-### Background processing
+### Background processing & caching
 
-- **No background worker, no cron, no queue.** All work runs inside the HTTP request lifecycle (via Next.js `after()` scheduling `dispatchTasks`) or is executed by **Facebook itself** (native scheduled publishing). Task leases/heartbeats make interrupted work recoverable; `recover_tasks` runs on every client refresh; `mark_stale_publish_attempts` runs on calendar load. **[Verified]** (see Section J).
+- **No durable job queue / scheduler.** Task draining via `after()`; recovery via `recover_tasks`.
+- **In-memory caches:** crawl retry cache (per user+URL, 5 min), page cache (60 pages, 5 min), Brain
+  read caches; conversation canvas layout persisted in browser local storage.
 
-### Caching
+### Deployment (discoverable)
 
-- **Crawl page cache**: in-memory, 5-minute TTL, max 60 entries; **crawl API retry cache** keyed `userId:url`, TTL 300 s, max 20 entries. Durable knowledge lives in Supabase; these are optimizations only. **[Verified]**
-
-### Communication between components
-
-- Browser ↔ API: JSON/NDJSON over HTTPS; polling (~1.8–2.5 s) for chat/task progress.
-- Server ↔ DB: `SECURITY DEFINER` RPCs.
-- Server ↔ external: provider SDKs / HTTPS.
-- **No websockets**; near-real-time via polling. **[Verified]**
-
-### Deployment architecture
-
-- **Next.js server** (Node runtime; `next start`). **Supabase** (managed Postgres/Auth/Storage). **Composio** (managed Facebook auth). **Local Supabase** supported for dev (`npx supabase start`). E2E runs the production server against a disposable Supabase project. **[Verified]**
-- Deployment target/platform is **not specified** in the repo (no `vercel.json`, Dockerfile, or CI config found). **[Unknown]**
+- Node ≥20.9; `next build` / `next start`; E2E via Playwright against a disposable Supabase project.
+- `.env.example` references a `CRON_SECRET` for `/api/cron/publish-due`, but **no such route exists in
+  the repo** (see Section L). **[Verified gap]**
 
 ```mermaid
 flowchart LR
-  subgraph Browser
-    UI[Screens / Chat / Canvas / Calendar]
-  end
-  subgraph NextServer[Next.js Server]
-    API[API routes / Server actions]
-    ORCH[Orchestrator]
-    EXEC[Task executor/dispatcher]
-    PUB[Publishing]
-    CRAWL[Crawl + AI gateway]
-  end
-  subgraph Supabase[Supabase]
-    DB[(Postgres + RLS + RPCs)]
-    AUTH[Auth]
-    STORE[Storage]
-  end
-  subgraph External[External services]
-    COMPOSIO[Composio / Facebook]
-    FIRECRAWL[Firecrawl]
-    SEARCH[Tavily / Exa]
-    OSM[OSM]
-    AI[AI providers]
-  end
-  UI -->|HTTPS/NDJSON/poll| API
-  API --> ORCH --> EXEC
-  API --> PUB --> COMPOSIO
-  API --> CRAWL --> AI
-  ORCH & EXEC & PUB & CRAWL --> DB
-  API --> AUTH
-  API --> STORE
-  EXEC --> SEARCH & FIRECRAWL & OSM
+  U[Browser React app] -->|session Supabase client| API[Next.js API routes / server actions]
+  API -->|anon/session| DB[(Supabase Postgres + RLS)]
+  API -->|service-role| DB
+  API --> AI[AI gateway: Groq/SovereignEG/Dahl/...]
+  API --> PUB[Composio → Facebook]
+  API --> READ[3-tier site reader: direct/Jina/Firecrawl]
+  API --> RES[Research providers: Tavily/Exa/Firecrawl/Composio/OSM/Egypt-official]
+  DB --> AUTH[Supabase Auth]
 ```
 
 ---
 
 ## I. Integrations & External Dependencies
 
-| Integration | Why | Business function | Info exchanged | Workflows that depend on it | If unavailable |
-|---|---|---|---|---|---|
-| **Supabase** | Core backend. | Auth, Postgres/RLS, storage, RPCs. | User credentials, all business data. | Everything. | App unusable. |
-| **AI providers** (Groq default, OpenAI, Anthropic, Google, OpenRouter, Dahl, custom) | Inference. | Orchestrator decisions, chat, routing, content, research synthesis, crawl extraction. | Prompts + context (server-side), receive text/JSON. | Chat, research, content, crawl, onboarding. | Task fails (`no_active_key`/`provider_unavailable`); managed key preferred, BYO optional. |
-| **Composio (Facebook)** | Managed social publishing. | Connect a Facebook Page, publish/schedule posts. | Workspace id (as Composio user id), page id/name, post content, scheduled time. | Publishing (Calendar step 2). | Publishing disabled (`publishing_not_configured`); owner sees "connect page first." |
-| **Facebook Graph** (direct OAuth, legacy) | Alternative connect path. | Connect Facebook/Instagram via direct OAuth. | OAuth code/token (stored in `app_secrets`). | Legacy/alternate connection. | Falls back to Composio path (or unavailable). |
-| **Firecrawl** | Page extraction (the only path from candidate → evidence). | Scrape pages to markdown. | URL → markdown/title/time. | Research; crawl fallback (3rd tier). | Blocked page stored as `availability='blocked'`; never fabricated; research scope reduced. |
-| **Tavily** | Keyword search. | Candidate URLs from keyword search. | Query → URLs. | Research (keyword family). | Escalate to Exa; degrade gracefully. |
-| **Exa** | Semantic search. | Long-tail discovery of competitors/entities/news. | Query → URLs. | Research (semantic family). | Escalate to Tavily; degrade. |
-| **Egypt-official** (CAPMAS, MCIT, NTRA, ITIDA, GAFI, CBE, Customs, CPA) | Authoritative Egyptian data. | Government statistics/reports. | Direct fetch of gov pages. | Research (official family). | Marked unavailable; authority signal missing; gap declared. |
-| **OSM / Overpass** | Free maps. | Local business presence / geography. | Map query → POIs. | Research (local family). | "Absence of evidence is not evidence of absence." |
-| **Supabase Storage** | Media + PDF artifacts. | Store owner media, PDFs. | Files. | Media posts, research PDF. | Media/PDF features degrade. |
-| **Chromium + poppler-utils** (`pdfinfo`/`pdftotext`/`pdftoppm`) | PDF generation + QA. | Render/validate research PDFs. | HTML → PDF. | Research deliverable. | PDF validation fails → run partial. |
-| **Google OAuth** | Social sign-in. | Sign up/in. | OAuth code. | Auth. | Email/password still works. |
+| Integration | Why / business function | Info exchanged | Workflows depending on it | If unavailable |
+|---|---|---|---|---|
+| **Supabase (Auth/Postgres/Storage/RLS)** | Core identity, data, files. | User creds, all business data, media. | Everything. | Product unusable. |
+| **Groq** | Primary fast model (orchestrator, chat, router, crawl extraction). | Prompts/responses. | Orchestrator, chat, onboarding crawl. | Fallback to SovereignEG/Dahl/others. |
+| **SovereignEG** | Sovereign AI provider (content, campaign, research subagents, diagnosis, fallback). | Prompts/responses. | Content/campaign/research. | Fallback chain. |
+| **Dahl** | Roadmap + research director/synthesis models; crawl fallback. | Prompts/responses. | Research, roadmap. | Fallback chain. |
+| **OpenAI / Anthropic / Google / OpenRouter / custom** | Optional BYOK providers. | Prompts/responses (owner's key). | Any task if owner configured. | Managed model used. |
+| **Firecrawl** | Page extraction / anti-bot bypass for crawl + research. | Page HTML → markdown. | Onboarding crawl, research. | Falls back to Jina/direct (crawl); sources marked blocked (research). |
+| **Jina Reader** (`r.jina.ai`) | Reader fallback for crawling. | URL → text. | Onboarding crawl. | Falls back to Firecrawl/direct. |
+| **Tavily** | Keyword search (candidate URLs) for research. | Query → URLs. | Research (market/competitor). | Escalates to Exa; coverage gap noted. |
+| **Exa** | Semantic search (long-tail discovery). | Query → URLs. | Research. | Escalates to Tavily; coverage gap. |
+| **Composio** | Managed OAuth + Facebook publishing + bounded social sample. | OAuth tokens; FB page list; create-post; social sample. | Facebook connect, publishing, audience research. | Publishing "not configured"; audience track limited. |
+| **OpenStreetMap / Overpass** | Local presence / geographic coverage (free maps). | Query → POIs. | Research (local coverage). | Coverage gap noted. |
+| **Egypt official sources** (CAPMAS, MCIT, NTRA, CBE, GAFI, etc.) | High-authority official data. | Direct reads. | Research (authoritative claims). | Lower authority fallback; lag noted. |
+| **Facebook Graph API (via Composio)** | Create posts, schedule, read pages. | Page id, message, publish time. | Publishing. | `failed`/`uncertain`; never auto-retried. |
 
-**Note on Composio user identity**: the Composio user id is always the **Busmora workspace id**, never client input. **[Verified]** (`composio-provider.ts`)
+**Resilience patterns:** multi-provider AI fallback; reader fallback chain; research provider escalation
+with recorded reasoning; publishing outcomes are explicit (confirmed/failed/uncertain) and never silently
+retried; crawl uses a compatibility add-only path if the atomic RPC is missing.
 
 ---
 
 ## J. Notifications, Events & Automation
 
-### Notification triggers (all write `notifications` rows)
+### Notifications (in-app, `notifications` table, deduped)
 
-| Event | Recipient | Channel | Source |
+| Type | Title | Trigger | Recipient |
 |---|---|---|---|
-| `brain_reorganized_with_ai` / `crawler_knowledge_saved` | Owner | In-app | Crawl save |
-| `brain_proposal` | Owner | In-app | Crawl proposals (legacy) |
-| `context_hold` | Owner | In-app | Brain fact change affecting posts |
-| `task_complete` | Owner | In-app | Task persist |
-| `post_scheduled` / `post_published` / `post_failed` / `post_needs_review` | Owner | In-app | Publish result |
-| Budget / input requests | Owner | In-app | `await_task_input`, budget exhaustion |
+| `brain_proposal` | "Website suggestion ready" | A new brain *change* proposal is created (not for unchanged facts). | Owner |
+| `context_hold` | "Review changed business context" | A Brain node changed and a scheduled post depends on it (post held). | Owner |
+| `task_complete` | "Research report ready" / "Partial research result ready" | A marketing-research task completes. | Owner |
 
-Sources: `20261118010000_reliable_crawl_brain.sql`, `20261118025000_brain_governance.sql`, `20261121000000_marketing_research.sql`, `20261121130000_post_approval_and_publish.sql`. **[Verified]**
+- UI: a bell in `AppShell` (`NotificationCenter`) showing latest 50, unread badge, "Mark all read."
+- **Separately:** `knowledge_notification` is a **chat message** type (not a notifications row).
 
-### The notification center
+### Events / canvas
 
-- Bell with unread badge (caps "99+"); loads latest 50; **mark all read**; relative timestamps; **display-only** (items not clickable / no deep links). **[Verified]** (`NotificationCenter.tsx`)
+- `agent_events` (agent_started/completed/error, tool_call, delegation, skill_read, flow_connection)
+  drive the live agent canvas. Orchestrator and tasks both emit events; the conversation event stream is
+  unified for replay.
 
-### Background jobs / scheduled tasks / cron
+### Automation (what happens automatically)
 
-**None exist.** Evidence:
-- No `vercel.json`, no `src/app/api/cron/**`, no `pg_cron`, no queue library (`bull`/`bullmq`), no `node-schedule`, no server-side `setInterval`.
-- `CRON_SECRET` is documented in `.env.example:52` for `/api/cron/publish-due`, but **no such route exists** — stale/aspirational. **[Verified]**
-- All `setInterval` uses are client-side polling (task runner ~2.5 s, EmployeePage ~1.8 s) or the in-request 5 s heartbeat. **[Verified]**
-
-### What happens automatically (request-scoped)
-
-- **Dispatch**: after `POST /api/tasks`, Next.js `after()` schedules `dispatchTasks(backend)` to execute queued tasks. **[Verified]**
-- **Recovery**: `recover_tasks` runs on every `refresh` (reaps running tasks with no heartbeat >120 s). **[Verified]**
-- **Stale-claim reconciliation**: `mark_stale_publish_attempts` runs when the owner loads the calendar. **[Verified]**
-- **Heartbeat**: executor heartbeats every 5 s during a task. **[Verified]**
-- **Scheduled publishing**: Facebook publishes at the scheduled time (Facebook-native); Busmora sends once. **[Verified]**
-
-### Event & canvas model
-
-- **Agent events** (`agent_events`) come in task-scoped and conversation-scoped forms. Conversation-scoped events (Orchestrator, Brain tool) plus every task's events are unified by `list_conversation_events` and rendered by the Canvas. **[Verified]** (`20261122120000_orchestrator_first.sql`)
-- **Event types**: `agent_started | agent_tool_used | agent_completed | agent_error | flow_connection | tool_call | skill_read | delegation`. **[Verified]**
+- **Onboarding crawl** runs automatically when the owner submits a URL (read + organize).
+- **Chat auto-titling** on first message.
+- **Task draining** via `after()` after an API request (`dispatchTasks`).
+- **Task recovery** (`recover_tasks`) on `refresh` and page interactions.
+- **Stale publish-claim sweep** (`mark_stale_publish_attempts`) on calendar load → "Needs review."
+- **Post recovery** (`recoverPosts`) reconstructs drafts when a workspace has none.
+- **No scheduled/cron automation** is implemented (no background publisher; scheduling is Facebook-native).
 
 ---
 
 ## K. Business-Critical Dependencies
 
-### Feature-to-feature dependencies
+Use this to reason about the blast radius of a new feature.
 
-- **Everything depends on authentication** (`getIdentity`/`requireWorkspace`). No session → redirected to sign-in. **[Verified]**
-- **Chat depends on the Orchestrator**, which depends on the **AI gateway**, which depends on an **AI key** (managed or BYO). No key → chat tasks fail (`no_active_key`). **[Verified]**
-- **Brain answers depend on approved Brain nodes**; empty/unavailable Brain → the Director refuses rather than inventing. **[Verified]**
-- **Onboarding depends on the crawl subsystem** (website path) or the business form (manual path). **[Verified]**
-- **Research depends on the free-tier allowance + provider keys**; exhausted allowance → `INSUFFICIENT_ALLOWANCE`, scope reduced, never paid fallback. **[Verified]**
-- **Deliverables depend on tasks** (offers come from `save_task_result`); "Continue with Director" depends on `deliverable_versions` existing. **[Verified]**
-- **Publishing depends on a connected Facebook Page** (Composio) + configured provider; no connection → `NO_CONNECTION`/held. **[Verified]**
-- **Roadmap questions depend on approved Brain facts** for prefill/skip. **[Verified]**
-
-### Status/ordering dependencies
-
-- **Publishing order**: text approval **before** schedule/publish; schedule window validated; send gated by connection + version + no holds. **[Verified]**
-- **Research order**: market → (competitor, audience) → positioning → benchmark (dependency layers). **[Verified]**
-- **Brain staleness**: any Brain fact change/delete can force dependent deliverables stale and dependent posts held — this is a cross-module side effect that **must be preserved**. **[Verified]**
-- **Task checkpoint order**: `route → generate → persist`; resume continues from checkpoint. **[Verified]**
-
-### Shared critical rules (must be honored by any new feature)
-
-1. **Tenant isolation** (RLS + `auth.uid()` everywhere).
-2. **Owner approval** for publishing and research→Brain.
-3. **Exactly-once sends** (unique per version; never auto-retry).
-4. **Context integrity** (version-pinned dependencies; staleness not silent).
-5. **Evidence over invention** (citations, no fabricated data).
-6. **Budget containment** (per-task + per-research-mode budgets; no paid fallback).
-7. **Optimistic concurrency** (expected-version checks; reload rather than overwrite).
-8. **No cross-workspace references** (composite FKs, origin validation).
-
-### Operations that must happen in order
-
-- **Onboarding**: save draft → confirm (atomic profile+offerings+settings). **[Verified]**
-- **Publishing**: approve text → authorize → claim → send → record. **[Verified]**
-- **Research**: brief → plan → retrieve (reserve/settle) → audit → synthesize → PDF QA → propose. **[Verified]**
-
-### Changes that could affect multiple modules
-
-- Editing/deleting a **Brain fact** → staleness/holds across deliverables and posts; audit + version. **[Verified]**
-- Changing a **Facebook connection/page** → bumps `authorization_generation`, invalidates publish approvals, holds scheduled posts. **[Verified]**
-- Changing **region/timezone** → affects post scheduling, proposed times, calendar display. **[Inferred]** (timezone is used for scheduling and calendar).
-- Changing the **AI key/model** → affects all AI-backed features. **[Verified]**
+- **Brain is the shared contract.** Onboarding, orchestrator brain path, task context, discovery prefill,
+  and research proposals all depend on **approved** Brain facts. Changing Brain categories/status rules
+  affects every AI feature.
+- **Auth + RLS underpin everything.** Any feature touching data must respect owner-scoping and go through
+  RPCs; bypassing this breaks tenant isolation.
+- **Onboarding completeness gates the app.** `onboarding_state != complete` blocks workspace access.
+- **Context dependencies couple Brain edits to posts/deliverables.** Editing a node can stale
+  deliverables and hold posts — a cross-module side effect to preserve.
+- **Approval integrity couples posts to versions.** Approvals bind to exact `post_version_id`; editing
+  content revokes approval; sending locks the post.
+- **Authorization generation couples connections to approvals.** Reconnecting/adding a Page invalidates
+  prior approvals and holds scheduled posts.
+- **Shared allowance couples all research.** Research runs alone; one workspace's allowance is shared
+  across all research tasks.
+- **Originating entities couple tasks to their source.** `task.origin` (direct / wizard_question /
+  roadmap_step / document) links a task to the workflow that created it; DB triggers validate ownership.
+- **Order-sensitive operations:** approve-then-publish (two steps); plan-then-activate (roadmap, not yet
+  built); crawl-then-organize (read then save).
+- **AI provider config couples tasks to key availability.** Missing/invalid keys degrade to managed model
+  or fail with typed errors.
 
 ---
 
 ## L. Current Project State
 
-### Verified fully implemented
+### Fully implemented (E2E-verified where noted)
 
-- Auth (email/password + Google), password recovery, route protection. **[Verified]**
-- Onboarding (website + manual paths), draft versioning, confirmation. **[Verified]**
-- Orchestrator-first chat with three paths + guardrails + idempotency. **[Verified]**
-- Task execution engine (dispatch, checkpoint/resume, attempts, budgets, heartbeats). **[Verified]**
-- Brain UI (graph/list/review/proposals/evidence/editing) + governance RPCs + staleness. **[Verified]**
-- Deliverables library (offers, versioning, viewer, continue-with-director). **[Verified]**
-- Roadmap/Discovery wizard (goals, adaptive questions, autosave). **[Verified]**
-- Calendar + two-step approval + Facebook-native scheduling/publishing + holds. **[Verified]**
-- Settings (region, BYO AI key, Facebook connection). **[Verified]**
-- Research engine (Director, 5 agents, 6 providers, auditor, synthesis, PDF, proposals, allowance). **[Verified]**
-- Crawl + AI extraction + atomic Brain save. **[Verified]**
-- Notification center (display-only). **[Verified]**
-- E2E suite (5 spec files) + DB-check scripts. **[Verified]**
+- Auth + workspace bootstrap + onboarding gating (`01-auth-database.spec.ts`).
+- Business intake confirmation (atomic, versioned, audited) (`01`).
+- Website crawl → auto-approved Brain (`02`).
+- Orchestrator direct/brain routing; content/campaign/diagnosis tasks; research report with cited
+  sources (`03`).
+- Deliverables save/version/search; post scheduling; publishing attempt recording (`04`).
+- Idempotency, same-origin/CSRF rejection, cross-tenant rejection, account-deletion cascade (`05`).
+- Brain governance, proposals, graph/list UI.
+- Facebook connection (Composio), two-step publish, calendar UI.
+- Free-tier allowance + research pipeline + PDF QA.
 
-### Partially implemented / with gaps
+### Partially implemented / incomplete
 
-- **Guest demo**: landing CTA anchors to a static tabs section; the richer `InteractiveDemo` exists but is **dead code** (not imported). **[Verified]**
-- **Social import** during onboarding: disabled ("Coming soon"). **[Verified]**
-- **Pricing / subscription**: illustrative only; no billing. **[Verified]**
-- **Instagram / X**: schema historically included them; **X was removed** (`20261018200000_remove_x_platform`). Instagram appears in some enums but the active publishing path is **Facebook only**. **[Verified]** for X removal; **[Inferred]** that Instagram publishing is not wired end-to-end.
-- **Calendar "published via Facebook schedule (unverified)"**: Facebook-scheduled posts read as published once their time passes, but Busmora does **not read back** to confirm — labeled unverified. **[Verified]**
+- **Roadmap generation is incomplete.** The Discovery wizard collects answers and saves a **preliminary
+  plan state**, but **does not generate or activate a Roadmap**. The `roadmaps` / `roadmap_versions` /
+  `roadmap_steps` / `step_actions` tables and a `roadmap` AI operation + validation exist, but **no code
+  writes a roadmap or calls the roadmap operation.** The wizard explicitly says so. **[Verified]**
+- **No background publisher / cron.** Publishing is owner-click-driven; Facebook handles scheduling.
+  `.env.example` references `/api/cron/publish-due` and `CRON_SECRET`, and `e2e/specs/04` describes "the
+  background publisher claims a due approved Post," but **no `/api/cron/publish-due` route exists in the
+  repo**, and nothing calls `claim_post_publish` outside the owner-driven `publishPost` path. This is a
+  **discrepancy / likely gap** (see Section O). **[Verified gap]**
+- **Instagram** is declared as a data concept (`Platform = 'facebook' | 'instagram'`) and a legacy
+  self-hosted OAuth flow can handle it, but the **actual publishing provider is Facebook-only**; there is
+  **no working Instagram publish adapter**. **[Verified]**
+- **Social import during onboarding** is a **disabled** "coming soon" button. **[Verified]**
+
+### Placeholder / vestigial
+
+- `onboarding_state = 'review_pending'` — declared but unused by the UI. **[Verified]**
+- `createStubSubagent` in research director — a test helper, not production. **[Verified]**
+- Legacy self-hosted OAuth (`oauth-connect.ts`, `/api/oauth/[action]`) coexists with the current Composio
+  flow; the Composio flow is the live publishing path. **[Inferred]**
 
 ### Known limitations / technical debt affecting product behavior
 
-- **No background scheduler**: task execution relies on request-scoped dispatch + client polling; if the browser closes, running tasks are recovered as `interrupted` (resume needed). **[Verified]**
-- **No read-back of published posts**: Busmora never edits/reads/deletes published Facebook posts. **[Verified]**
-- **Stale `CRON_SECRET` config** referencing a non-existent `/api/cron/publish-due`. **[Verified]**
-- **Legacy/parallel OAuth path** (`/api/oauth/[action]`) coexists with the Composio path. **[Verified]**
-- **Dead code**: `InteractiveDemo.tsx`, `demoStorage.ts`, `QuestionWizard.tsx`, `statusChip.ts`. **[Verified]**
-- **English-only workspace content** despite Arabic UI support (UI i18n is en/ar; content register is forced English). **[Verified]**
+- **No durable job queue**: background work relies on Next.js `after()` + DB leases; a serverless
+  environment that kills `after()` could delay task draining (leases/recovery mitigate).
+- **English-only content** at DB level while UI supports ar/en (default ar) — content generation is locked
+  to English even though the UI is bilingual. **[Verified — `20261118023000_english_only.sql`]**
+- **Crawl scope is small** (default 3 pages); large sites may be under-covered.
+- **Publishing depends on Composio config**; without it, publishing shows "not configured."
 
-### Important TODOs / unresolved gaps (as evidenced)
+### Verified vs assumed
 
-- `README` notes E2E tests "remain red if research is not actually retrieved, if a future Post is only labelled `approved` rather than `scheduled`, or if no deployed worker claims a due Post." This implies the **due-post worker does not exist** (by design, since publishing is Facebook-native) and that some research retrieval may be incomplete in the tested environment. **[Verified]**
-- Pricing/limits/availability "to be announced." **[Verified]**
-
-### What I could and could not inspect
-
-- **Inspected**: `src/**` (all features, screens, server, API), `supabase/migrations/**` (all 42 migrations), `e2e/**`, `scripts/**`, `.env.example`, `README.md`, `DESIGN.md`, `AGENTS.md`, `package.json`, `src/config/ai-models.ts`.
-- **Not inspected in depth** (no business impact believed, but noted): `public/` assets, `.agents/skills/*` (agent tooling skills, not product code), `dist/`, `.next/`, `test-results/`, `node_modules/`.
-- **Could not establish**: actual deployment/hosting target, real pricing, whether a production worker exists, current live provider status, and any product data.
+- **Verified:** everything above tagged [Verified] with file/test references.
+- **Assumed/Inferred:** items tagged [Inferred] (e.g., legacy OAuth is deprecated; a paid tier is
+  intended but unbuilt).
+- **Unknown:** see Section O.
 
 ---
 
 ## M. Important Technical & Business Constraints
 
-When designing new features, respect these constraints.
+When designing new features, respect these:
 
-### Data integrity & compatibility
-
-- **Tenant isolation is non-negotiable**: every new table/query must be `workspace_id`-scoped with RLS; composite FKs `(workspace_id, id)`. **[Verified]**
-- **Optimistic concurrency** (`expected_version` / `expected_updated_at`) must be honored; surfaces should reload rather than overwrite on `STALE_VERSION`. **[Verified]**
-- **Migrations are additive / non-destructive**: prefer new columns/tables, `NOT VALID` FKs, and backfills; do not rewrite history. **[Verified]**
-- **Idempotency**: any new write path triggered by user action should be idempotent (keyed) to survive retries. **[Verified]**
-- **Immutability**: versions/snapshots are insert-only; never mutate in place. **[Verified]**
-
-### Permissions & security
-
-- **Writes go through RPCs**; do not re-open direct table writes. **[Verified]**
-- **Service-role-only** operations (publish claim/record, usage reservation, credentials, connection upsert) must stay server-side. **[Verified]**
-- **Prompts are server-owned**; never accept a system prompt from the client. **[Verified]**
-- **No secrets in the browser**; AI keys and OAuth tokens are encrypted/server-side. **[Verified]**
-- **SSRF guard** must be preserved for any URL the system fetches. **[Verified]** (`siteUrl.ts`)
-- **CSRF/Origin check** on non-GET API routes. **[Verified]**
-
-### Workflow & business
-
-- **Owner approval gates** publishing and research→Brain; do not bypass with automation. **[Verified]**
-- **Exactly-once publish**; never auto-retry a send. **[Verified]**
-- **No paid fallback** for research; degrade scope, never spend. **[Verified]**
-- **Evidence requirements**: citations for claims; no fabricated facts/prices/sources. **[Verified]**
-- **Context dependencies** must be recorded for any new artifact that derives from Brain facts, so staleness works. **[Verified]**
-- **Schedule window**: 15 min–29 days (Busmora margin inside Facebook's 10 min–30 days). **[Verified]**
-
-### Integration limitations
-
-- **Facebook only** for active publishing (Composio); X removed; Instagram not wired. **[Verified/Inferred]**
-- **No read-back** of published posts. **[Verified]**
-- **Free-tier caps**: 24 calls / 18 pages / 24k tokens / 24 credits per rolling 24h (SQL default). **[Verified]**
-- **Task concurrency**: ≤2 running per workspace; research alone. **[Verified]**
-- **Timeouts**: site read 6 s (overall ~25 s for 10 pages), AI extract 16 s (server budget 14 s), provider publish 20 s, orchestrator 20 s, task route/generate 25–45 s. **[Verified]**
-
-### Performance
-
-- **Polling-based** near-real-time (~1.8–2.5 s); no websockets. **[Verified]**
-- **Crawl caches** (5 min TTL) are optimizations; durable data in Supabase. **[Verified]**
-
-### Privacy
-
-- **Composio is read-only allowlist**; PII/enrichment actions blocked. **[Verified]**
-- **No invented metrics** in Facebook previews. **[Verified]**
-- **No unnecessary PII** in research (email/phone scans in acceptance). **[Verified]**
-
-### Architectural
-
-- **No background worker/scheduler**; request-scoped execution + client polling; Facebook-native scheduling. Any new "scheduled" behavior must decide explicitly between request-scoped vs an added worker. **[Verified]**
-- **English-only content** with Arabic UI strings. **[Verified]**
+- **Tenancy & RLS:** every table is owner-scoped; never trust a client-supplied workspace id; route
+  mutations through `SECURITY DEFINER` RPCs; preserve composite owner FKs.
+- **Approval integrity:** confidence ≠ approval; approvals bind to exact versions; never auto-send;
+  sent posts are immutable; research never writes Brain nodes without owner approval.
+- **Exactly-once publishing:** preserve `publish_attempts UNIQUE(post_version_id)`; never add
+  auto-retry; scheduling is Facebook-native (no Busmora scheduler).
+- **Free-tier only:** research must not introduce paid fallback; respect the rolling 24h allowance and
+  `paid_fallback` impossibility.
+- **Additive crawl / owner-edit preservation:** re-crawls must not overwrite `user_edited` facts, manual
+  edges, or rejected/retired nodes; preserve dedupe/fingerprint logic.
+- **English-only content** at the DB layer (region remains free). New content features should assume
+  English generation unless this constraint is deliberately changed.
+- **Data consistency:** use optimistic concurrency (`expected_version` / `expected_updated_at`); expect
+  `STALE_VERSION` handling in the UI.
+- **Security/privacy:** AI keys and page tokens are server-only/encrypted; browser sees masked hints
+  only; connection cookies are httpOnly, path-scoped, short-lived, single-use nonce; custom AI base URLs
+  must be allowlisted.
+- **Same-origin on mutations** (CSRF); request size caps; crawl URL length ≤2048.
+- **No secrets in the client**; never prefix server secrets with `NEXT_PUBLIC_`.
+- **Performance/cost:** AI calls have token/time budgets; crawl has page/time budgets; research shares one
+  allowance; PDF generation has QA gates.
+- **Backward compatibility:** the crawl save has an add-only compatibility path when the atomic RPC is
+  absent (`PGRST202`); preserve graceful degradation.
 
 ---
 
 ## N. Glossary & Project Terminology
 
-| Term | Meaning |
-|---|---|
-| **Busmora** | The product: an AI Marketing Director for small-business owners. |
-| **Workspace** | One private tenant = one owner account. All data is scoped to it. |
-| **Business Brain / Brain** | The approved business-knowledge graph (nodes + typed edges). The hub of the product. |
-| **Brain node** | A single business fact in one of 9 categories. |
-| **Brain edge / relationship** | A typed link between nodes: TARGETS, COMPETES_WITH, HAS_TONE, SOLVES_PAIN_POINT, RELATED_TO. |
-| **Brain proposal** | A pending change/addition to the Brain awaiting owner decision. |
-| **Candidate** | An unapproved Brain item (status `candidate`, approval_state `pending`). |
-| **Approved / Rejected / Retired** | Brain lifecycle states. |
-| **Epistemic kind** | `fact / claim / inference / unknown` — how the system treats a statement. |
-| **Verification state** | `unverified / source_supported / contradicted / owner_reported`. |
-| **Owner-reported** | A fact the owner confirmed (as opposed to crawler/research-derived). |
-| **Context dependency** | A record that a consumer (document/post/task/roadmap) used a specific Brain fact/source at a specific version. Drives staleness. |
-| **Staleness / stale_reason** | When a Brain fact changes/deletes, dependent content is flagged. |
-| **Hold (post hold)** | A reason a post cannot be sent (context / connection / missed_window / uncertain). |
-| **Employee / Marketing Director** | The AI chat persona in `/employee`. |
-| **Orchestrator** | The classifier every chat message passes through: direct / brain / task. |
-| **Orchestrator path** | One of direct / brain / task. |
-| **Brain tool** | The read-only retrieval the Orchestrator uses to answer "what do you know about me?". |
-| **Director / Research Director** | The execution engine that plans and runs tasks/research. |
-| **Task** | A unit of agent work (types: simple_answer, marketing_research, content_creation, campaign_planning, performance_diagnosis, [publishing]). |
-| **Task origin** | Why a task exists: direct / wizard_question / roadmap_step / document. |
-| **Checkpoint** | The resumable phase marker (`route/generate/persist/done`) plus context. |
-| **Agent event** | A Canvas event (agent_started/tool_used/completed/error/flow_connection/tool_call/skill_read/delegation). |
-| **Agent Canvas** | The React Flow visualization of agent activity. |
-| **Deliverable** | A saved document (research_report / competitor_analysis / content_posts / content_calendar / performance_diagnosis / general). |
-| **Deliverable offer** | A "Save this to Deliverables?" card after a chat result. |
-| **Planned post** | A draft/scheduled social post with an approval lifecycle. |
-| **Post version** | An immutable revision of a post's content/schedule. |
-| **Post approval** | Owner approval binding an exact post version + Page + time (does not send). |
-| **Publish attempt** | One send attempt row; exactly-once per version. |
-| **Two-step approval** | Step 1 approve text, Step 2 authorize publish/schedule. |
-| **Facebook-native scheduling** | Busmora sends once with a scheduled time; Facebook publishes. No BUSMORA scheduler. |
-| **Research mode** | `quick / standard / deep` — budget + track profile for a research run. |
-| **Track** | A research specialty: market demand, competitor, audience, positioning, benchmark. |
-| **Free-tier allowance** | Per-workspace rolling 24h budget (calls/pages/tokens/credits); no paid fallback. |
-| **Provider call** | One external data call (Tavily/Exa/Firecrawl/etc.), reserved/settled against the allowance. |
-| **Claim** | A structured, cited statement in a research report; carries a confidence level. |
-| **Confidence (research)** | `hypothesis / supported / validated / strong`. |
-| **Auditor** | Quality gate that blocks indefensible claims. |
-| **Synthesis / report** | The assembled bilingual, cited research report. |
-| **Brain proposal (research)** | A typed finding from research awaiting owner approval (market_fact / competitor / audience_insight / positioning_claim / price_observation / opportunity_hypothesis). |
-| **Roadmap** | A strategic plan built from the Discovery wizard (goal → questions → plan). |
-| **Discovery** | The guided question flow to scope a roadmap. |
-| **Preliminary plan** | A saved plan state with declared open questions (does not generate a roadmap). |
-| **Onboarding state** | `awaiting_url / crawling / review_pending / complete`. |
-| **BYO key** | Bring-your-own AI API key (stored encrypted server-side). |
-| **Managed model** | A server-configured default AI model (used unless BYO). |
-| **Composio** | Managed third-party that holds Facebook OAuth tokens and executes publishing. |
-| **Provider** | External service (AI provider, or data provider in research). |
-| **Golden data** | Hand-labeled evaluation fixtures (competitors/prices/quotes) for QA. |
-| **Acceptance suite** | Release thresholds + policy checks for the research engine. |
-| **Origin label** | UI label showing where a deliverable came from. |
-| **Hold kind** | context / connection / missed_window / uncertain. |
+- **Busmora** — the product; an AI Marketing Director for SMBs.
+- **Workspace** — one private tenant per account (id = auth user id).
+- **Business Brain** — the verified company knowledge graph (nodes + edges) the AI reasons over.
+- **Brain node** — one fact; 9 categories: company_profile, offering, audience, brand_rule, positioning,
+  strategic_goal, channel, competitor, company_fact.
+- **Brain edge / relation** — TARGETS, COMPETES_WITH, HAS_TONE, SOLVES_PAIN_POINT, RELATED_TO.
+- **Approval state** — pending / approved / rejected / legacy (governance). **Legacy** = pre-governance
+  crawler-approved, not retroactively owner-confirmed.
+- **Verification state** — unverified / source_supported / contradicted / owner_reported.
+- **Epistemic kind** — fact / claim / inference / unknown.
+- **Orchestrator** — the front-door router for every chat message (direct / brain / task).
+- **Director** — the execution delegate that runs tasks (the "marketing director" persona).
+- **Task** — a unit of async work; status queued/running/awaiting_input/completed/failed/cancelled/
+  interrupted/partial; checkpoint phases route→generate→persist→done.
+- **Origin** — where a task came from: direct, wizard_question, roadmap_step, document.
+- **Allowance** — the metered free-tier budget (calls/pages/tokens/credits, rolling 24h).
+- **Research Director** — plans and runs the 5 specialist research agents; owns budget.
+- **Research track** — market_demand, competitor_commercial, customer_audience, brand_positioning,
+  benchmark_strategy.
+- **Claim / claim quality** — a structured, evidence-backed assertion with confidence
+  (hypothesis → supported → validated → strong).
+- **Source / evidence** — a retrieved page with excerpt, URL, content hash, availability.
+- **Proposal (brain_proposal / research_proposal)** — a suggested change/fact pending owner approval.
+- **Deliverable** — a saved output (research_report, competitor_analysis, content_posts,
+  content_calendar, performance_diagnosis, general).
+- **Deliverable offer** — an offer to save a substantial result (offered / saved / dismissed).
+- **Planned post** — a social post with status/approval_state/execution_state.
+- **Proposed_for** — AI-suggested publish time (a proposal, never a schedule).
+- **Scheduled_for** — the actual approved/scheduled publish instant (set by the owner).
+- **Authorization generation** — a counter bumped when the Page/account changes, invalidating approvals.
+- **Hold (post_hold)** — a block on a post (context / connection / missed_window / uncertain).
+- **Publish attempt** — the single send-gate record per post version (claimed→submitted→confirmed/failed/
+  uncertain/held/cancelled).
+- **Composio** — managed OAuth broker + tool executor used for Facebook connect/publish + social sample.
+- **BYOK** — Bring Your Own Key; owner-supplied AI provider key (encrypted).
+- **Managed model** — server-configured AI key used when the owner has no key.
+- **Discovery** — the guided onboarding questionnaire (roadmap module) capturing business challenges.
+- **Landed price** — list price + VAT (14%) + delivery, normalized per unit, for fair comparison.
+- **Arabizi** — Arabic written in Latin letters/numbers; handled by the lexicon for Egyptian search.
+- **Greater Cairo ≠ all Egypt** — geography rule preventing over-generalization.
 
 ---
 
 ## O. Open Questions & Unverified Assumptions
 
-> Each item states what is unclear, what was verified, what is missing, and why clarification matters.
+For each: what's unclear, what was verified, what's missing, why it matters.
 
-1. **Pricing & monetization.**
-   - *Verified*: plan tiers exist as data (`starter|growth|scale`), pricing page is illustrative ("To be announced"), no billing code.
-   - *Missing*: actual prices, billing provider, subscription lifecycle, free-tier limits per plan.
-   - *Why it matters*: any feature touching limits, plans, or "Select a Plan" needs the real model.
+1. **Publishing trigger / background publisher gap.**
+   - *Unclear:* How are due approved posts actually published without owner clicks?
+   - *Verified:* `.env.example` references `/api/cron/publish-due` + `CRON_SECRET`; `e2e/specs/04` says
+     "the background publisher claims a due approved Post"; but **no `/api/cron/publish-due` route exists**
+     in `src/app/api`, and nothing calls `claim_post_publish` outside the owner-driven `publishPost`.
+   - *Missing:* the cron route or external scheduler config.
+   - *Why it matters:* Determines whether "schedule and walk away" truly works, and where a new feature
+     would hook in.
 
-2. **Instagram / multi-platform publishing.**
-   - *Verified*: schema historically included `instagram` and `x`; **X was removed**; active publishing path is Facebook/Composio only.
-   - *Missing*: whether Instagram publishing is planned/wired.
-   - *Why it matters*: post `platform` enums include `instagram`; a new feature must decide whether to honor it.
+2. **Roadmap generation completeness.**
+   - *Unclear:* Is the Roadmap a shipped feature or in-progress?
+   - *Verified:* Discovery wizard saves a *preliminary plan state* and explicitly does **not** generate/
+     activate a roadmap; no code writes `roadmaps`/`roadmap_steps` or calls the `roadmap` AI operation.
+   - *Missing:* any generation/activation implementation and UI.
+   - *Why it matters:* Roadmap-related feature requests would be net-new builds, not extensions.
 
-3. **Background worker / scheduled execution.**
-   - *Verified*: no worker/cron; request-scoped dispatch + Facebook-native scheduling; `CRON_SECRET` references a non-existent route.
-   - *Missing*: whether a production worker is expected to be added.
-   - *Why it matters*: any "run later / scheduled task" feature depends on this architectural decision.
+3. **Pricing / monetization model.**
+   - *Unclear:* Is there a paid tier, and how is it enforced?
+   - *Verified:* `plan` field exists (starter/growth/scale); **no billing/subscription/payment code**;
+     `DESIGN.md` says pricing is unannounced; free-tier allowance is the only enforcement.
+   - *Missing:* pricing strategy, payment integration, plan gating.
+   - *Why it matters:* Any "upgrade / quota / billing" discussion needs this confirmed by the product owner.
 
-4. **Deployment/hosting target.**
-   - *Verified*: Next.js server + Supabase; no `vercel.json`/Dockerfile/CI found.
-   - *Missing*: where it is hosted, scaling model.
-   - *Why it matters*: performance/background-processing constraints depend on it.
+4. **Instagram support.**
+   - *Unclear:* Is Instagram a supported publish target?
+   - *Verified:* `Platform` type includes instagram; legacy OAuth can handle it; **publishing provider is
+     Facebook-only**; X/Twitter was removed.
+   - *Missing:* a real Instagram publish adapter (if intended).
+   - *Why it matters:* Multi-platform feature scoping.
 
-5. **Real research reliability in production.**
-   - *Verified*: README warns E2E may be red "if research is not actually retrieved"; acceptance thresholds exist.
-   - *Missing*: live provider health / retrieval success rates.
-   - *Why it matters*: research-dependent features assume providers are reachable.
+5. **Multi-user / teams / roles.**
+   - *Unclear:* Are teams/roles planned?
+   - *Verified:* single owner per workspace; no role tables or user↔user relationships.
+   - *Missing:* any collaboration model.
+   - *Why it matters:* Approval-chain or multi-seat features would be greenfield.
 
-6. **"Published via Facebook schedule (unverified)".**
-   - *Verified*: Busmora does not read back scheduled/published posts; UI labels them unverified.
-   - *Missing*: whether read-back verification is planned.
-   - *Why it matters*: post status accuracy and user trust.
+6. **Language strategy.**
+   - *Unclear:* Final stance on Arabic vs English.
+   - *Verified:* UI supports ar/en (default ar) but content generation is DB-locked to **English**; region
+     fields remain free; research/lexicon handle Arabic *input* queries.
+   - *Missing:* product decision on Arabic content generation.
+   - *Why it matters:* Affects all content/research-output features.
 
-7. **Actual onboarding default page limit vs README.**
-   - *Verified*: `DEFAULT_CRAWL_PAGES = 3`; README mentions "up to three pages" and "ten relevant pages by default" in different places.
-   - *Missing*: reconciliation of the two numbers (the constant is 3; README also references 10 for Brain reorganization with a shared setting).
-   - *Why it matters*: crawl scope/budget expectations.
+7. **Durability of background work.**
+   - *Unclear:* Behavior when the serverless host terminates `after()` work.
+   - *Verified:* leases + checkpoints + `recover_tasks` make work recoverable; no durable queue.
+   - *Missing:* deployment/timeout guarantees.
+   - *Why it matters:* Affects reliability guarantees for async features.
 
-8. **Audit log immutability vs deletion.**
-   - *Verified*: audit_log is insert+select only for clients; a user-delete trigger special-cases account deletion to avoid FK violations.
-   - *Missing*: retention policy.
-   - *Why it matters*: compliance/retention features.
+8. **Regions/repos not inspected at runtime.**
+   - This analysis is static (no app/database execution). Behavior is inferred from code, schema, and
+     tests; live configuration (env values, actual provider availability, deployed cron) was not observed.
+   - **No secret values were read or included** (`.env` was intentionally not opened; only `.env.example`
+     key *names* were used).
 
-9. **Dead code intentions.**
-   - *Verified*: `InteractiveDemo`, `QuestionWizard`, `statusChip` are unused.
-   - *Missing*: whether they are planned for future wiring or should be removed.
-   - *Why it matters*: avoid building on dead code.
-
-10. **Multi-currency / region expansion.**
-    - *Verified*: English-only content; country/currency are free-form preferences; pricing is EGP-centric (VAT 14%) in research.
-    - *Missing*: product roadmap for other markets.
-    - *Why it matters*: pricing/research localization features.
-
-11. **Team / multi-seat.**
-    - *Verified*: strictly single-user-per-workspace; no roles beyond owner.
-    - *Missing*: whether collaboration is planned.
-    - *Why it matters*: any "invite teammate" request would be a new architectural concept.
-
-12. **Whether the free-tier allowance is per-plan.**
-    - *Verified*: one `free_tier_allowance` row per workspace with fixed limits; plan field exists but is not linked to allowance in code.
-    - *Missing*: mapping between plan tiers and limits.
-    - *Why it matters*: monetization and entitlement features.
+9. **`test-results/` artifacts.**
+   - Some E2E artifacts under `test-results/` appear to be from failing runs; they were not treated as
+     authoritative for feature status (the specs themselves were read instead).
 
 ---
 
-### Document provenance & confidence
+### Document scope & method note
 
-- **Verified** statements are grounded in the migrations, server modules, and UI files cited inline.
-- **Inferred** statements are labeled where the code strongly implies but does not confirm (e.g., eventual subscription intent, Instagram status, region affecting scheduling).
-- **Unknown** items are collected in Section O.
-- No source code was modified in producing this document. Secret values were never read or reproduced; only environment variable **names** are referenced.
+This document was produced by static analysis of the repository: all 41 SQL migrations under
+`supabase/migrations/`, the `src/server` modules, the `src/features` subsystems (research, orchestrator,
+tasks, roadmap, onboarding, notifications), the `src/app` routes and screens, `src/lib` shared types,
+`src/config/ai-models.ts`, and the Playwright E2E specs. It intentionally omits low-level code detail and
+secret values. Where the README and the implementation diverged, the **implementation** was treated as
+truth and divergences were flagged in Section L.

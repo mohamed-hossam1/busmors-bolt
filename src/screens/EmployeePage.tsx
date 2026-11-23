@@ -73,7 +73,8 @@ export default function EmployeePage() {
   const viewedConversationRef = useRef<string | null>(null)
   const workspaceIdRef = useRef<string | null>(null)
   const conversationTasks = tasks.filter(task=>task.conversation_id===conversationId)
-  const running = sending || conversationTasks.some(task=>['queued','running'].includes(task.status))
+  const hasActiveTask = conversationTasks.some(task=>['queued','running'].includes(task.status))
+  const running = sending || hasActiveTask
   const selectedTask = conversationTasks.find(task=>task.id===activeTask)
   const conversationLoading = !conversationId || loadedConversationId !== conversationId
 
@@ -85,16 +86,26 @@ export default function EmployeePage() {
 
   const displayedMessages = useMemo(() => {
     const greetingText = t('greetingProactive')
-    const isGreeting = (m: ChatMessage) =>
-      m.role === 'agent' && (
+    const currentMessages = messages.filter((message) => message.conversation_id === conversationId)
+
+    // Only the proactive greeting that predates the whole conversation may be
+    // hoisted to the top. A direct greeting reply (e.g. AR_GREETING_REPLY) is an
+    // ordinary agent answer to a user message and must keep its chronological
+    // place, otherwise the agent reply jumps above the user's message.
+    const firstUserMessage = currentMessages.find((m) => m.role === 'user' && m.type === 'text')
+    const isGreeting = (m: ChatMessage) => {
+      if (m.role !== 'agent') return false
+      if (m.id === 'initial-greeting-top') return true
+      if (firstUserMessage && new Date(m.created_at).getTime() >= new Date(firstUserMessage.created_at).getTime()) return false
+      return (
         m.content === greetingText ||
         m.content.includes('I reviewed your company info') ||
         m.content.includes('أقدر أساعدك بناءً على المعلومات اللي أكدتها عن مشروعك') ||
         m.content.includes('المساعد التسويقي لـ Busmora') ||
         m.content.includes('Busmora marketing assistant')
       )
+    }
 
-    const currentMessages = messages.filter((message) => message.conversation_id === conversationId)
     const greetingMsg = currentMessages.find(isGreeting)
     const otherMsgs = currentMessages.filter((m) => !isGreeting(m))
 
@@ -396,19 +407,24 @@ export default function EmployeePage() {
         router.replace('?' + next.toString(), { scroll: false })
       }
       if(result.taskId&&viewedConversationRef.current===conversationId){setActiveTask(result.taskId)}
+      // Retitling calls an AI model and can take seconds. Run it detached so
+      // sending=false is reached immediately after the orchestrator finishes and
+      // no progress card is shown while waiting on a title.
+      if(isFirstMessage){
+        void (async()=>{
+          try{
+            const res=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'title',conversationId,request:textToSend})})
+            if(res.ok){
+              const {title}=await res.json()
+              setConversations(prev=>prev.map(c=>c.id===conversationId?{...c,title}:c))
+            }
+          }catch{/* Title is best-effort; the default title is kept. */}
+        })()
+      }
       const {data,error}=await supabase.from('messages').select('*').eq('conversation_id',conversationId).order('created_at',{ascending:true})
       if(viewedConversationRef.current===conversationId){
         if(error)setActionError(t('messagesRefreshFailed'))
         else setMessages((data??[]) as ChatMessage[])
-      }
-      if(isFirstMessage){
-        try{
-          const res=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'title',conversationId,request:textToSend})})
-          if(res.ok){
-            const {title}=await res.json()
-            setConversations(prev=>prev.map(c=>c.id===conversationId?{...c,title}:c))
-          }
-        }catch{/* Title is best-effort; the default title is kept. */}
       }
       setOptimisticMessages(prev => prev.filter(m => m.id !== tempId))
       if(workspaceIdRef.current)await loadConversationsList(workspaceIdRef.current)
@@ -568,8 +584,10 @@ export default function EmployeePage() {
             />
           ))}
 
-          {/* Real-time Detailed Agent Progress */}
-          {running && (
+          {/* Real-time Detailed Agent Progress — only for an actual queued/running
+              task. Direct replies have no task and must not show a stuck
+              "waiting saved progress" card while sending=true. */}
+          {hasActiveTask && (
             <div className="animate-fade-up rounded-2xl border border-primary-200/90 bg-gradient-to-r from-primary-50/95 to-accent-50/80 p-3.5 shadow-xs">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
