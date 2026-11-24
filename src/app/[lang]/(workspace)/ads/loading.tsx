@@ -1,5 +1,5 @@
-import { CalendarSkeleton } from '@/components/skeletons'
+import { AdsSkeleton } from '@/components/skeletons'
 
 export default function Loading() {
-  return <CalendarSkeleton />
+  return <AdsSkeleton />
 }

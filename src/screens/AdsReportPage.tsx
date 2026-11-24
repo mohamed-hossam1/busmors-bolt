@@ -53,9 +53,18 @@ function ReportDashboard({ report, locale }: { report: AdsReport; locale: 'ar' |
   return (
     <div className="space-y-5">
       <p className="workspace-description">{t(summary.key, summary.values)}</p>
-      <KpiTiles summary={report.summary} currency={report.currency} locale={locale} />
-      <DailyTrendChart daily={report.daily} />
-      <AdsList ads={report.ads} currency={report.currency} locale={locale} />
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[.12em] text-ink-500">{t('adsSectionOverview')}</h2>
+        <KpiTiles summary={report.summary} currency={report.currency} locale={locale} />
+      </section>
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[.12em] text-ink-500">{t('adsSectionTrend')}</h2>
+        <DailyTrendChart daily={report.daily} />
+      </section>
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[.12em] text-ink-500">{t('adsSectionAds')}</h2>
+        <AdsList ads={report.ads} currency={report.currency} locale={locale} />
+      </section>
     </div>
   )
 }
@@ -118,6 +127,7 @@ function ConnectedDashboard({ view, locale, onConnect }: { view: ConnectedView; 
 
   const status = reportStatus({ hasReport: view.report !== null, sync, lastError: view.lastError })
   const timezone = view.account.timezoneName
+  const coolingDown = status.kind === 'cooldown' || (status.kind === 'report' && status.banner === 'cooldown')
 
   return (
     <div>
@@ -133,7 +143,7 @@ function ConnectedDashboard({ view, locale, onConnect }: { view: ConnectedView; 
             <Link href="/ads?range=7d" className={view.preset === 'last_7d' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-secondary px-3 py-1.5 text-xs'}>{t('adsRange7')}</Link>
             <Link href="/ads?range=30d" className={view.preset === 'last_30d' ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-secondary px-3 py-1.5 text-xs'}>{t('adsRange30')}</Link>
           </div>
-          <button type="button" className="btn-secondary px-3 py-1.5 text-xs" disabled={sync.phase === 'syncing'} onClick={() => void runSync(true)}>{t('adsRefresh')}</button>
+          <button type="button" className="btn-secondary px-3 py-1.5 text-xs" disabled={sync.phase === 'syncing' || coolingDown} onClick={() => void runSync(true)}>{t('adsRefresh')}</button>
           <button type="button" className="px-2 py-1.5 text-xs font-semibold text-red-600 hover:underline" onClick={() => setConfirmDisconnect(true)}>{t('adsDisconnect')}</button>
         </div>
       </div>

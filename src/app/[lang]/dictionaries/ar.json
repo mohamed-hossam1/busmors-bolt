@@ -848,9 +848,31 @@
     "metaAdsNotConnected": "حساب الإعلانات مش مربوط",
     "metaAdsInvalidRequest": "الطلب ده مش صحيح",
     "metaAdsSyncFailed": "ماقدرناش نجيب الأرقام من ميتا دلوقتي",
-    "metaAdsDisconnectFailed": "ماقدرناش نفصل الحساب، جرّب تاني"
+    "metaAdsDisconnectFailed": "ماقدرناش نفصل الحساب، جرّب تاني",
+    "adsSeriesSpend": "الإنفاق",
+    "adsSeriesResults": "النتايج",
+    "adsSectionOverview": "نظرة عامة",
+    "adsSectionTrend": "الأداء اليومي",
+    "adsSectionAds": "أداء الإعلانات",
+    "adsHasVideo": "فيديو",
+    "adsHookShort": "التعلّق · ٣ث",
+    "adsHoldShort": "الاستمرار · ٥٠٪",
+    "adsNoMatchingAds": "مفيش إعلانات بتطابق الفلاتر الحالية",
+    "adsFilterAll": "الكل",
+    "adsVideoOnly": "فيديوهات فقط",
+    "adsSortBy": "ترتيب حسب",
+    "adsSortName": "الاسم",
+    "adsSortAsc": "تصاعدي",
+    "adsSortDesc": "تنازلي",
+    "adsShowingCount": "{shown} من {total} إعلان",
+    "adsBestAd": "الأفضل",
+    "adsSearch": "ابحث في الإعلانات أو الحملات",
+    "adsKindMessages": "رسايل",
+    "adsKindLeads": "عملاء محتملين",
+    "adsKindPurchases": "عمليات شراء",
+    "adsKindClicks": "ضغطات"
   }
-,
+  ,
   
 
   "Marketing": {
