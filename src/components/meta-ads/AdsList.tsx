@@ -41,18 +41,18 @@ function AdCard({ ad, currency, locale }: { ad: AdRow; currency: string; locale:
         </span>
       </button>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <div>
-          <p className="text-[11px] text-ink-500">{t('adsKpiSpend')}</p>
-          <p className="text-sm font-semibold text-ink-900">{formatMoney(ad.spend, currency, locale)}</p>
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="min-w-0 rounded-xl bg-ink-50 p-3 text-start">
+          <p className="text-xs text-ink-500">{t('adsKpiSpend')}</p>
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-ink-900 tabular-nums sm:text-xl">{formatMoney(ad.spend, currency, locale)}</p>
         </div>
-        <div>
-          <p className="text-[11px] text-ink-500">{t('adsKpiResults')}</p>
-          <p className="text-sm font-semibold text-ink-900">{formatCount(ad.results)}</p>
+        <div className="min-w-0 rounded-xl bg-ink-50 p-3 text-start">
+          <p className="text-xs text-ink-500">{t('adsKpiResults')}</p>
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-ink-900 tabular-nums sm:text-xl">{formatCount(ad.results)}</p>
         </div>
-        <div>
-          <p className="text-[11px] text-ink-500">{t('adsKpiCostPerResult')}</p>
-          <p className="text-sm font-semibold text-ink-900">{ad.costPerResult !== null ? formatMoney(ad.costPerResult, currency, locale) : '—'}</p>
+        <div className="min-w-0 rounded-xl bg-ink-50 p-3 text-start">
+          <p className="text-xs text-ink-500">{t('adsKpiCostPerResult')}</p>
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-ink-900 tabular-nums sm:text-xl">{ad.costPerResult !== null ? formatMoney(ad.costPerResult, currency, locale) : '—'}</p>
         </div>
       </div>
 

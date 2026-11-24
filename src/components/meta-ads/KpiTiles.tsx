@@ -16,11 +16,11 @@ export default function KpiTiles({ summary, currency, locale }: { summary: KpiSu
     { key: 'adsKpiCtr', value: formatPercent(summary.ctr), help: 'adsHelpCtr' },
   ]
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
       {tiles.map((tile) => (
-        <div key={tile.key} className="card p-4" title={tile.help ? t(tile.help) : undefined}>
+        <div key={tile.key} className="card min-w-0 p-4" title={tile.help ? t(tile.help) : undefined}>
           <p className="text-xs text-ink-600">{t(tile.key)}</p>
-          <p className="mt-2 text-xl font-semibold tracking-tight text-ink-900 sm:text-2xl">{tile.value}</p>
+          <p className="mt-2 break-words text-xl font-semibold leading-tight tracking-tight text-ink-900 tabular-nums sm:text-2xl">{tile.value}</p>
         </div>
       ))}
     </div>
