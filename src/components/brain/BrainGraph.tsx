@@ -666,7 +666,7 @@ function BrainGraphView({
                   </>
                 ) : (
                   <>
-                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
+                    <span className="mb-4 mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
                       {statusNodes.length ? <Search size={23} /> : <Network size={23} />}
                     </span>
                     <h3 className="text-base font-semibold text-ink-900">

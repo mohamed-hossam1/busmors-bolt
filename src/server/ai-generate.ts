@@ -18,7 +18,7 @@ const corsHeaders = {
 // by a fixed system prompt, a low token cap and a short provider timeout.
 // `roadmap` is included: it is a one-shot, server-owned generation from confirmed
 // Discovery answers (no task row, no research allowance), like brain_answer.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title', 'roadmap'])
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title', 'roadmap', 'roadmap_answer', 'roadmap_revision', 'roadmap_checkin'])
 
 interface GenerateRequest {
   signal?: AbortSignal
@@ -147,13 +147,13 @@ export async function generateAi(req: Request) {
     }
 
     body.usage = undefined
-    body.jsonMode = !['chat','diagnose','analyze'].includes(body.operation)
+    body.jsonMode = !['chat'].includes(body.operation)
     const isHigh = opConfig.reasoningEffort === 'high' || body.reasoningEffort === 'high'
     if (isHigh) {
       body.reasoningEffort = 'high'
       body.maxTokens = undefined
     } else {
-      body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), body.operation === 'route' ? 1000 : 6000)
+      body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), 6000)
       body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort
     }
     if (opConfig.temperature !== undefined && body.temperature === undefined) {
@@ -411,10 +411,10 @@ async function handleOrchestratorRequest(
   body: GenerateRequest,
   workspaceId: string,
 ): Promise<Response> {
-  const operation = body.operation as 'orchestrate' | 'brain_answer' | 'roadmap'
+  const operation = body.operation as 'orchestrate' | 'brain_answer' | 'roadmap' | 'roadmap_answer' | 'roadmap_revision' | 'roadmap_checkin'
   const opConfig = getModelConfigForOperation(operation)
-  const jsonMode = operation === 'orchestrate' || operation === 'roadmap'
-  const roadmapTokens = operation === 'roadmap' ? 4200 : 0
+  const jsonMode = ['orchestrate', 'roadmap', 'roadmap_answer', 'roadmap_revision', 'roadmap_checkin'].includes(operation)
+  const roadmapTokens = ['roadmap', 'roadmap_revision'].includes(operation) ? 4200 : 0
   const request: GenerateRequest = {
     systemPrompt: body.systemPrompt,
     userPrompt: body.userPrompt,

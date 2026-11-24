@@ -11,6 +11,7 @@ import { ROUTES } from "@/shared/routes";
 import Brand from "@/components/Brand";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { supabase } from "@/lib/supabase";
+import { checkIsAdminUser } from "@/server/admin/actions";
 
 const navigationLinks = [
   { href: ROUTES.MARKETING.HOME, label: "Navbar.home" },
@@ -26,18 +27,27 @@ export default function Navbar({ initialAuthenticated = false }: { initialAuthen
   const [overLight, setOverLight] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(initialAuthenticated);
+  const [isAdmin, setIsAdmin] = useState(false);
   const stateRef = useRef({ scrolled: false, overLight: false, hidden: false });
 
   useEffect(() => {
     let alive = true;
-    void supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(async ({ data }) => {
       if (alive && data.session?.user) {
         setIsAuthenticated(true);
+        const admin = await checkIsAdminUser({ id: data.session.user.id, email: data.session.user.email });
+        if (alive) setIsAdmin(admin);
       }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (alive) {
         setIsAuthenticated(Boolean(session?.user));
+        if (session?.user) {
+          const admin = await checkIsAdminUser({ id: session.user.id, email: session.user.email });
+          if (alive) setIsAdmin(admin);
+        } else {
+          setIsAdmin(false);
+        }
       }
     });
     return () => {
@@ -138,7 +148,7 @@ export default function Navbar({ initialAuthenticated = false }: { initialAuthen
             <LanguageSwitcher />
             {isAuthenticated ? (
               <Link
-                href="/employee"
+                href={isAdmin ? "/admin" : "/employee"}
                 className="inline-flex h-[52px] items-center justify-center rounded-[47.7px] bg-cosmic-canvas px-6 text-[15.9px] font-normal text-white transition-colors duration-200 hover:bg-cosmic-active"
               >{t("Navbar.dashboard")}</Link>
             ) : (
@@ -203,7 +213,7 @@ export default function Navbar({ initialAuthenticated = false }: { initialAuthen
             <div className="flex justify-center pb-1"><LanguageSwitcher /></div>
             {isAuthenticated ? (
               <Link
-                href="/employee"
+                href={isAdmin ? "/admin" : "/employee"}
                 onClick={() => setMobileMenuOpen(false)}
                 className="w-full text-center py-3 rounded-full text-sm font-semibold text-white bg-primary hover:bg-purple-hover shadow-lg shadow-primary/30"
               >{t("Navbar.dashboard")}</Link>

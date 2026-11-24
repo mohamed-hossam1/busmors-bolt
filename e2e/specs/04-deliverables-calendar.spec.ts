@@ -1,32 +1,45 @@
 import { test, expect } from 'playwright/test'
+import { createClient } from '@supabase/supabase-js'
 import { accountByLabel } from '../support/runtime'
+import { loadE2EEnv } from '../support/env'
 import { signInClient } from '../support/accounts'
 import { signIn, waitForHydration } from '../support/browser'
-import { submitTask, taskEvidence } from '../support/tasks'
 import { poll } from '../support/poll'
 
-test('a generated document is saved, versioned, searchable, and rendered in Deliverables', async ({ page }) => {
+test('a saved document is versioned, searchable, and rendered in Deliverables', async ({ page }) => {
   const account = accountByLabel('primary')
   const client = await signInClient(account)
-  await signIn(page, account)
-  await page.goto('/employee')
-  const marker = `E2E-${crypto.randomUUID().slice(0, 8)}`
-  const task = await submitTask(page, client, `Diagnose a decline in qualified ceramic repair inquiries. Include marker ${marker} in the title. Separate observations and hypotheses.`)
-  expect(task.status, task.result_summary ?? 'diagnosis did not complete').toBe('completed')
-  const evidence = await taskEvidence(client, task.id)
-  expect(evidence.deliverables).toHaveLength(1)
-  const document = evidence.deliverables[0]
+  const env = loadE2EEnv()
+  if (!env.serviceRoleKey) throw new Error('E2E_SUPABASE_SERVICE_ROLE_KEY is required for the deterministic Deliverables fixture.')
+  const admin = createClient(env.supabaseUrl, env.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
+  const marker = `E2E-${crypto.randomUUID().slice(0, 8)}`
+  const title = `Diagnosis ${marker}`
+  const content = `# Diagnosis ${marker}\n\nObservation: inquiries fell while visits held steady.\nHypothesis: the landing page lost the proof block.\nConstraint: no price changes were made.`
+
+  // Deterministic fixture: the retired content/diagnosis execution path is gone,
+  // so the Deliverables regression seeds a document through the service role
+  // instead of asking an agent to generate one.
+  const document = await admin.from('deliverables')
+    .insert({ workspace_id: account.id, title, type: 'performance_diagnosis', content })
+    .select('*').single()
+  expect(document.error).toBeNull()
+  const version = await admin.from('deliverable_versions')
+    .insert({ workspace_id: account.id, deliverable_id: document.data.id, version: 1, title, content })
+    .select('*').single()
+  expect(version.error).toBeNull()
+
+  await signIn(page, account)
   await page.goto('/deliverables')
   await waitForHydration(page)
   await page.getByPlaceholder('Search title or content').fill(marker)
-  await expect(page.getByRole('heading', { name: document.title })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: /View/ }).first().click()
-  await expect(page.getByRole('dialog', { name: document.title })).toContainText(document.content.slice(0, 60))
+  await expect(page.getByRole('dialog', { name: title })).toContainText(content.slice(0, 60))
 
-  const version = await client.from('deliverable_versions').select('*').eq('deliverable_id', document.id).single()
-  expect(version.error).toBeNull()
-  expect(version.data).toMatchObject({ workspace_id: account.id, version: 1, title: document.title, content: document.content })
+  const stored = await client.from('deliverable_versions').select('*').eq('deliverable_id', document.data.id).single()
+  expect(stored.error).toBeNull()
+  expect(stored.data).toMatchObject({ workspace_id: account.id, version: 1, title, content })
 })
 
 test('a future scheduled Post persists its exact instant and appears in Calendar', async ({ page }) => {
@@ -55,7 +68,8 @@ test('a future scheduled Post persists its exact instant and appears in Calendar
   expect(stored.data.status, 'a Post with a future execution instant must enter the scheduled state').toBe('scheduled')
 })
 
-test('the background publisher claims a due approved Post and records the real integration outcome', async () => {
+test('the background publisher records the isolated fake publishing outcome', async () => {
+  test.skip(process.env.PUBLISHING_PROVIDER !== 'fake', 'publishing regression requires the isolated fake provider; never publish real Facebook content')
   test.setTimeout(90_000)
   const account = accountByLabel('primary')
   const client = await signInClient(account)
@@ -78,6 +92,6 @@ test('the background publisher claims a due approved Post and records the real i
   }, value => value.attempts.length > 0 && !['approved', 'scheduled', 'publishing'].includes(value.post.status), 45_000, 3_000)
 
   expect(outcome.attempts.length, 'a deployed background job must record every due-post attempt').toBeGreaterThan(0)
-  expect(['published', 'failed']).toContain(outcome.post.status)
-  expect(outcome.post.status === 'published' ? outcome.post.publish_result?.provider_post_id : outcome.attempts.at(-1)?.error_code).toBeTruthy()
+  expect(outcome.post.status, 'the fake provider must not perform real publishing').toBe('published')
+  expect(outcome.post.publish_result?.provider_post_id).toMatch(/^fake_/)
 })

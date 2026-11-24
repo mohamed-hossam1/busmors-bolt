@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Runs one self-contained .sql check in a disposable database on the LOCAL PostgreSQL from LOCAL_PG_URL. Never uses DATABASE_URL.
+// Runs one self-contained .sql check in a disposable database on the local Supabase PostgreSQL from DATABASE_URL.
+// Refuses any non-localhost host so the shared/hosted project is never touched.
 // Usage: node scripts/db-check.cjs <sql-file>
 // Exit codes: 0 pass, 1 a migration or check failed, 2 setup problem.
 const path = require('node:path')

@@ -1,7 +1,7 @@
 import 'server-only'
 import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
 import { DEFAULT_CRAWL_PAGES } from '../lib/crawlConstants'
-import { firecrawlScrape } from './research/providers'
+import { firecrawlScrape } from './integrations/web-providers'
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
 export { DEFAULT_CRAWL_PAGES }

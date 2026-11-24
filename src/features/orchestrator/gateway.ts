@@ -8,6 +8,10 @@
 //   - take exactly one path: direct / brain / task,
 //   - record truthful execution events (with instance ids) as they happen,
 //   - never fabricate completion and always measure latency.
+//
+// Clean baseline: the task path does not enqueue or execute anything. It returns
+// an honest temporary-unavailability reply. The future agent runtime will replace
+// this branch.
 
 import type { TaskOrigin } from '../../lib/contracts'
 import {
@@ -21,8 +25,7 @@ import {
   type OrchestratorPath,
   type OrchestratorResult,
 } from './contracts'
-import { planDirectorHandoff, type DirectorHandoff } from './director-handoff'
-import { REFUSAL_BRAIN_UNAVAILABLE } from './prompt'
+import { capabilityUnavailableReply, REFUSAL_BRAIN_UNAVAILABLE } from './prompt'
 
 export interface OrchestratorInput {
   conversationId: string
@@ -60,20 +63,6 @@ export interface BrainAnswerResult {
   modelCalls: number
 }
 
-export interface HandoffContext {
-  conversationId: string
-  request: string
-  idempotencyKey: string
-  origin?: TaskOrigin
-  handoff: DirectorHandoff
-  signal?: AbortSignal
-}
-
-export interface HandoffResult {
-  taskId: string
-}
-
-/** A previously completed orchestration, replayed on idempotent retry. */
 export interface PriorRun {
   outcome: OrchestratorOutcome
   path: OrchestratorPath | null
@@ -98,7 +87,6 @@ export interface OrchestratorDeps {
   decide(context: DecideContext): Promise<DecideResult>
   retrieveBrain(query: string, signal?: AbortSignal): Promise<BrainRetrieval>
   answerFromBrain(context: BrainAnswerContext): Promise<BrainAnswerResult>
-  handoffToDirector(context: HandoffContext): Promise<HandoffResult>
   findPriorRun(idempotencyKey: string): Promise<PriorRun | null>
   recordEvent(event: OrchestratorEventInput): Promise<void>
   recordUserMessage(content: string, payload: Record<string, unknown>): Promise<void>
@@ -111,7 +99,6 @@ export interface RunOptions {
 }
 
 const GENERIC_DIRECT_FALLBACK = 'How can I help you with your business?'
-const TASK_FALLBACK = 'Could you tell me a little more about what you need?'
 const ERROR_MESSAGE = 'I couldn’t complete that just now. Please try again in a moment.'
 
 function iso(now: () => number): string {
@@ -239,32 +226,12 @@ export async function runOrchestrator(
       return finish('brain', 'brain', null, messageId, reply, runMetrics)
     }
 
-    // 3c. Task delegation to the Director.
-    const handoff = planDirectorHandoff(decision)
-    if (!handoff) {
-      // "task" chosen but not an execution intent: answer directly instead.
-      const reply = decision.reply.trim() || TASK_FALLBACK
-      await deps.recordEvent({ type: 'agent_completed', instanceId: orchestratorId, agentId: 'orchestrator', agentRole: 'orchestrator', label: 'Answered directly', status: 'completed', publicMessage: 'Answered directly', parentInstanceId: null, startedAt: startedIso, endedAt: iso(now) })
-      await deps.recordUserMessage(input.request, { orchestrator: true, outcome: 'direct' })
-      const messageId = await deps.recordAgentMessage(reply, 'text_response', { outcome: 'direct' })
-      return finish('direct', 'direct', null, messageId, reply, baseMetrics)
-    }
-
-    const directorId = crypto.randomUUID()
-    await deps.recordEvent({ type: 'delegation', instanceId: directorId, agentId: 'director', agentRole: 'director', label: handoff.label, status: 'running', publicMessage: handoff.label, parentInstanceId: orchestratorId, startedAt: iso(now) })
-    const handoffStart = now()
-    const handed = await deps.handoffToDirector({
-      conversationId: input.conversationId,
-      request: input.request,
-      idempotencyKey: input.idempotencyKey,
-      origin: input.origin,
-      handoff,
-      signal,
-    })
-    const directorHandoffMs = now() - handoffStart
-    await deps.recordEvent({ type: 'agent_completed', instanceId: directorId, agentId: 'director', agentRole: 'director', label: handoff.label, status: 'completed', publicMessage: 'Director received the task', parentInstanceId: orchestratorId, startedAt: iso(now), endedAt: iso(now) })
-    const taskMetrics = metrics({ decisionMs, directorHandoffMs, modelCalls: decisionModelCalls })
-    return finish('task', 'task', handed.taskId, null, '', taskMetrics)
+    // 3c. Task requests: honest temporary unavailability. No task, no deliverable.
+    const unavailableReply = capabilityUnavailableReply(input.request)
+    await deps.recordEvent({ type: 'agent_completed', instanceId: orchestratorId, agentId: 'orchestrator', agentRole: 'orchestrator', label: 'Capability temporarily unavailable', status: 'completed', publicMessage: 'Capability temporarily unavailable', parentInstanceId: null, startedAt: startedIso, endedAt: iso(now) })
+    await deps.recordUserMessage(input.request, { orchestrator: true, outcome: 'direct', unavailable: true })
+    const messageId = await deps.recordAgentMessage(unavailableReply, 'text_response', { outcome: 'direct', unavailable: true, intent: decision.intent })
+    return finish('direct', 'direct', null, messageId, unavailableReply, baseMetrics)
   } catch (error) {
     try {
       await deps.recordEvent({ type: 'agent_error', instanceId: orchestratorId, agentId: 'orchestrator', agentRole: 'orchestrator', label: 'Processing failed', status: 'failed', publicMessage: ERROR_MESSAGE, failureReason: error instanceof Error ? error.message : 'orchestrator_error', parentInstanceId: null, startedAt: startedIso, endedAt: iso(now) })
@@ -278,7 +245,6 @@ export async function runOrchestrator(
   }
 }
 
-/** Node instance ids shared by the gateway and the canvas graph. */
+/** Node instance ids shared by the gateway and historical event readers. */
 export const ORCHESTRATOR_AGENT_ID = 'orchestrator'
 export const BRAIN_AGENT_ID = 'brain'
-export const DIRECTOR_AGENT_ID = 'director'

@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import { Link } from '@/shared/i18n'
-import AgentCanvas from '@/components/chat/AgentCanvas'
 import type { AdminTraceDetail as Detail } from './types'
 import {
   formatDateTime,
@@ -125,17 +124,26 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
       )}
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-500">Execution graph</h2>
-        <div className="h-[460px] overflow-hidden rounded-xl border border-ink-200 bg-white">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-500">Execution events</h2>
+        <div className="overflow-hidden rounded-xl border border-ink-200 bg-white">
           {graphEvents.length > 0 ? (
-            <AgentCanvas
-              conversationId={null}
-              events={graphEvents as never}
-              running={false}
-              userMessage={trace.request || null}
-            />
+            <ol className="space-y-1.5 p-3">
+              {graphEvents.map((event, index) => (
+                <li key={String(event.id ?? `${String(event.instance_id ?? '')}:${String(event.seq ?? index)}`)} className="rounded-lg border border-ink-200 bg-white p-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-ink-800">{String(event.public_message ?? event.agent_id ?? '')}</span>
+                    <StatusPill status={String(event.status ?? '')} />
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-ink-400">{String(event.agent_role ?? event.event_type ?? '')}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-500">
+                    {formatDateTime(event.started_at as string | null | undefined)}
+                    {event.ended_at ? ` → ${formatDateTime(event.ended_at as string | null | undefined)}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ol>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-ink-500">No canvas events recorded.</div>
+            <div className="flex h-32 items-center justify-center text-sm text-ink-500">No execution events recorded.</div>
           )}
         </div>
       </section>
@@ -187,7 +195,7 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
 
       {detail.fallback.agentEvents.length > 0 && (
         <p className="mt-4 text-[11px] text-ink-400">
-          Showing {detail.fallback.agentEvents.length} reconstructed canvas event(s) from durable task tables.
+          Showing {detail.fallback.agentEvents.length} reconstructed event(s) from durable task tables.
         </p>
       )}
       {trace.final_reply && (

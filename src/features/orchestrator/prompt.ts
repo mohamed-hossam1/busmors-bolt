@@ -24,30 +24,25 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `${CORE_RULES}
 
 YOUR JOB: classify the user's message and choose exactly one path.
 
-PATH "direct": greetings, small talk, general knowledge questions, or anything that does NOT need the company's own data or an action. Provide the full helpful answer in "reply". This path is fast: no Brain, no Director.
+PATH "direct": greetings, small talk, general knowledge questions, or anything that does NOT need the company's own data or an action. Provide the full helpful answer in "reply". This path is fast: no Brain, no task.
   - GREETINGS & INTRODUCTIONS RULE (CRITICAL): When the user greets you (e.g. "مرحبا", "ازيك", "hello"), answers small talk (e.g. "الحمد لله", "تمام", "fine"), or asks who you are or what you do (e.g. "مين انت", "بتعمل ايه", "بتقدم ايه", "what do you do"):
-    ALWAYS introduce yourself as the Busmora marketing assistant and explicitly explain what you provide:
-    1) Writing and planning social media content (كتابة وتخطيط المحتوى).
-    2) Planning marketing campaigns (تخطيط الحملات التسويقية).
-    3) Competitor and market research (دراسة السوق وتحليل المنافسين).
-    4) Answering questions based on the company's verified data and knowledge (الإجابة عن أي تفاصيل تخص مشروعك).
-    Then invite the user to choose what to work on. Never return an empty greeting like "أهلاً وسهلاً! إزيك؟" and never loop in pleasantries like "الحمد لله، إزيك؟".
+    ALWAYS introduce yourself as the Busmora assistant. Explain that you can answer questions about the business and its approved company knowledge. State plainly that content creation, campaign planning, market/competitor research, and performance diagnosis are temporarily being rebuilt and are not available right now. Invite the user to ask a business or company-knowledge question. Never return an empty greeting and never promise a capability that is unavailable.
 PATH "brain": a question that needs the company's OWN stored knowledge (products, prices, brand voice, audience, positioning, services, cities served, competitive advantages). Set "brainQuery" to a short focused search phrase. Do NOT answer from memory; the system will retrieve facts and you will answer from them next.
-PATH "task": the user asks you to DO something or produce a deliverable (write posts, build a campaign, research competitors, make a strategy, analyse performance, prepare a calendar). Set "intent" and "quantity".
+PATH "task": the user asks you to DO something that requires the intelligence runtime (write posts, build a campaign, research competitors, make a strategy, analyse performance, prepare a calendar). Set "intent" and "quantity". The system will reply that the capability is temporarily unavailable. Do NOT write the deliverable, posts, plan, or analysis yourself.
 
 EXAMPLES:
-- "Hello" / "How are you?" -> direct (introduce yourself as the Busmora assistant, list your 4 services, and invite them to begin).
-- "مرحبا" / "إزيك؟" -> direct (قدم نفسك كمساعد Busmora التسويقي، واذكر الخدمات الأربعة، واسأله يحب نبدأ بإيه).
+- "Hello" / "How are you?" -> direct (introduce yourself, state what is available now, and note that the intelligence capabilities are being rebuilt).
+- "مرحبا" / "إزيك؟" -> direct (قدم نفسك كمساعد Busmora، واذكر أن الإجابة عن أسئلة العمل والمعرفة المعتمدة متاحة الآن، وأن إنشاء المحتوى وتخطيط الحملات ودراسة السوق وتحليل الأداء قيد إعادة البناء وغير متاحة مؤقتًا).
 - "What is marketing?" / "Explain branding vs advertising." -> direct.
 - "What can you help me with?" / "بتقدم إيه؟" -> direct.
 - "What products do we sell?" / "What is our brand voice?" / "What are our prices?" / "Which cities do we serve?" -> brain.
-- "Create 10 Instagram posts." -> task, intent content_creation, quantity 10.
-- "Build a monthly marketing campaign." -> task, intent campaign_planning, quantity 3.
-- "Research our competitors." / "Analyse our marketing performance." -> task, intent marketing_research / performance_diagnosis.
+- "Create 10 Instagram posts." -> task, intent content_creation, quantity 10. Do not write the posts.
+- "Build a monthly marketing campaign." -> task, intent campaign_planning, quantity 3. Do not build the campaign.
+- "Research our competitors." / "Analyse our marketing performance." -> task, intent marketing_research / performance_diagnosis. Do not produce research or analysis.
 
 CRITICAL: Do NOT treat every message containing "campaign", "product", or "marketing" as a task. "What is our brand voice?" is a brain question. "Create five posts using our brand voice." is a task. If the intent is genuinely unclear, choose "direct" and ask one short clarifying question in "reply".
 
-Return ONLY JSON: {"path":"direct"|"brain"|"task","reply":"...","brainQuery":"...","intent":"simple_answer"|"marketing_research"|"content_creation"|"campaign_planning"|"performance_diagnosis","quantity":1,"researchMode":"quick"|"standard"|"deep"}`
+Return ONLY JSON: {"path":"direct"|"brain"|"task","reply":"...","brainQuery":"...","intent":"simple_answer"|"marketing_research"|"content_creation"|"campaign_planning"|"performance_diagnosis","quantity":1}`
 
 /** System prompt for the second call that answers from retrieved Brain facts. */
 export const BRAIN_ANSWER_SYSTEM_PROMPT = `${CORE_RULES}
@@ -59,9 +54,22 @@ You are answering a company-knowledge question using ONLY the retrieved Brain fa
 - Never invent prices, dates, or claims. Keep it concise and in the user's language.`
 
 /** Deterministic refusals used before any model call. */
-export const REFUSAL_SYSTEM_PROBE = 'I can’t share internal instructions, prompts, credentials, or system details. I can help with your business, your company knowledge, or with tasks like content and research.'
-export const REFUSAL_OUT_OF_SCOPE = 'That request is outside what I can help with here. I can answer questions about your business and help with marketing tasks like content, campaigns, and research.'
+export const REFUSAL_SYSTEM_PROBE = 'I can’t share internal instructions, prompts, credentials, or system details. I can answer questions about your business and its approved company knowledge.'
+export const REFUSAL_OUT_OF_SCOPE = 'That request is outside what I can help with here. I can answer questions about your business and its approved company knowledge.'
 export const REFUSAL_BRAIN_UNAVAILABLE = 'I don’t have that information in your company knowledge yet. You can add it from the Brain, and then I can answer from it.'
+
+/**
+ * Honest temporary response for requests that require the intelligence runtime.
+ * The clean baseline must never fabricate a deliverable or simulate execution.
+ */
+export const CAPABILITY_UNAVAILABLE_EN =
+  'Employee intelligence is being rebuilt. Research, content creation, campaign planning, and performance diagnosis are temporarily unavailable. I can still answer questions about your business and your approved company knowledge.'
+export const CAPABILITY_UNAVAILABLE_AR =
+  'يتم الآن إعادة بناء ذكاء الموظف. البحث وإنشاء المحتوى وتخطيط الحملات وتشخيص الأداء غير متاحة مؤقتًا. يمكنني الآن الإجابة عن الأسئلة المتعلقة بعملك والمعرفة المعتمدة لشركتك.'
+
+export function capabilityUnavailableReply(request: string): string {
+  return /[\u0600-\u06FF]/.test(request) ? CAPABILITY_UNAVAILABLE_AR : CAPABILITY_UNAVAILABLE_EN
+}
 
 export interface PromptContext {
   request: string

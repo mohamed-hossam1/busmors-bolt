@@ -5,6 +5,7 @@ import { createServerSupabase } from './supabase'
 import { getRequestLocale } from './locale'
 import { localizePath } from '../lib/i18n'
 import type { WorkspaceSettings } from '../lib/types'
+import { isAdminUser } from './admin/identity'
 export const getIdentity = cache(async () => {
  const supabase = await createServerSupabase()
  const { data, error } = await supabase.auth.getUser()
@@ -14,6 +15,7 @@ export const getIdentity = cache(async () => {
 export const requireWorkspace = cache(async (setup = true) => {
  const identity = await getIdentity()
  if (!identity) redirect(localizePath('/signin', await getRequestLocale()))
+ if (isAdminUser(identity.user)) redirect(localizePath('/admin', await getRequestLocale()))
  const { data: settings, error } = await identity.supabase.rpc('bootstrap_workspace')
  if (error || settings?.workspace_id !== identity.user.id) throw new Error('Workspace could not be loaded.')
  if (setup && settings.onboarding_state !== 'complete') {

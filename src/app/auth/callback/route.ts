@@ -3,6 +3,7 @@ import { createServerSupabase } from '@/server/supabase'
 import { safeReturnPath } from '@/lib/authRouting'
 import { localizePath } from '@/lib/i18n'
 import { getRequestLocale } from '@/server/locale'
+import { isAdminUser } from '@/server/admin/auth'
 export async function GET(request: Request) {
  const url = new URL(request.url)
  const supabase = await createServerSupabase()
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
  const { data: { user } } = await supabase.auth.getUser()
  if (!user) return NextResponse.redirect(new URL(localized('/signin') + '?error=callback', url))
  if (url.searchParams.get('flow') === 'recovery') return NextResponse.redirect(new URL(localized('/auth/new-password'), url))
+ if (isAdminUser(user)) return NextResponse.redirect(new URL(localized('/admin'), url))
  const { data, error } = await supabase.rpc('bootstrap_workspace')
  if (error) return NextResponse.redirect(new URL(localized('/signin') + '?error=workspace', url))
  return NextResponse.redirect(new URL(data?.onboarding_state === 'complete' ? safeReturnPath(url.searchParams.get('next')) ?? localized('/employee') : localized('/onboarding'), url))

@@ -8,6 +8,7 @@ import {
   Compass,
   Flag,
   Gauge,
+  History,
   Loader2,
   RefreshCw,
   Route,
@@ -21,6 +22,7 @@ import { useI18n } from '../../context/I18nContext'
 import type { AppKey } from '../../lib/i18n'
 import { goalDefinition } from './discovery'
 import { loadActiveRoadmap, setRoadmapStepStatus } from './api'
+import { RoadmapAdjustPanel, RoadmapCheckinPanel, RoadmapHistoryPanel } from './RoadmapReview'
 import type {
   RoadmapLoad,
   RoadmapStepRecord,
@@ -57,10 +59,13 @@ interface RoadmapPlanProps {
 export default function RoadmapPlan({ onEditDiscovery }: RoadmapPlanProps) {
   const { t } = useCopy()
   const { locale } = useI18n()
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [data, setData] = useState<RoadmapLoad | null>(null)
   const [busyStep, setBusyStep] = useState<string | null>(null)
+  const [panel, setPanel] = useState<'none' | 'checkin' | 'adjust'>('none')
+  const [historySignal, setHistorySignal] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -90,6 +95,24 @@ export default function RoadmapPlan({ onEditDiscovery }: RoadmapPlanProps) {
   )
   const progress = steps.length ? Math.round((doneCount / steps.length) * 100) : 0
 
+  const milestoneGroups = useMemo(() => {
+    const groups: { key: string; title: string; steps: RoadmapStepRecord[] }[] = []
+    const byKey = new Map<string, number>()
+    const milestoneTitles = new Map<string, string>()
+    for (const milestone of summary.milestones ?? []) {
+      if (milestone.key) milestoneTitles.set(milestone.key, milestone.title)
+    }
+    for (const step of steps) {
+      const key = step.milestone_key ?? ''
+      if (!byKey.has(key)) {
+        byKey.set(key, groups.length)
+        groups.push({ key, title: key ? milestoneTitles.get(key) ?? key : '', steps: [] })
+      }
+      groups[byKey.get(key)!].steps.push(step)
+    }
+    return groups
+  }, [steps, summary.milestones])
+
   const changeStatus = async (step: RoadmapStepRecord, status: RoadmapStepStatus) => {
     if (busyStep) return
     setBusyStep(step.id)
@@ -106,6 +129,16 @@ export default function RoadmapPlan({ onEditDiscovery }: RoadmapPlanProps) {
     } finally {
       setBusyStep(null)
     }
+  }
+
+  const delegate = async (_step: RoadmapStepRecord) => {
+    // Step-task delegation depends on the retired Employee execution path.
+    setError('Roadmap step-task execution is temporarily unavailable while Employee intelligence is rebuilt. Your roadmap is safe.')
+  }
+
+  const refreshAfterChange = () => {
+    setHistorySignal((value) => value + 1)
+    void load()
   }
 
   if (loading) {
@@ -162,12 +195,30 @@ export default function RoadmapPlan({ onEditDiscovery }: RoadmapPlanProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {data.roadmap && data.version && (
+            <>
+              <button type="button" onClick={() => setPanel('checkin')} className="btn-primary min-h-9 px-3 py-1.5 text-xs"><Gauge size={13} /> {t('roadmapReviewProgress')}</button>
+              <button type="button" onClick={() => setPanel('adjust')} className="btn-secondary min-h-9 px-3 py-1.5 text-xs"><Sparkles size={13} /> {t('roadmapAdjust')}</button>
+            </>
+          )}
           <button type="button" onClick={onEditDiscovery} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">{t('roadmapEditDiscovery')}</button>
           <button type="button" onClick={() => void load()} className="btn-secondary min-h-9 px-3 py-1.5 text-xs"><RefreshCw size={13} /> {t('roadmapRefresh')}</button>
         </div>
       </header>
 
       {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+
+      {data.staleContext && data.staleContext.length > 0 && (
+        <section role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="flex items-center gap-2 font-semibold text-amber-900"><AlertTriangle size={16} /> {t('roadmapStaleTitle')}</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">{t('roadmapStaleDesc')}</p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {data.staleContext.map((item) => (
+              <li key={item.nodeId} className="badge bg-white/70 text-amber-900">{item.title ?? item.nodeId}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="card p-5">
@@ -269,20 +320,61 @@ export default function RoadmapPlan({ onEditDiscovery }: RoadmapPlanProps) {
         {steps.length === 0 ? (
           <p className="mt-2 text-sm text-ink-600">{t('roadmapNoSteps')}</p>
         ) : (
-          <ol className="mt-4 space-y-3">
-            {steps.map((step, index) => (
-              <StepCard
-                key={step.id}
-                step={step}
-                index={index}
-                total={steps.length}
-                busy={busyStep === step.id}
-                onChange={changeStatus}
-              />
+          <div className="mt-4 space-y-6">
+            {milestoneGroups.map((group) => (
+              <div key={group.key}>
+                {group.title && (
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="badge bg-primary-100 text-primary-800">{t('roadmapMilestone')}</span>
+                    <h3 className="text-sm font-semibold text-ink-900">{group.title}</h3>
+                  </div>
+                )}
+                <ol className="space-y-3">
+                  {group.steps.map((step) => (
+                    <StepCard
+                      key={step.id}
+                      step={step}
+                      index={step.position - 1}
+                      total={steps.length}
+                      busy={busyStep === step.id}
+                      onChange={changeStatus}
+                      onDelegate={delegate}
+                    />
+                  ))}
+                </ol>
+              </div>
             ))}
-          </ol>
+          </div>
         )}
       </section>
+
+      {data.roadmap && data.version && (
+        <section className="mt-6">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-700"><History size={16} className="text-primary-600" /> {t('roadmapHistory')}</h2>
+          <RoadmapHistoryPanel
+            roadmapId={data.roadmap.id}
+            roadmapVersion={data.roadmap.version}
+            refreshSignal={historySignal}
+            onRevisionApplied={refreshAfterChange}
+          />
+        </section>
+      )}
+
+      {panel === 'checkin' && data.roadmap && data.version && (
+        <RoadmapCheckinPanel
+          roadmapId={data.roadmap.id}
+          versionId={data.version.id}
+          onRecorded={() => { setPanel('none'); refreshAfterChange() }}
+        />
+      )}
+      {panel === 'adjust' && data.roadmap && data.version && (
+        <RoadmapAdjustPanel
+          roadmapId={data.roadmap.id}
+          baseVersionId={data.version.id}
+          roadmapVersion={data.roadmap.version}
+          onApplied={() => { setPanel('none'); refreshAfterChange() }}
+        />
+      )}
     </div>
   )
 }
@@ -321,9 +413,10 @@ interface StepCardProps {
   total: number
   busy: boolean
   onChange: (step: RoadmapStepRecord, status: RoadmapStepStatus) => void
+  onDelegate: (step: RoadmapStepRecord) => void
 }
 
-function StepCard({ step, index, total, busy, onChange }: StepCardProps) {
+function StepCard({ step, index, total, busy, onChange, onDelegate }: StepCardProps) {
   const { t } = useCopy()
   const done = DONE_STATUSES.includes(step.status)
   const isDirector = step.responsibility === 'system' || step.execution_mode === 'director'
@@ -367,7 +460,29 @@ function StepCard({ step, index, total, busy, onChange }: StepCardProps) {
           </div>
 
           {isDirector ? (
-            <p className="mt-3 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-800">{t('roadmapDirectorLedNote')}</p>
+            <div className="mt-3">
+              {step.task_id ? (
+                <button
+                  type="button"
+                  onClick={() => onDelegate(step)}
+                  className="btn-secondary min-h-8 px-3 py-1 text-xs"
+                >
+                  <Sparkles size={12} /> {t('askDirectorOpenTask')}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onDelegate(step)}
+                    className="btn-primary min-h-8 px-3 py-1 text-xs disabled:opacity-60"
+                  >
+                    {busy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t('roadmapDelegate')}
+                  </button>
+                  <p className="mt-2 text-[11px] leading-5 text-ink-500">{t('roadmapDelegateHint')}</p>
+                </>
+              )}
+            </div>
           ) : (
             <div className="mt-3 flex flex-wrap gap-2">
               {step.status !== 'completed' && step.status !== 'owner_reported' && (

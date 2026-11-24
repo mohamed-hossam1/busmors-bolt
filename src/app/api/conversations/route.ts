@@ -1,7 +1,7 @@
 import { requireApiIdentity, apiError } from '@/server/auth'
 import { createClient } from '@supabase/supabase-js'
 import { publicSupabaseConfig } from '@/lib/supabase-config'
-import { callTitleModel, cleanChatTitle } from '@/server/chat-title'
+import { callTitleModel, cleanChatTitle, isSimpleGreeting, extractFallbackTitle } from '@/server/chat-title'
 
 export async function POST(request: Request) {
   try {
@@ -30,15 +30,25 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Conversation already has a title.' }, { status: 409 })
     }
 
-    const result = await callTitleModel({
-      userPrompt: `First user message: "${body.request}"`,
-      accessToken: token,
-      signal: request.signal,
-    })
-    if (!result.ok) return Response.json({ error: result.error ?? 'provider_error' }, { status: 502 })
+    let title = ''
+    if (isSimpleGreeting(body.request)) {
+      title = /[\u0600-\u06FF]/.test(body.request) ? 'محادثة جديدة' : 'New Chat'
+    } else {
+      const result = await callTitleModel({
+        userPrompt: `First user message: "${body.request}"`,
+        accessToken: token,
+        signal: request.signal,
+      })
+      if (result.ok && result.text) {
+        title = cleanChatTitle(result.text, body.request)
+      } else {
+        title = extractFallbackTitle(body.request)
+      }
+    }
 
-    const title = cleanChatTitle(result.text)
-    if (!title) return Response.json({ error: 'Empty title.' }, { status: 502 })
+    if (!title) {
+      title = extractFallbackTitle(body.request)
+    }
 
     const { error } = await db
       .from('conversations')

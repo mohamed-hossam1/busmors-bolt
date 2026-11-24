@@ -11,6 +11,7 @@ import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthL
 import GoogleButton from '../../components/auth/GoogleButton'
 import { safeReturnPath } from '../../lib/authRouting'
 import { useRedirectIfAuthenticated } from '../../hooks/useRedirectIfAuthenticated'
+import { checkIsAdminUser } from '../../server/admin/actions'
 
 export default function SignIn() {
   const { t } = useCopy()
@@ -29,9 +30,16 @@ export default function SignIn() {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     void run(async () => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) return error.message || t('signInFailed')
-      router.replace(safeReturnPath(params.get('next')) ?? '/employee'); router.refresh()
+      const isAdmin = await checkIsAdminUser({ id: data.user?.id, email: data.user?.email ?? email })
+      if (isAdmin) {
+        router.replace('/admin')
+        router.refresh()
+        return null
+      }
+      router.replace(safeReturnPath(params.get('next')) ?? '/employee')
+      router.refresh()
       return null
     })
   }

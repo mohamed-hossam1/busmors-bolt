@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-export type AiOperation = 'route'|'chat'|'clarify'|'research'|'copy'|'campaign'|'diagnose'|'roadmap'|'analyze'|'research_profile'
+export type AiOperation = 'chat' | 'roadmap' | 'roadmap_answer' | 'roadmap_revision' | 'roadmap_checkin'
 
 export interface AiCallResult {
   ok: boolean

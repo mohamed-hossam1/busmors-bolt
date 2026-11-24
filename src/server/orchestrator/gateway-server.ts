@@ -3,22 +3,15 @@ import { createHash } from 'node:crypto'
 import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TaskOrigin } from '../../lib/contracts'
-import type { ExecutionTask } from '../../features/tasks/types'
 import type { OrchestratorEventInput } from '../../features/orchestrator/contracts'
-import { executeTask } from '../task-executor'
-import { taskBackend } from '../task-backend'
 import { callOrchestratorModel } from './model'
 import { runOrchestrator, type OrchestratorDeps, type OrchestratorInput, type PriorRun } from '../../features/orchestrator/gateway'
 import { evaluateGuardrails, detectGreeting } from '../../features/orchestrator/guardrails'
 import { retrieveBrain, type BrainReader, type BrainRow } from '../../features/orchestrator/brain-tool'
-import { handoffCheckpoint, planDirectorHandoff } from '../../features/orchestrator/director-handoff'
 import { buildBrainAnswerPrompt, buildOrchestratePrompt } from '../../features/orchestrator/prompt'
 import type { OrchestratorResult } from '../../features/orchestrator/contracts'
 import { normalizeDecision } from '../../features/orchestrator/decision'
 import { createTraceCollector, type TraceCollector } from '../observability'
-
-/** Fixed server instance id for the synchronous Director handoff. */
-const RUNNER_ID = 'a1b2c3d4-0000-4000-8000-000000000001'
 
 export interface RunOrchestratorRequestInput {
   supabase: SupabaseClient
@@ -188,30 +181,6 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       if (!result.ok) throw new Error(result.reason ?? 'provider_error')
       return { reply: result.text, modelCalls: 1 }
     },
-    async handoffToDirector(context) {
-      const backend = taskBackend(supabase, workspaceId, token)
-      const handoff = context.handoff
-      const enqueued = (await backend.rpc('enqueue_task', {
-        p_conversation_id: context.conversationId,
-        p_request: context.request,
-        p_origin: context.origin ?? { kind: 'direct', conversationId: context.conversationId },
-        p_idempotency_key: context.idempotencyKey,
-        p_trace_id: trace.traceId,
-      })) as ExecutionTask
-      const admitted = (await backend.rpc('admit_task', { p_task_id: enqueued.id, p_runner_id: RUNNER_ID })) as ExecutionTask | null
-      if (admitted) {
-        const withCheckpoint = (await backend.rpc('checkpoint_task', {
-          p_task_id: enqueued.id,
-          p_run_id: admitted.run_id,
-          p_checkpoint: handoffCheckpoint(handoff),
-          p_type: handoff.type,
-          p_plan: null,
-        })) as ExecutionTask
-        trace.setRun(withCheckpoint.run_id, withCheckpoint.attempts)
-        await executeTask(backend, withCheckpoint, context.signal ?? new AbortController().signal, trace)
-      }
-      return { taskId: enqueued.id }
-    },
     async findPriorRun(key) {
       try {
         const { data, error } = await supabase.rpc('find_orchestrator_run', { p_idempotency_key: key })
@@ -260,13 +229,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       }
     },
     recordRun: (record) => {
-      // A task path already set the concrete status/route/reply from the task
-      // executor; keep those and only stamp the total latency.
-      if (record.outcome === 'task') {
-        trace.setResult({ durationMs: record.metrics.totalMs })
-      } else {
-        trace.setResult({ status: record.outcome, route: record.path, finalReply: record.reply || null, durationMs: record.metrics.totalMs })
-      }
+      trace.setResult({ status: record.outcome, route: record.path, finalReply: record.reply || null, durationMs: record.metrics.totalMs })
       return safe('record_orchestrator_run', () => supabase.rpc('record_orchestrator_run', {
       p_conversation_id: conversationId,
       p_idempotency_key: idempotencyKey,
@@ -305,5 +268,3 @@ function scheduleFlush(trace: TraceCollector): void {
     void trace.flush()
   }
 }
-
-export { planDirectorHandoff }

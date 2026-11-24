@@ -1,4 +1,4 @@
-// Disposable local PostgreSQL only (LOCAL_PG_URL, localhost). For each migration path
+// Disposable local PostgreSQL only (DATABASE_URL, localhost). For each migration path
 // (empty database, and upgrade from the legacy fixture) builds the schema in a fresh
 // busmora_check_* database, runs every acceptance check, and drops the database.
 // Exit codes: 0 pass, 1 a migration or check failed, 2 setup problem.
@@ -16,6 +16,8 @@ const checks = [
   'roadmap-generation-db-check.sql',
   'post-proposed-time-db-check.sql',
   'facebook-connection-db-check.sql',
+  'employee-cleanup-guard-db-check.sql',
+  'employee-cleanup-remediation-db-check.sql',
 ]
 
 const conn = localConnection()

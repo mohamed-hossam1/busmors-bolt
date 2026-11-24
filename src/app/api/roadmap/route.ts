@@ -1,5 +1,6 @@
 import { requireApiIdentity, apiError } from '@/server/auth'
 import { generateRoadmapFromDiscovery, RoadmapGenerationError } from '@/server/roadmap/generator'
+import { proposeRevisionFromRequest, evaluateCheckin, RevisionError } from '@/server/roadmap/adapt'
 import { createClient } from '@supabase/supabase-js'
 import { publicSupabaseConfig } from '@/lib/supabase-config'
 import { getRequestLocale } from '@/server/locale'
@@ -34,6 +35,48 @@ export async function POST(request: Request) {
    return Response.json(data, { headers: { 'Cache-Control': 'private, no-store' } })
   }
 
+  // Route actions that need the server AI gateway or service-scoped client build a
+  // token-scoped client, exactly like roadmap generation.
+  if (['startStepTask', 'proposeRevision', 'evaluateCheckin'].includes(body.action)) {
+   const { url, key } = publicSupabaseConfig()
+   const db = createClient(
+    process.env.SUPABASE_URL || url,
+    key,
+    { global: { headers: { Authorization: 'Bearer ' + token } }, auth: { persistSession: false, autoRefreshToken: false } },
+   )
+   if (body.action === 'startStepTask') {
+    // Step-task delegation depends on the retired Employee execution path.
+    return Response.json(
+     { error: 'Roadmap step-task execution is temporarily unavailable while Employee intelligence is rebuilt.', code: 'TASK_EXECUTION_UNAVAILABLE' },
+     { status: 409, headers: { 'Cache-Control': 'private, no-store' } },
+    )
+   }
+   if (body.action === 'proposeRevision') {
+    const result = await proposeRevisionFromRequest({
+     supabase: db,
+     workspaceId: user.id,
+     token,
+     locale: await getRequestLocale(),
+     roadmapId: body.roadmapId,
+     baseVersionId: body.baseVersionId,
+     expectedRoadmapVersion: body.expectedRoadmapVersion,
+     request: body.request,
+     signal: request.signal,
+    })
+    return Response.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
+   }
+   // evaluateCheckin
+   const result = await evaluateCheckin({
+    supabase: db,
+    token,
+    locale: await getRequestLocale(),
+    checkinId: body.checkinId,
+    expectedVersion: body.expectedVersion,
+    signal: request.signal,
+   })
+   return Response.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
+  }
+
   if (body.action === 'generate') {
    const { url, key } = publicSupabaseConfig()
    const db = createClient(
@@ -52,12 +95,15 @@ export async function POST(request: Request) {
   }
 
   return Response.json({ error: 'Unknown roadmap action.' }, { status: 400 })
- } catch (error) {
-  if (error instanceof RoadmapGenerationError) {
-   return Response.json({ error: error.message, code: error.code }, { status: error.code === 'STALE_VERSION' ? 409 : 422 })
+  } catch (error) {
+    if (error instanceof RoadmapGenerationError) {
+      return Response.json({ error: error.message, code: error.code }, { status: error.code === 'STALE_VERSION' ? 409 : 422 })
+    }
+    if (error instanceof RevisionError) {
+      return Response.json({ error: error.message, code: error.code }, { status: error.code === 'STALE_VERSION' ? 409 : 422 })
+    }
+    return apiError(error)
   }
-  return apiError(error)
- }
 }
 
 export async function GET(request: Request) {

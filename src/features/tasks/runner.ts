@@ -32,11 +32,5 @@ export class TaskClient {
   await this.refresh()
   return result
  }
- async submit(conversationId: string, request: string, idempotencyKey: string, origin?: TaskOrigin) {
-  const task = await this.request<ExecutionTask>('submit', { conversationId, request, idempotencyKey, origin })
-  await this.refresh(); return task
- }
  async cancel(task: ExecutionTask) { await this.request('cancel', { id: task.id, runId: task.run_id }); await this.refresh() }
- async resume(task: ExecutionTask) { await this.request('resume', { id: task.id, version: task.version }); await this.refresh() }
- async answer(inputId: string, version: number, answer: { status: string; value?: string }) { await this.request('answer', { inputId, version, answer }); await this.refresh() }
 }

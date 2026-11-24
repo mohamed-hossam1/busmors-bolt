@@ -165,6 +165,11 @@ export interface RoadmapPlanStep {
   checklist?: string[]
   effort?: string
   externalApproval?: string | null
+  milestoneKey?: string
+  successCriteria?: string
+  priority?: 'critical' | 'high' | 'medium' | 'low' | string
+  metric?: string
+  dueHint?: string
 }
 
 export interface RoadmapPlan {
@@ -215,6 +220,13 @@ export interface RoadmapStepRecord {
   status: RoadmapStepStatus
   attestation: Record<string, unknown> | null
   task_id: string | null
+  milestone_key: string | null
+  success_criteria: string
+  priority: 'critical' | 'high' | 'medium' | 'low' | string
+  metric: string
+  due_hint: string
+  owner_note: string
+  completed_at: string | null
   created_at: string
 }
 
@@ -250,12 +262,21 @@ export interface RoadmapVersionRecord {
   version: number
   status: 'proposed' | 'active' | 'archived' | 'rejected'
   summary: RoadmapVersionSummary
+  diff?: Record<string, unknown>
   context_refs: { nodeId: string; version?: number }[]
   created_at: string
+}
+
+export interface RoadmapStaleContext {
+  nodeId: string
+  nodeVersion: number
+  title: string | null
+  reason: string
 }
 
 export interface RoadmapLoad {
   roadmap: RoadmapRecord | null
   version: RoadmapVersionRecord | null
   steps: RoadmapStepRecord[]
+  staleContext?: RoadmapStaleContext[]
 }

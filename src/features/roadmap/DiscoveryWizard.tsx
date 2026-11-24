@@ -20,6 +20,7 @@ import {
   Target,
   TrendingUp,
   UserPlus,
+  UserRoundSearch,
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/Spinner'
 import { RoadmapSkeleton } from '../../components/skeletons'
@@ -144,6 +145,8 @@ interface QuestionCardProps {
   onSave: (question: DiscoveryQuestion) => void
   onLoadLatest: (question: DiscoveryQuestion) => void
   onSaveMine: (question: DiscoveryQuestion) => void
+  onAskDirector: (question: DiscoveryQuestion) => void
+  askingDirector: boolean
 }
 
 function QuestionCard({
@@ -162,6 +165,8 @@ function QuestionCard({
   onSave,
   onLoadLatest,
   onSaveMine,
+  onAskDirector,
+  askingDirector,
 }: QuestionCardProps) {
   const { t } = useCopy()
   const { locale } = useI18n()
@@ -339,6 +344,30 @@ function QuestionCard({
       </div>
       <p className="mt-2 text-[11px] leading-5 text-ink-500">{t('unknownsSeparateNote')}</p>
 
+      {!reused && answer.status !== 'researching' && (
+        <div className="mt-4 rounded-xl border border-primary-100 bg-primary-50/50 p-3">
+          <p className="flex items-center gap-2 text-xs font-semibold text-primary-800"><Sparkles size={14} /> {t('askDirectorTitle')}</p>
+          <p className="mt-1 text-[11px] leading-5 text-ink-600">{t('askDirectorHelp')}</p>
+          <button
+            type="button"
+            disabled={askingDirector}
+            onClick={() => onAskDirector(question)}
+            className="btn-secondary mt-2 min-h-8 px-3 py-1 text-xs disabled:opacity-60"
+          >
+            {askingDirector ? <><Spinner size={12} /> {t('askDirectorStarting')}</> : <><UserRoundSearch size={13} /> {t('askDirectorAction')}</>}
+          </button>
+        </div>
+      )}
+      {answer.status === 'researching' && (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
+          <p className="flex items-center gap-2 font-semibold"><Sparkles size={14} /> {t('askDirectorResearching')}</p>
+          <p className="mt-1 text-[11px] leading-5">{t('askDirectorResearchingHelp')}</p>
+          <button type="button" onClick={() => onAskDirector(question)} className="mt-2 text-xs font-semibold underline">
+            {t('askDirectorOpenTask')}
+          </button>
+        </div>
+      )}
+
       {conflict && (
         <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p className="font-medium">{t('thisAnswerChangedElsewhere')}</p>
@@ -357,6 +386,7 @@ export default function DiscoveryWizard({ onGenerated }: { onGenerated?: () => v
   const { settings } = useAuth()
   const { t } = useCopy()
   const { locale } = useI18n()
+
   const hasWebsite = Boolean(settings?.company_url?.trim())
 
   const [loading, setLoading] = useState(true)
@@ -379,6 +409,7 @@ export default function DiscoveryWizard({ onGenerated }: { onGenerated?: () => v
   const [planning, setPlanning] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState('')
+  const [askingId] = useState<string | null>(null)
 
   const questionsRef = useRef<DiscoveryQuestion[]>([])
   const draftRef = useRef<DiscoveryDraft | null>(null)
@@ -682,6 +713,13 @@ export default function DiscoveryWizard({ onGenerated }: { onGenerated?: () => v
     }
   }
 
+  const askDirector = async (_question: DiscoveryQuestion) => {
+    // Ask my Director depends on the retired Employee research execution path.
+    // It is intentionally disabled during the clean baseline; Discovery answers
+    // remain fully usable.
+    setSaveError('Ask my Director is temporarily unavailable while Employee intelligence is rebuilt. Your answers are safe.')
+  }
+
   const continuePreliminary = async () => {
     if (!draftRef.current || planning) return
     setPlanning(true)
@@ -932,6 +970,8 @@ export default function DiscoveryWizard({ onGenerated }: { onGenerated?: () => v
                 onSave={saveQuestion}
                 onLoadLatest={(item) => void loadLatest(item)}
                 onSaveMine={(item) => void saveMine(item)}
+                onAskDirector={(item) => void askDirector(item)}
+                askingDirector={askingId === question.id}
               />
             )
           })}

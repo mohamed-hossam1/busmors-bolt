@@ -2,7 +2,7 @@ import { test, expect } from 'playwright/test'
 import { createAccount, type TestAccount } from '../support/accounts'
 import { signIn, waitForHydration } from '../support/browser'
 import { poll } from '../support/poll'
-import { submitTask, taskEvidence } from '../support/tasks'
+import { waitForAgentReply } from '../support/tasks'
 
 const normalize = (value: string) => value
   .normalize('NFKC').toLowerCase()
@@ -87,12 +87,9 @@ test('website onboarding rejects invalid targets, performs a real crawl, persist
 
   await page.goto('/employee')
   const request = `Using my approved Business Brain, summarize the fact titled "${approved.data!.title}" in one sentence.`
-  const task = await submitTask(page, account.client, request)
-  expect(task.status, task.result_summary ?? 'task did not complete').toBe('completed')
-  const evidence = await taskEvidence(account.client, task.id)
-  expect(evidence.result).toBeTruthy()
-  expect(evidence.steps.some(step => step.agent === 'orchestrator')).toBeTruthy()
-  const refs = (task.checkpoint.contextRefs ?? []) as { nodeId: string; version: number }[]
-  expect(refs.some(ref => ref.nodeId === approved.data!.id && ref.version === approved.data!.version)).toBeTruthy()
-  expect(task.result_summary?.toLowerCase()).toContain(String(approved.data!.title).split(/\s+/)[0].toLowerCase())
+  await page.getByLabel('Message your Marketing Director').fill(request)
+  await page.getByRole('button', { name: 'Send message' }).click()
+
+  const reply = await waitForAgentReply(account.client, account.id)
+  expect(reply.content.toLowerCase()).toContain(String(approved.data!.title).split(/\s+/)[0].toLowerCase())
 })

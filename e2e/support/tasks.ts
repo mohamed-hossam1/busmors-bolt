@@ -53,3 +53,21 @@ export async function taskEvidence(client: SupabaseClient, taskId: string) {
     messages: messages.data ?? [], posts: posts.data ?? [], deliverables: deliverables.data ?? [], usage: usage.data ?? [],
   }
 }
+
+/**
+ * Wait for the newest agent reply in the most recent conversation for a
+ * workspace. The clean baseline answers through the Orchestrator and does not
+ * create tasks for unsupported capabilities.
+ */
+export async function waitForAgentReply(client: SupabaseClient, workspaceId: string): Promise<{ id: string; content: string }> {
+  const reply = await poll(async () => {
+    const conversation = await client.from('conversations').select('id').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (conversation.error) throw new Error(`Conversation read failed: ${conversation.error.message}`)
+    if (!conversation.data) return null
+    const message = await client.from('messages').select('id, content').eq('conversation_id', conversation.data.id).eq('role', 'agent').order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (message.error) throw new Error(`Message read failed: ${message.error.message}`)
+    return message.data
+  }, value => Boolean(value?.content), 30_000, 1000)
+  if (!reply) throw new Error('No agent reply was persisted.')
+  return reply as { id: string; content: string }
+}

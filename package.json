@@ -15,7 +15,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report test-results/e2e/report",
     "test:db:local": "node scripts/local-migration-check.mjs",
-    "test:unit": "node --experimental-transform-types --import ./scripts/testing/ts-register.mjs --test tests/research/*.test.ts tests/orchestrator/*.test.ts",
+    "test:unit": "node --experimental-transform-types --import ./scripts/testing/ts-register.mjs --test tests/orchestrator/*.test.ts tests/tasks/*.test.ts tests/admin/*.test.ts tests/chat/*.test.ts tests/roadmap/*.test.ts tests/publishing/*.test.ts",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
     "test:posts:db": "node scripts/db-check.cjs scripts/planned-posts-db-check.sql",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"

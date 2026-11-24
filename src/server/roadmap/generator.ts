@@ -3,11 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { callAi } from '../call-ai'
 import type { BrainNode } from '../../lib/types'
 import { answerLabel, eligibleBrainFacts, goalDefinition, localizeQuestionSchema } from '../../features/roadmap/discovery'
-import type {
-  DiscoveryQuestion,
-  RoadmapPlan,
-  RoadmapPlanStep,
-} from '../../features/roadmap/types'
+import { normalizePlan } from '../../features/roadmap/plan-parse'
+import type { DiscoveryQuestion } from '../../features/roadmap/types'
 
 export type RoadmapErrorCode =
   | 'NO_DISCOVERY'
@@ -35,71 +32,15 @@ interface GenerateArgs {
 }
 
 export interface RoadmapGenerationResult {
-  plan: RoadmapPlan
+  plan: ReturnType<typeof normalizePlan>
   saved: { roadmapId: string; versionId: string; version: number; steps: number }
 }
 
-function str(value: unknown): string {
-  return typeof value === 'string' ? value : ''
+function rec(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 function arr(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
-}
-function rec(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
-function normalizeStep(raw: unknown, index: number): RoadmapPlanStep | null {
-  const step = rec(raw)
-  const title = str(step.title).trim()
-  if (!title) return null
-  return {
-    key: str(step.key).trim() || `step_${index + 1}`,
-    title: title.slice(0, 300),
-    objective: str(step.objective).slice(0, 2000),
-    rationale: str(step.rationale).slice(0, 2000),
-    evidence: arr(step.evidence),
-    uncertainty: str(step.uncertainty).slice(0, 1000),
-    responsibility: step.responsibility === 'system' ? 'system' : 'owner',
-    executionMode: step.executionMode === 'director' ? 'director' : 'owner',
-    inputs: arr(step.inputs),
-    dependencies: arr(step.dependencies).filter((item): item is string => typeof item === 'string' && item.length > 0),
-    expectedOutput: str(step.expectedOutput).slice(0, 2000),
-    checklist: arr(step.checklist).filter((item): item is string => typeof item === 'string' && item.length > 0).slice(0, 20),
-    effort: str(step.effort).trim().slice(0, 200) || 'Not estimated',
-    externalApproval: typeof step.externalApproval === 'string' && step.externalApproval.trim()
-      ? step.externalApproval.trim().slice(0, 500)
-      : null,
-  }
-}
-
-/** Turn the model's raw roadmap JSON into a validated plan object. */
-function parsePlan(raw: unknown, goalLabel: string, contextRefs: { nodeId: string; version?: number }[]): RoadmapPlan {
-  const root = rec(raw)
-  const steps: RoadmapPlanStep[] = arr(root.steps)
-    .map((item, index) => normalizeStep(item, index))
-    .filter((item): item is RoadmapPlanStep => item !== null)
-    .slice(0, 12)
-  if (steps.length === 0) {
-    throw new RoadmapGenerationError('INVALID_PLAN', 'The Director returned no usable roadmap steps. Please try again.')
-  }
-  return {
-    title: str(root.title).trim().slice(0, 300) || 'Business roadmap',
-    summary: str(root.summary).slice(0, 4000),
-    uncertainty: str(root.uncertainty).slice(0, 2000),
-    goalLabel,
-    diagnosis: rec(root.diagnosis) as unknown as RoadmapPlan['diagnosis'],
-    objective: rec(root.objective) as unknown as RoadmapPlan['objective'],
-    metrics: arr(root.metrics).map(rec) as unknown as RoadmapPlan['metrics'],
-    priorities: arr(root.priorities).map(rec) as unknown as RoadmapPlan['priorities'],
-    milestones: arr(root.milestones).map(rec) as unknown as RoadmapPlan['milestones'],
-    risks: arr(root.risks).map(rec) as unknown as RoadmapPlan['risks'],
-    review: rec(root.review) as unknown as RoadmapPlan['review'],
-    steps,
-    contextRefs,
-  }
 }
 
 /**
@@ -181,7 +122,11 @@ export async function generateRoadmapFromDiscovery(args: GenerateArgs): Promise<
     throw new RoadmapGenerationError('INVALID_PLAN', 'The Director returned an unreadable plan. Your answers are safe; try again.')
   }
 
-  const plan = parsePlan(parsed, goal?.label ?? String(draft.goal), contextRefs)
+  const plan = normalizePlan(parsed, goal?.label ?? String(draft.goal))
+  if (plan.steps.length === 0) {
+    throw new RoadmapGenerationError('INVALID_PLAN', 'The Director returned no usable roadmap steps. Please try again.')
+  }
+  plan.contextRefs = contextRefs
 
   const { data: saved, error: saveError } = await supabase.rpc('save_generated_roadmap', {
     p_draft_id: draft.id,

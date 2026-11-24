@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 BEGIN;
 INSERT INTO auth.users(id) VALUES('66666666-6666-4666-8666-666666666666');
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claim.sub','66666666-6666-4666-8666-666666666666',true);
-SELECT set_config('request.jwt.claim.role','authenticated',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
 DO $$
 DECLARE c uuid; key uuid:=gen_random_uuid(); runner uuid:=gen_random_uuid(); instance uuid:=gen_random_uuid(); a tasks; b tasks; d tasks; duplicate tasks; i task_inputs; output jsonb; first_output jsonb;
 BEGIN
@@ -140,9 +140,9 @@ INSERT INTO roadmap_versions(id,workspace_id,roadmap_id,version,summary) VALUES
 INSERT INTO roadmap_steps(id,workspace_id,roadmap_id,plan_version_id,step_key,position,title,objective,rationale,responsibility,execution_mode,expected_output,effort) VALUES
  ('44444444-5555-4666-8777-888888888888','66666666-6666-4666-8666-666666666666','22222222-3333-4444-8555-666666666666','33333333-4444-4555-8666-777777777777','write',1,'Write','Introduce the offer','Owner decision','owner','director','Draft copy','30 minutes'),
  ('44444444-5555-4666-8777-999999999999','77777777-7777-4777-8777-777777777777','22222222-3333-4444-8555-777777777777','33333333-4444-4555-8666-888888888888','write',1,'Write','Foreign step','Foreign owner','owner','director','Draft copy','30 minutes');
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claim.sub','66666666-6666-4666-8666-666666666666',true);
-SELECT set_config('request.jwt.claim.role','authenticated',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
 DO $$
 DECLARE c uuid:='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; before integer;
 BEGIN

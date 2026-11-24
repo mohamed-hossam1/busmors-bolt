@@ -2,9 +2,18 @@ import 'server-only'
 import { generateAi } from './ai-generate'
 import type { AiCallResult } from '../lib/agents'
 
+// Pure helpers live in lib/chat-title so the client can share the same cleaning.
+export {
+  cleanChatTitle,
+  extractFallbackTitle,
+  formatConversationTitle,
+  isSimpleGreeting,
+} from '../lib/chat-title'
+
 /**
- * Ask the model for a short chat title (max ~60 chars) for a user's first
- * message. Runs without a task row or allowance, like the orchestrator's
+ * Ask the model for a short chat title for a user's first message. The raw
+ * output is cleaned and clamped by cleanChatTitle (max 4 words / 32 chars).
+ * Runs without a task row or allowance, like the orchestrator's
  * orchestrate/brain_answer calls, using the workspace's key or the managed key.
  */
 export async function callTitleModel(input: {
@@ -39,13 +48,4 @@ export async function callTitleModel(input: {
       retryable: !input.signal?.aborted,
     }
   }
-}
-
-/** Clamp the model output to a safe title length and strip surrounding noise. */
-export function cleanChatTitle(text: string): string {
-  return text
-    .replace(/^["']+|["']+$/g, '')
-    .replace(/[.!?،؛]+$/, '')
-    .trim()
-    .slice(0, 60)
 }

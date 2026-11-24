@@ -1,20 +1,21 @@
 // Orchestrator-first message flow contracts.
 //
 // Every incoming user message reaches the Orchestrator first. The Orchestrator
-// understands intent and chooses exactly one execution path:
-//   A) direct   — answer immediately, no Brain, no Director, no Task.
-//   B) brain    — retrieve approved company knowledge, then answer from it.
-//   C) task     — hand the request to the Director (execution delegate).
+// understands intent and chooses exactly one path:
+//   A) direct — answer immediately, no Brain, no Director, no Task.
+//   B) brain  — retrieve approved company knowledge, then answer from it.
+//   C) task   — classified as a task request. The current clean baseline does
+//               not execute tasks; the gateway answers with an honest temporary
+//               unavailability response and never enqueues work.
 //
-// These types are pure data so the gateway can be unit-tested with fakes and
-// reused from the server wiring without leaking provider or database detail.
+// These types are pure data so the gateway can be unit-tested with fakes.
 
 export type OrchestratorPath = 'direct' | 'brain' | 'task'
 
 /** The final outcome of one orchestration, including non-execution outcomes. */
 export type OrchestratorOutcome = OrchestratorPath | 'refuse' | 'error'
 
-/** Execution intents the Director already understands. */
+/** Classification values the Orchestrator prompt may return. */
 export type DirectorIntent =
   | 'simple_answer'
   | 'marketing_research'
@@ -29,8 +30,6 @@ export const DIRECTOR_INTENTS: readonly DirectorIntent[] = [
   'campaign_planning',
   'performance_diagnosis',
 ]
-
-export type ResearchMode = 'quick' | 'standard' | 'deep'
 
 /** One approved Brain fact returned by the read-only retrieval tool. */
 export interface BrainFact {
@@ -59,12 +58,10 @@ export interface OrchestratorDecision {
   reply: string
   /** Retrieval query for the brain path. */
   brainQuery: string
-  /** Detected execution intent for the task path. */
+  /** Detected request classification for the task path. */
   intent: DirectorIntent
-  /** Requested quantity for content/campaign tasks (>=1). */
+  /** Requested quantity for content/campaign requests (>=1). */
   quantity: number
-  /** Research depth when intent is marketing_research. */
-  researchMode: ResearchMode
 }
 
 /** Deterministic, server-enforced pre-model decision. */
@@ -83,19 +80,18 @@ export interface GuardrailResult {
 export interface OrchestratorMetrics {
   decisionMs: number
   brainMs: number
-  directorHandoffMs: number
   totalMs: number
   modelCalls: number
   brainCalls: number
 }
 
-/** A persisted canvas event for the conversation-scoped orchestration stream. */
+/** A persisted conversation event for the orchestration stream. */
 export interface OrchestratorEventInput {
   type: 'agent_started' | 'agent_completed' | 'agent_error' | 'tool_call' | 'delegation' | 'flow_connection'
   /** Node this event belongs to; all events sharing an id merge into one node. */
   instanceId: string
   agentId: string
-  agentRole: 'orchestrator' | 'director' | 'subagent' | 'tool' | 'skill' | 'auditor' | 'synthesis'
+  agentRole: 'orchestrator' | 'subagent' | 'tool' | 'skill'
   label: string
   status: 'queued' | 'running' | 'completed' | 'partial' | 'failed'
   publicMessage: string
@@ -119,7 +115,6 @@ export interface OrchestratorResult {
 export const EMPTY_METRICS: OrchestratorMetrics = {
   decisionMs: 0,
   brainMs: 0,
-  directorHandoffMs: 0,
   totalMs: 0,
   modelCalls: 0,
   brainCalls: 0,
@@ -127,8 +122,4 @@ export const EMPTY_METRICS: OrchestratorMetrics = {
 
 export function isDirectorIntent(value: unknown): value is DirectorIntent {
   return typeof value === 'string' && (DIRECTOR_INTENTS as readonly string[]).includes(value)
-}
-
-export function isResearchMode(value: unknown): value is ResearchMode {
-  return value === 'quick' || value === 'standard' || value === 'deep'
 }

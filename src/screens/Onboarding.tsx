@@ -99,6 +99,7 @@ export default function Onboarding() {
   const [totalPages, setTotalPages] = useState(DEFAULT_CRAWL_PAGES)
   const [currentUrl, setCurrentUrl] = useState('')
   const [crawlStep, setCrawlStep] = useState<CrawlStep>('idle')
+  const [progressPercent, setProgressPercent] = useState(0)
   const [progressStatus, setProgressStatus] = useState('')
   const [qualityNotice, setQualityNotice] = useState('')
   // Aggregate counts only (never the extracted content) shown on completion.
@@ -118,6 +119,31 @@ export default function Onboarding() {
   const [conflict, setConflict] = useState(false)
 
   const userId = session?.user.id
+
+  // Realistic smooth progress during AI analysis phase (38% to 78%)
+  useEffect(() => {
+    if (crawlStep !== 'ai_analysis') return
+    const interval = setInterval(() => {
+      setProgressPercent((prev) => {
+        if (prev >= 78) return prev
+        const step = prev < 55 ? 2 : prev < 70 ? 1 : 0.5
+        return Math.min(78, Math.round((prev + step) * 10) / 10)
+      })
+    }, 400)
+    return () => clearInterval(interval)
+  }, [crawlStep])
+
+  // Realistic smooth progress during brain linking & saving phase (80% to 95%)
+  useEffect(() => {
+    if (crawlStep !== 'linking') return
+    const interval = setInterval(() => {
+      setProgressPercent((prev) => {
+        if (prev >= 95) return prev
+        return Math.min(95, prev + 2)
+      })
+    }, 350)
+    return () => clearInterval(interval)
+  }, [crawlStep])
 
   // Load any existing draft so a returning owner continues where they left off.
   useEffect(() => {
@@ -268,6 +294,7 @@ export default function Onboarding() {
     setQualityNotice('')
     setConflict(false)
     setCrawlStep('crawling')
+    setProgressPercent(10)
     setProgressStatus(t('connectingToWebsite'))
 
     // C08: snapshot the owner's current draft at request start. When the crawl
@@ -287,8 +314,12 @@ export default function Onboarding() {
           setPagesRead(read)
           setCrawlStep('crawling')
           setProgressStatus(read > 0 ? t('readingWebsite', { read }) : t('discoveringWebsite'))
+          const ratio = totalPages > 0 ? Math.min(1, read / totalPages) : 0
+          const target = 10 + Math.round(ratio * 25) // 10% -> 35%
+          setProgressPercent((prev) => Math.max(prev, target))
         } else if (stage === 'extract') {
           setCrawlStep('ai_analysis')
+          setProgressPercent((prev) => Math.max(prev, 38))
           setProgressStatus(t('findingBusinessInfo'))
         }
       })
@@ -309,10 +340,12 @@ export default function Onboarding() {
         if (event.stage === 'extract') {
           setCrawlStep('ai_analysis')
           if (event.read) setPagesRead(event.read)
+          setProgressPercent((prev) => Math.max(prev, 40))
           setProgressStatus(t('findingBusinessInfo'))
         } else if (event.stage === 'save') {
           setCrawlStep('linking')
           if (event.read) setPagesRead(event.read)
+          setProgressPercent((prev) => Math.max(prev, 82))
           setProgressStatus(t('savingBusinessKnowledge'))
         }
       })
@@ -332,18 +365,24 @@ export default function Onboarding() {
       await supabase.rpc('set_onboarding_state', { p_state: 'complete' })
       await refreshSettings()
       setCrawlStep('done')
+      setProgressPercent(100)
+      await new Promise((resolve) => setTimeout(resolve, 600))
       setPhase('done')
     } catch (err) {
       await supabase.rpc('set_onboarding_state', { p_state: 'awaiting_url', p_crawl_status: { finished: false } })
       setError(err instanceof Error ? err.message : t('couldNotReadWebsiteKeepFields'))
       setCrawlStep('idle')
+      setProgressPercent(0)
     } finally {
       setBusy(false)
     }
   }
 
-  const progressPercent = crawlStep === 'done' ? 100 : totalPages > 0 ? Math.min(100, Math.round((pagesRead / totalPages) * 100)) : 0
-  const activeStep = crawlStep === 'crawling' ? 0 : crawlStep === 'ai_analysis' ? 1 : 2
+  const activeStep =
+    crawlStep === 'crawling' ? 0 :
+    crawlStep === 'ai_analysis' ? 1 :
+    crawlStep === 'linking' ? 2 :
+    crawlStep === 'done' ? 3 : -1
 
   const title =
     phase === 'choose'
@@ -442,10 +481,10 @@ export default function Onboarding() {
           <div className="rounded-2xl border border-ink-200 bg-white p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3 text-sm">
               <span role="status" aria-live="polite" className="font-medium text-ink-900">{progressStatus}</span>
-              <span className="shrink-0 tabular-nums text-primary-600">{progressPercent}%</span>
+              <span className="shrink-0 tabular-nums text-primary-600">{Math.round(progressPercent)}%</span>
             </div>
-            <div role="progressbar" aria-label={t('buildingBrain')} aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-primary-100">
-              <div className="h-full rounded-full bg-primary-500 transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${progressPercent}%` }} />
+            <div role="progressbar" aria-label={t('buildingBrain')} aria-valuenow={Math.round(progressPercent)} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-primary-100">
+              <div className="h-full rounded-full bg-primary-500 transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${Math.round(progressPercent)}%` }} />
             </div>
             <ol className="mt-6 space-y-5">
               {[

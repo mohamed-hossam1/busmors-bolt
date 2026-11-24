@@ -1,11 +1,16 @@
 import { after } from 'next/server'
 import { requireApiIdentity, apiError } from '@/server/auth'
-import { taskBackend } from '@/server/task-backend'
 import { dispatchTasks } from '@/server/task-dispatcher'
+import type { TaskBackend } from '@/server/task-executor'
+import type { ExecutionTask } from '@/features/tasks/types'
 import { runOrchestratorRequest } from '@/server/orchestrator/gateway-server'
 import { createClient } from '@supabase/supabase-js'
 import { publicSupabaseConfig } from '@/lib/supabase-config'
+
 export const maxDuration = 300
+
+const TASK_EXECUTION_UNAVAILABLE = 'Task execution is temporarily unavailable while Employee intelligence is rebuilt.'
+
 export async function POST(request: Request) {
  try {
   const { supabase, user } = await requireApiIdentity(request)
@@ -16,11 +21,34 @@ export async function POST(request: Request) {
   const token = session.session!.access_token
   const { url, key } = publicSupabaseConfig()
   const db = createClient(process.env.SUPABASE_URL || url, key, { global: { headers: { Authorization: 'Bearer ' + token } }, auth: { persistSession: false, autoRefreshToken: false } })
-  const backend = taskBackend(db, user.id, token)
+
+  const backend: TaskBackend = {
+   async rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    const { data, error } = await db.rpc(name, args)
+    if (error) throw error
+    return data as T
+   },
+   async list() {
+    // History is bounded; unfinished work cannot disappear behind that limit.
+    const { data, error } = await db.from('tasks').select('*').eq('workspace_id', user.id).order('created_at', { ascending: false }).limit(100)
+    if (error) throw error
+    const tasks = new Map((data ?? []).map(task => [task.id, task as ExecutionTask]))
+    for (let offset = 0; ; offset += 200) {
+     const page = await db.from('tasks').select('*').eq('workspace_id', user.id)
+      .in('status', ['queued', 'running', 'awaiting_input', 'awaiting_approval']).order('created_at').order('id').range(offset, offset + 199)
+     if (page.error) throw page.error
+     for (const task of page.data ?? []) tasks.set(task.id, task as ExecutionTask)
+     if ((page.data?.length ?? 0) < 200) break
+    }
+    return [...tasks.values()].sort((a, b) => b.created_at.localeCompare(a.created_at))
+   },
+  }
+
   let result: unknown
   switch (body.action) {
    case 'refresh': await backend.rpc('recover_tasks', { p_runner_id: null }); result = await backend.list(); break
-   // Orchestrator-first: every message runs through the Orchestrator before any task.
+   // Orchestrator-first: every message runs through the Orchestrator. Task requests
+   // receive an honest unavailability reply; no task is ever enqueued.
    case 'orchestrate':
     if (typeof body.conversationId !== 'string' || !body.conversationId) return Response.json({ error: 'Missing conversation.' }, { status: 400 })
     if (typeof body.request !== 'string' || !body.request.trim() || body.request.length > 12000) return Response.json({ error: 'Enter a message of up to 12,000 characters.' }, { status: 400 })
@@ -36,12 +64,13 @@ export async function POST(request: Request) {
      signal: request.signal,
     })
     break
+   // Direct task submission, resume, and input answering are disabled. The generic
+   // lifecycle remains for historical reads and cancellation.
    case 'submit':
-    if (typeof body.request !== 'string' || !body.request.trim() || body.request.length > 12000) return Response.json({ error: 'Enter a request of up to 12,000 characters.' }, { status: 400 })
-    result = await backend.rpc('enqueue_task', { p_conversation_id: body.conversationId, p_request: body.request, p_origin: body.origin ?? { kind: 'direct', conversationId: body.conversationId }, p_idempotency_key: body.idempotencyKey }); break
+   case 'resume':
+   case 'answer':
+    return Response.json({ error: TASK_EXECUTION_UNAVAILABLE, code: 'TASK_EXECUTION_UNAVAILABLE' }, { status: 409 })
    case 'cancel': result = await backend.rpc('stop_task', { p_task_id: body.id, p_run_id: body.runId, p_status: 'cancelled', p_message: 'Task cancelled. Saved work is retained.' }); break
-   case 'resume': result = await backend.rpc('resume_task', { p_task_id: body.id, p_expected_version: body.version }); break
-   case 'answer': result = await backend.rpc('answer_task_input', { p_input_id: body.inputId, p_expected_version: body.version, p_answer: body.answer }); break
    default: return Response.json({ error: 'Unknown task action.' }, { status: 400 })
   }
   after(async () => {

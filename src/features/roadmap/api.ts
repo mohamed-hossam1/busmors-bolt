@@ -7,7 +7,10 @@ import type {
   DiscoveryQuestion,
   PlannedQuestion,
   RoadmapLoad,
+  RoadmapRecord,
+  RoadmapStepRecord,
   RoadmapStepStatus,
+  RoadmapVersionRecord,
 } from './types'
 
 async function roadmapRequest<T>(body: Record<string, unknown>): Promise<T> {
@@ -30,7 +33,12 @@ async function roadmapRequest<T>(body: Record<string, unknown>): Promise<T> {
 
 export async function loadActiveRoadmap(): Promise<RoadmapLoad> {
   const loaded = await roadmapRequest<Partial<RoadmapLoad>>({ action: 'load' })
-  return { roadmap: loaded.roadmap ?? null, version: loaded.version ?? null, steps: loaded.steps ?? [] }
+  return {
+    roadmap: loaded.roadmap ?? null,
+    version: loaded.version ?? null,
+    steps: loaded.steps ?? [],
+    staleContext: loaded.staleContext ?? [],
+  }
 }
 
 export interface RoadmapGenerateResult {
@@ -138,4 +146,132 @@ export async function loadDiscoveryQuestion(questionId: string): Promise<Discove
     .single()
   if (error) throw error
   return data as DiscoveryQuestion
+}
+
+export interface RoadmapHistory {
+  roadmap: RoadmapRecord
+  versions: RoadmapVersionRecord[]
+  checkins: RoadmapCheckin[]
+  learning: RoadmapLearning[]
+  pendingRevision: RoadmapVersionRecord | null
+  pendingSteps: RoadmapStepRecord[]
+}
+
+export interface RoadmapCheckin {
+  id: string
+  roadmap_id: string
+  roadmap_version_id: string
+  answers: Record<string, unknown>
+  evaluation: Record<string, unknown>
+  recommendation: string
+  status: string
+  version: number
+  created_at: string
+}
+
+export interface RoadmapLearning {
+  id: string
+  roadmap_id: string
+  milestone_key: string | null
+  hypothesis: string
+  experiment: string
+  expected_outcome: string
+  actual_outcome: string
+  evidence: unknown[]
+  learning: string
+  decision: string
+  created_at: string
+}
+
+export async function loadRoadmapHistory(roadmapId: string): Promise<RoadmapHistory> {
+  const { data, error } = await supabase.rpc('load_roadmap_history', { p_roadmap_id: roadmapId })
+  if (error) throw error
+  const loaded = (data ?? {}) as Partial<RoadmapHistory>
+  return {
+    roadmap: loaded.roadmap as RoadmapRecord,
+    versions: loaded.versions ?? [],
+    checkins: loaded.checkins ?? [],
+    learning: loaded.learning ?? [],
+    pendingRevision: loaded.pendingRevision ?? null,
+    pendingSteps: loaded.pendingSteps ?? [],
+  }
+}
+
+export async function recordRoadmapCheckin(roadmapId: string, versionId: string, answers: Record<string, unknown>): Promise<RoadmapCheckin> {
+  const { data, error } = await supabase.rpc('record_roadmap_checkin', {
+    p_roadmap_id: roadmapId,
+    p_roadmap_version_id: versionId,
+    p_answers: answers,
+  })
+  if (error) throw error
+  return data as RoadmapCheckin
+}
+
+export async function addRoadmapLearning(input: {
+  roadmapId: string
+  versionId: string | null
+  checkinId?: string | null
+  milestoneKey?: string | null
+  hypothesis: string
+  experiment: string
+  expectedOutcome: string
+  actualOutcome: string
+  evidence: unknown[]
+  learning: string
+  decision: string
+}): Promise<RoadmapLearning> {
+  const { data, error } = await supabase.rpc('add_roadmap_learning', {
+    p_roadmap_id: input.roadmapId,
+    p_roadmap_version_id: input.versionId,
+    p_checkin_id: input.checkinId ?? null,
+    p_milestone_key: input.milestoneKey ?? null,
+    p_hypothesis: input.hypothesis,
+    p_experiment: input.experiment,
+    p_expected_outcome: input.expectedOutcome,
+    p_actual_outcome: input.actualOutcome,
+    p_evidence: input.evidence,
+    p_learning: input.learning,
+    p_decision: input.decision,
+  })
+  if (error) throw error
+  return data as RoadmapLearning
+}
+
+export async function proposeRoadmapRevision(input: {
+  roadmapId: string
+  baseVersionId: string
+  expectedRoadmapVersion: number
+  request: string
+}): Promise<{ version: RoadmapVersionRecord; steps: number }> {
+  return roadmapRequest<{ version: RoadmapVersionRecord; steps: number }>({
+    action: 'proposeRevision',
+    roadmapId: input.roadmapId,
+    baseVersionId: input.baseVersionId,
+    expectedRoadmapVersion: input.expectedRoadmapVersion,
+    request: input.request,
+  })
+}
+
+export async function evaluateCheckin(checkinId: string, expectedVersion: number): Promise<{ checkin: RoadmapCheckin }> {
+  return roadmapRequest<{ checkin: RoadmapCheckin }>({
+    action: 'evaluateCheckin',
+    checkinId,
+    expectedVersion,
+  })
+}
+
+export async function decideRoadmapRevision(
+  versionId: string,
+  expectedRoadmapVersion: number,
+  action: 'approve' | 'reject',
+  note?: string | null,
+): Promise<{ version: RoadmapVersionRecord; roadmap: RoadmapRecord }> {
+  const { data, error } = await supabase.rpc('decide_roadmap_revision', {
+    p_version_id: versionId,
+    p_expected_roadmap_version: expectedRoadmapVersion,
+    p_action: action,
+    p_note: note ?? null,
+  })
+  if (error) throw error
+  return data as { version: RoadmapVersionRecord; roadmap: RoadmapRecord }
 }

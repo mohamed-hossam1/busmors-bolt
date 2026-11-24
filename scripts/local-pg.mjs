@@ -1,6 +1,6 @@
 // Shared helper for the local database checks (npm run test:db:local / test:posts:db).
-// Connects ONLY to the local PostgreSQL named by LOCAL_PG_URL (localhost only) and only
-// ever creates/drops disposable busmora_check_* databases. Never reads DATABASE_URL.
+// Connects ONLY to the local PostgreSQL named by DATABASE_URL (localhost only) and only
+// ever creates/drops disposable busmora_check_* databases. Refuses non-localhost hosts.
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
@@ -19,7 +19,7 @@ export class SetupError extends Error {}
 
 const secrets = []
 
-/** Replaces the password and the full LOCAL_PG_URL with ***. */
+/** Replaces the password and the full DATABASE_URL with ***. */
 export function redact(text) {
   let out = String(text ?? '')
   for (const secret of secrets) if (secret) out = out.split(secret).join('***')
@@ -46,7 +46,7 @@ function parseEnvFile(file) {
     const eq = line.indexOf('=')
     if (eq < 0) continue
     const key = line.slice(0, eq).trim()
-    if (key !== 'LOCAL_PG_URL' && key !== 'PSQL') continue
+    if (key !== 'DATABASE_URL' && key !== 'PSQL') continue
     let value = line.slice(eq + 1).trim()
     const quoted = value.length >= 2 && (value[0] === '"' || value[0] === "'") && value.at(-1) === value[0]
     if (quoted) value = value.slice(1, -1)
@@ -59,11 +59,11 @@ function parseEnvFile(file) {
   return values
 }
 
-/** Reads LOCAL_PG_URL and PSQL from the environment, else from .env. Nothing else. */
+/** Reads DATABASE_URL and PSQL from the environment, else from .env. Nothing else. */
 export function loadLocalEnv() {
   const file = parseEnvFile(path.join(repoRoot, '.env'))
   const pick = (key) => (process.env[key] !== undefined ? process.env[key] : file[key])
-  return { LOCAL_PG_URL: pick('LOCAL_PG_URL'), PSQL: pick('PSQL') }
+  return { DATABASE_URL: pick('DATABASE_URL'), PSQL: pick('PSQL') }
 }
 
 function setupExit(message) {
@@ -71,29 +71,29 @@ function setupExit(message) {
   process.exit(2)
 }
 
-/** Parses LOCAL_PG_URL and refuses anything that is not localhost. */
+/** Parses DATABASE_URL and refuses anything that is not localhost. */
 export function localConnection() {
   const env = loadLocalEnv()
-  const raw = (env.LOCAL_PG_URL ?? '').trim()
-  if (!raw) setupExit('LOCAL_PG_URL is not set. See .env.example.')
+  const raw = (env.DATABASE_URL ?? '').trim()
+  if (!raw) setupExit('DATABASE_URL is not set. See .env.example.')
   secrets.push(raw)
   let url
   try {
     url = new URL(raw)
   } catch {
-    setupExit('LOCAL_PG_URL could not be parsed. URL-encode special characters in the password.')
+    setupExit('DATABASE_URL could not be parsed. URL-encode special characters in the password.')
   }
   if (url.password) secrets.push(url.password)
-  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') setupExit('LOCAL_PG_URL must start with postgresql://.')
+  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') setupExit('DATABASE_URL must start with postgresql://.')
   if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)) {
-    setupExit('LOCAL_PG_URL must point to localhost. Refusing to run.')
+    setupExit('DATABASE_URL must point to localhost. Refusing to run.')
   }
   let user, password
   try {
     user = decodeURIComponent(url.username)
     password = decodeURIComponent(url.password)
   } catch {
-    setupExit('LOCAL_PG_URL could not be parsed. URL-encode special characters in the password.')
+    setupExit('DATABASE_URL could not be parsed. URL-encode special characters in the password.')
   }
   if (password) secrets.push(password)
   const host = url.hostname === '[::1]' ? '::1' : url.hostname
