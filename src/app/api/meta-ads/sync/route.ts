@@ -47,7 +47,8 @@ export async function POST(request: Request) {
   try {
     const result = await runSync({ transport: provider, workspaceId: userId, connectionRef: conn.connectionRef, account: conn.adAccount, datePreset: preset, now: () => new Date() })
     if (result.ok) {
-      await saveReport(userId, preset, conn.adAccount.id, result.report, null, manual)
+      const saved = await saveReport(userId, preset, conn.adAccount.id, result.report, null, manual)
+      if (!saved) return failure(500, 'provider_error', 'metaAdsSyncFailed')
       return Response.json({ status: 'synced' })
     }
     // Report is null on failure, so the RPC leaves the old report untouched and does
