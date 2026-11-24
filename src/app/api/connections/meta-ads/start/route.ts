@@ -23,6 +23,6 @@ export async function POST(request: Request) {
     setFlowCookie(response, META_CONNECT_COOKIE, nonce)
     return response
   } catch {
-    return failure(502, 'connection_start_failed', 'facebookConnectFailed')
+    return failure(502, 'connection_start_failed', 'adsConnectFailed')
   }
 }

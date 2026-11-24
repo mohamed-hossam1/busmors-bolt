@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import NavLink from './NavLink'
-import { Brain, LogOut, MessageSquare, CalendarDays, FolderOpen, Settings, Menu, X, Sparkles, ChevronRight, Route as RouteIcon } from 'lucide-react'
+import { Brain, LogOut, MessageSquare, CalendarDays, BarChart3, FolderOpen, Settings, Menu, X, Sparkles, ChevronRight, Route as RouteIcon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCopy } from '../hooks/useCopy'
 import { useLocaleRouter, useLocalePathname } from '../context/I18nContext'
@@ -13,7 +13,7 @@ import LanguageSwitcher from './LanguageSwitcher'
 import NotificationCenter from '../features/notifications/NotificationCenter'
 import { ROUTES } from '../shared/routes'
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, adsEnabled = false }: { children: React.ReactNode; adsEnabled?: boolean }) {
   const { t } = useCopy()
   const { session } = useAuth()
   const router = useLocaleRouter()
@@ -28,6 +28,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { to: ROUTES.APP.ROADMAP, icon: RouteIcon, label: t('navRoadmap'), shortLabel: t('navRoadmap') },
     { to: ROUTES.APP.BRAIN, icon: Brain, label: t('navBrain'), shortLabel: t('navBrain') },
     { to: ROUTES.APP.SCHEDULING, icon: CalendarDays, label: t('navCalendar'), shortLabel: t('navCalendar') },
+    ...(adsEnabled ? [{ to: ROUTES.APP.ADS, icon: BarChart3, label: t('navAds'), shortLabel: t('navAds') }] : []),
     { to: ROUTES.APP.DELIVERABLES, icon: FolderOpen, label: t('navDeliverables'), shortLabel: t('navDeliverables') },
     { to: ROUTES.APP.SETTINGS, icon: Settings, label: t('navSettings'), shortLabel: t('navSettings') },
   ]

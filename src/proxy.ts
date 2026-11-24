@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { publicSupabaseConfig } from './lib/supabase-config'
 import { defaultLocale, hasLocale, LOCALE_COOKIE, type Locale } from './lib/i18n'
 
-const PROTECTED = /^\/(employee|brain|roadmap|scheduling|deliverables|settings|onboarding)(\/|$)/
+const PROTECTED = /^\/(employee|brain|roadmap|scheduling|deliverables|settings|onboarding|ads)(\/|$)/
 const AUTH_ROUTES = /^\/(signin|signup|reset)(\/|$)/
 
 function detectLocale(request: NextRequest): Locale {
