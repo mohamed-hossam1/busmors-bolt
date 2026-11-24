@@ -40,7 +40,7 @@ export function taskBackend(supabase: SupabaseClient, workspaceId:string, token:
    return [...tasks.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at))
   },
   context:getContext,
-  async research(task,signal){const context=await getContext(task);return runMarketingResearch({client:supabase,task,signal,profile:profileFromContext(task,context),mode:task.research_mode??undefined}).then(result=>result.result)},
+   async research(task,signal,trace){const context=await getContext(task);return runMarketingResearch({client:supabase,task,signal,trace,profile:profileFromContext(task,context),mode:task.research_mode??undefined}).then(result=>result.result)},
   ai(task,operation,prompt,signal){return callAi({operation:operation as AiOperation,taskId:task.id,runId:task.run_id!,userPrompt:prompt,signal,maxTokens:operation==='route'?800:operation==='campaign'?6000:3500}, token)},
  }
 }

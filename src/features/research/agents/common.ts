@@ -44,6 +44,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
       break
     }
     let outcome
+    const startedAt = new Date().toISOString()
     try {
       outcome = await context.router.search(options.family, query, {
         signal: context.signal,
@@ -53,9 +54,40 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
         allowEscalation: options.allowEscalation,
       })
     } catch (error) {
+      context.trace?.recordTool({
+        toolName: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
+        agentId: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
+        provider: null,
+        operation: 'search',
+        status: 'failed',
+        startedAt,
+        endedAt: new Date().toISOString(),
+        input: { query, family: options.family },
+        error: error instanceof Error ? error.message : 'unknown error',
+      })
       notes.push(`Query "${query}" failed: ${error instanceof Error ? error.message : 'unknown error'}`)
       continue
     }
+    const endedAt = new Date().toISOString()
+    context.trace?.recordTool({
+      toolName: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
+      agentId: options.family === 'page' ? 'firecrawl' : options.family === 'semantic' ? 'exa' : 'tavily',
+      provider: outcome.primary,
+      operation: 'search',
+      status: outcome.ok ? 'completed' : 'partial',
+      startedAt,
+      endedAt,
+      input: { query, family: options.family },
+      output: {
+        query,
+        ok: outcome.ok,
+        count: outcome.candidates.length,
+        escalated: outcome.escalated,
+        results: outcome.candidates.slice(0, 10).map(candidate => ({ url: candidate.url, title: candidate.title ?? '' })),
+        notes: outcome.notes.slice(0, 3),
+      },
+      error: outcome.ok ? null : outcome.message ?? null,
+    })
     executed.push(query)
     addUsage(usage, outcome.usage)
     for (const candidate of outcome.candidates) if (!candidates.has(candidate.url)) candidates.set(candidate.url, candidate)
@@ -96,6 +128,7 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
       if (cached) sources.set(cached.id, cached)
       continue
     }
+    const openedStartedAt = new Date().toISOString()
     try {
       const openedPage = await context.router.open(candidate.url, { signal: context.signal, sector: options.sector, geography: options.geography })
       addUsage(usage, openedPage.usage)
@@ -105,6 +138,24 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
       }
       for (const note of openedPage.outcome.notes) if (!notes.includes(note)) notes.push(note)
       const source = openedPage.outcome.sources[0]
+      context.trace?.recordTool({
+        toolName: 'firecrawl',
+        agentId: 'firecrawl',
+        provider: 'firecrawl',
+        operation: 'open_page',
+        status: source && source.availability === 'retrieved' ? 'completed' : 'partial',
+        startedAt: openedStartedAt,
+        endedAt: new Date().toISOString(),
+        input: { url: candidate.url },
+        output: {
+          url: candidate.url,
+          availability: source?.availability ?? 'unknown',
+          title: source?.title ?? '',
+          excerptHead: source?.excerpt ? source.excerpt.slice(0, 500) : '',
+          error: source?.blockedReason ?? null,
+        },
+        error: source && source.availability !== 'retrieved' ? source.blockedReason : null,
+      })
       await context.emit({
         instanceId: crypto.randomUUID(),
         correlationId: crypto.randomUUID(),

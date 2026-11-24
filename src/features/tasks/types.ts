@@ -21,6 +21,7 @@ export interface TaskCheckpoint {
 export interface ExecutionTask {
  id:string;workspace_id:string;conversation_id:string;type:TaskIntent;status:TaskStatus;version:number;origin:TaskOrigin;research_mode:ResearchMode|null
  user_request:string;checkpoint:TaskCheckpoint;run_id:string|null;runner_id:string|null;result_summary:string|null;attempts:number
+ trace_id?:string|null
  allowance:{calls:number;pages:number;tokens:number;seconds:number};consumption:{calls?:number;tokensAccounted?:number}
  created_at:string;updated_at:string
 }

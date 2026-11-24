@@ -1,5 +1,6 @@
 import 'server-only'
 import type { AiCallResult } from '../lib/agents'
+import type { TraceCollector } from './observability'
 import type { ExecutionTask, ResearchRunResult, RouteDecision, TaskCheckpoint, TaskContext, TaskOutput } from '../features/tasks/types'
 import { isResearchMode, type ResearchMode } from '../features/research/contracts'
 import { explicitResearchRequest, inferResearchMode, routeRequest } from '../features/research/orchestrator/orchestrator'
@@ -12,8 +13,8 @@ export interface TaskBackend {
  list():Promise<ExecutionTask[]>
  context(task:ExecutionTask):Promise<TaskContext>
  ai(task:ExecutionTask,operation:string,prompt:string,signal:AbortSignal):Promise<AiCallResult>
- /** Marketing research runs the Director and persists cited sources, claims and the PDF report. */
- research?(task:ExecutionTask,signal:AbortSignal):Promise<ResearchRunResult>
+  /** Marketing research runs the Director and persists cited sources, claims and the PDF report. */
+  research?(task:ExecutionTask,signal:AbortSignal,trace?:TraceCollector):Promise<ResearchRunResult>
 }
 export class TaskFailure extends Error {
  code:string;retryable:boolean
@@ -116,7 +117,7 @@ export function aiFailure(result:AiCallResult):TaskFailure {
  return new TaskFailure(code,message,!!result.retryable)
 }
 
-export async function executeTask(backend: TaskBackend, initial:ExecutionTask,signal:AbortSignal){
+export async function executeTask(backend: TaskBackend, initial:ExecutionTask,signal:AbortSignal,trace?:TraceCollector){
   let task=initial,stepId:string|undefined
   const check=()=>{if(signal.aborted)throw new DOMException('Execution interrupted','AbortError')}
   const checkpoint=async(next:TaskCheckpoint,type?:string)=>{
@@ -124,15 +125,19 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
   }
   const step=async(agent:string,label:string,operation:()=>Promise<unknown>)=>{
    check();stepId=crypto.randomUUID()
+   const stepStartedAt=new Date().toISOString()
+   trace?.recordAgent({agentId:agent,agentRole:agent==='orchestrator'?'orchestrator':'subagent',label,status:'running',startedAt:stepStartedAt,runId:task.run_id,attempt:task.attempts})
    await backend.rpc('record_task_step',{p_task_id:task.id,p_run_id:task.run_id,p_instance_id:stepId,p_agent:agent,p_label:label,p_status:'running'})
    const value=await operation();check()
+   trace?.recordAgent({agentId:agent,agentRole:agent==='orchestrator'?'orchestrator':'subagent',label,status:'completed',startedAt:stepStartedAt,endedAt:new Date().toISOString(),runId:task.run_id,attempt:task.attempts})
    await backend.rpc('record_task_step',{p_task_id:task.id,p_run_id:task.run_id,p_instance_id:stepId,p_agent:agent,p_label:label,p_status:'completed',p_output:{summary:label+' completed'}})
    stepId=undefined;return value
   }
   const call=async(operation:string,prompt:string)=>{
    let result:AiCallResult={ok:false,text:''}
    for(let attempt=0;attempt<2;attempt++){
-    check();result=await backend.ai(task,operation,prompt,signal);check()
+    check();const callStartedAt=new Date().toISOString();result=await backend.ai(task,operation,prompt,signal);check()
+    trace?.recordModel({provider:result.provider,model:result.model,operation,fallbackUsed:result.fallbackUsed,usage:result.usage,startedAt:callStartedAt,endedAt:new Date().toISOString(),runId:task.run_id,retryAttempt:attempt+1,error:result.ok?null:(result.reason??result.error??'provider_error'),outputText:result.ok?result.text:null})
     if(result.ok)return result.text
     if(!result.retryable||attempt===1)throw aiFailure(result)
     // A per-minute token limit (429) does not clear in 700 ms; wait long enough
@@ -192,7 +197,7 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
       if(!runner)throw new TaskFailure('research_unavailable','Public research is not configured on this server. No sources have been retrieved.')
       // The Director owns its own subagent budget; the runner records a visible step
       // per specialist so the Canvas and the task trace show the real sequence.
-      const result=await runner(task,signal) as ResearchRunResult
+       const result=await runner(task,signal,trace) as ResearchRunResult
       output={reply:result.reply,posts:[],document:result.document,sourceRefs:result.research.sourceIds,limitations:result.research.coverageGaps,research:result.research}
       partial=result.partial
      }else if(route.intent==='content_creation'||route.intent==='campaign_planning'){
@@ -222,11 +227,13 @@ export async function executeTask(backend: TaskBackend, initial:ExecutionTask,si
      check()
      const saved=await backend.rpc<{taskId:string;documentId:string|null;offerId:string|null;postIds:string[];messageIds:string[]}>('save_task_result',{p_task_id:task.id,p_run_id:task.run_id,p_result:task.checkpoint.output,p_partial:!!task.checkpoint.partial})
      if(saved)task.checkpoint={...task.checkpoint,outputRefs:saved}
+     trace?.setResult({status:task.checkpoint.partial?'partial':'completed',route:task.type,finalReply:task.checkpoint.output?.reply??null,completedAt:new Date().toISOString()})
     }
    }catch(error){
     // Server-side detail for operators; the owner sees the stable message below.
-    console.error('[task-executor]', task.id, task.checkpoint.phase, error)
-    if(signal.aborted){
+     console.error('[task-executor]', task.id, task.checkpoint.phase, error)
+     trace?.setResult({status:signal.aborted?'interrupted':(task.checkpoint.phase==='persist'?'interrupted':'failed'),route:task.type,completedAt:new Date().toISOString()})
+     if(signal.aborted){
      // Abort must release the lease now; otherwise the task looks "running" until
      // recover_tasks reaps it ~120s later. Persist the same interrupted state the
      // non-abort path uses so the owner can resume from saved progress.

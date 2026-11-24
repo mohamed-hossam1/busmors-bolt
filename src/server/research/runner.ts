@@ -36,6 +36,7 @@ import {
 } from './providers'
 import type { RouterProviders } from '../../features/research/providers/router'
 import type { ExecutionTask } from '../../features/tasks/types'
+import type { ResearchTraceSink } from '../../features/research/observability'
 
 /** Build the real provider set from server-side environment keys. */
 export function createRouterProviders(): RouterProviders {
@@ -71,6 +72,8 @@ export interface ResearchRunnerOptions {
   providers?: RouterProviders
   includeStubs?: boolean
   authorizedGaps?: string[]
+  /** Optional admin trace sink; tool calls are mirrored into it (no I/O here). */
+  trace?: ResearchTraceSink
 }
 
 export interface ResearchRunnerResult {
@@ -108,7 +111,7 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
   const workers = input.includeStubs
     ? brief.tracks.map(track => createStubSubagent(track))
     : createResearchWorkers({ authorizedGaps: input.authorizedGaps })
-  const director = new ResearchDirector({ ledger, router, workers, sink })
+  const director = new ResearchDirector({ ledger, router, workers, sink, trace: input.trace })
 
   let directorResult
   try {
