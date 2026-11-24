@@ -64,6 +64,9 @@ export function selectTracks(request: string, mode: ResearchMode): ResearchTrack
 /** A usable category label from the description/request, not just the sector. */
 export function inferCategory(text: string, sector: string): { label: string; labelAr: string } {
   const lower = text.toLowerCase()
+  if (/تسويق|ماركتنج|martech|marketing/i.test(lower) && /منصة|أداة|اداة|ذكاء|ai|automation|أتمتة|platform/i.test(lower)) {
+    return { label: 'ai marketing platform', labelAr: 'منصة تسويق ذكية' }
+  }
   const exact = QUERY_LEXICON.find(item => [item.english, item.egyptian, item.msa, item.arabizi].some(term => term && term.length > 3 && lower.includes(term.toLowerCase())))
   if (exact) return { label: exact.concept, labelAr: exact.msa }
   const token = QUERY_LEXICON.find(item => item.concept.split(/\s+/).some(word => word.length >= 5 && lower.includes(word)))
@@ -76,6 +79,9 @@ export interface BriefInput {
   mode: ResearchMode
   profile: BusinessProfile
   now?: Date
+  aiQueries?: string[]
+  knownCompetitors?: string[]
+  category?: { label: string; labelAr: string }
 }
 
 /** Turn a query into a ResearchBrief. No retrieval happens here. */
@@ -85,7 +91,7 @@ export function buildBrief(input: BriefInput): ResearchBrief {
   const budget = allocateBudget(input.mode, trackList)
   const governorates = input.profile.governorates.length ? input.profile.governorates : inferGovernorates(input.request)
   const sector = routeForSector(input.profile.sector).sector
-  const category = inferCategory(`${input.profile.description} ${input.request}`, sector)
+  const category = input.category ?? inferCategory(`${input.profile.description} ${input.request}`, sector)
   return {
     id: `brief:${hashBrief(input.request + input.mode + now)}`,
     mode: input.mode,
@@ -103,11 +109,13 @@ export function buildBrief(input: BriefInput): ResearchBrief {
     tracks: trackList,
     budget,
     stopRules: {
-      maxQueryRounds: input.mode === 'deep' ? 2 : 1,
+      maxQueryRounds: input.mode === 'quick' ? 1 : 2,
       minNewEntityPercent: 0.05,
       entityTarget: input.mode === 'quick' ? 8 : input.mode === 'standard' ? 14 : 24,
     },
     createdAt: now,
+    aiQueries: input.aiQueries,
+    knownCompetitors: input.knownCompetitors,
   }
 }
 
@@ -253,30 +261,46 @@ export function inferGovernorates(request: string): string[] {
  * retrieval starts from the actual business (e.g. "Man el Nasr") rather than a
  * broad category. Brand and category terms are prioritised first.
  */
-export function buildResearchQueries(brief: ResearchBrief, limit = 8): string[] {
-  const brand = (brief.businessProfile.name ?? '').trim()
+export function buildResearchQueries(brief: ResearchBrief, limit = 10): string[] {
+  // AI-First: If intelligence profiler provided search queries, use them directly!
+  if (brief.aiQueries && brief.aiQueries.length > 0) {
+    return brief.aiQueries.slice(0, limit)
+  }
+
   const category = brief.category.label.trim()
   const categoryAr = brief.category.labelAr.trim()
-  const audience = (brief.businessProfile.audience ?? '').trim()
   const governorates = brief.geography.governorates.slice(0, 3)
-  const geo = governorates[0] ?? brief.geography.label
-  const request = brief.request.trim()
+  const rawGeo = governorates[0] ?? brief.geography.label
+  const geo = rawGeo.includes('unverified') ? 'Egypt' : rawGeo.replace(/\s*\(.*\)/, '').trim()
+  const geoAr = geo === 'Cairo' ? 'القاهرة' : geo === 'Giza' ? 'الجيزة' : geo === 'Alexandria' ? 'الإسكندرية' : 'مصر'
 
   const candidates: string[] = []
-  if (brand) {
-    candidates.push(brand)
-    candidates.push(`${brand} competitors`)
-    candidates.push(`${brand} competitors ${geo}`.trim())
-    if (category) candidates.push(`${brand} ${category} ${geo}`.trim())
+
+  // Service & Offering specific queries (NEVER startup brand name)
+  if (brief.businessProfile.offerings && brief.businessProfile.offerings.length > 0) {
+    for (const offering of brief.businessProfile.offerings.slice(0, 3)) {
+      candidates.push(`أفضل شركات ${offering} في ${geoAr}`)
+      candidates.push(`أسعار ${offering} في مصر`)
+      candidates.push(`منصات ${offering} في مصر`)
+      candidates.push(`أدوات ${offering} للشركات`)
+    }
   }
-  if (request && request.toLowerCase() !== brand.toLowerCase() && request.length <= 80) {
-    candidates.push(request)
+
+  if (categoryAr) {
+    candidates.push(`أفضل ${categoryAr} في ${geoAr}`)
+    candidates.push(`أسعار باقات ${categoryAr} ${geoAr}`)
+    candidates.push(`شركات ${categoryAr} في ${geoAr}`)
+    candidates.push(`أدوات ${categoryAr} للشركات في مصر`)
+    candidates.push(`منصات ${categoryAr} في مصر`)
+    candidates.push(`مقارنة باقات ${categoryAr} مصر`)
   }
+
   if (category) {
-    candidates.push(`${category} ${geo}`.trim())
-    for (const governorate of governorates.slice(1)) candidates.push(`${category} ${governorate}`.trim())
-    if (audience) candidates.push(`${category} ${audience}`.trim())
-    if (categoryAr) candidates.push(`${categoryAr} ${geo}`.trim())
+    candidates.push(`${category} platforms ${geo}`.trim())
+    candidates.push(`${category} pricing plans ${geo}`.trim())
+    candidates.push(`${category} competitors ${geo}`.trim())
+    candidates.push(`${category} alternatives ${geo}`.trim())
+    candidates.push(`top ${category} companies ${geo}`.trim())
   }
 
   const seen = new Set<string>()

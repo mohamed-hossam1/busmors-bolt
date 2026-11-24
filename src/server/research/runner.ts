@@ -74,6 +74,9 @@ export interface ResearchRunnerOptions {
   authorizedGaps?: string[]
   /** Optional admin trace sink; tool calls are mirrored into it (no I/O here). */
   trace?: ResearchTraceSink
+  aiQueries?: string[]
+  knownCompetitors?: string[]
+  category?: { label: string; labelAr: string }
 }
 
 export interface ResearchRunnerResult {
@@ -107,7 +110,14 @@ export async function runMarketingResearch(input: ResearchRunnerOptions): Promis
 
   const sink = createEventSink(client, task.id, task.run_id!)
   const router = new ProviderRouter(ledger, input.providers ?? createRouterProviders(), task.id)
-  const brief = buildBrief({ request: task.user_request, mode, profile: input.profile })
+  const brief = buildBrief({
+    request: task.user_request,
+    mode,
+    profile: input.profile,
+    aiQueries: input.aiQueries,
+    knownCompetitors: input.knownCompetitors,
+    category: input.category,
+  })
   const workers = input.includeStubs
     ? brief.tracks.map(track => createStubSubagent(track))
     : createResearchWorkers({ authorizedGaps: input.authorizedGaps })

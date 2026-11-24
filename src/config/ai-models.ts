@@ -249,6 +249,7 @@ export function getModelConfigForOperation(operation: string): ModelConfig {
       return AI_MODELS.fastChat
     case 'route':
     case 'clarify':
+    case 'research_profile':
       return AI_MODELS.router
     case 'copy':
       return AI_MODELS.contentWriter

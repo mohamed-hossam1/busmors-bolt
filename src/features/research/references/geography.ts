@@ -37,16 +37,34 @@ export interface GeographyScope {
   egyptWide: boolean
 }
 
-/** Derive an honest scope from the brief instead of assuming nationwide coverage. */
 export function scopeFromGovernorates(governorates: string[], businessDescription = ''): GeographyScope {
-  const normalized = [...new Set(governorates.map(normalizeGovernorate).filter((name): name is string => !!name))]
+  const isNationwide = governorates.some(g => /(?:egypt|مصر|eg|national|all)/i.test(g)) ||
+    /(?:egypt|مصر|الجمهورية|all egypt|nationwide|نطاق عام)/i.test(businessDescription)
+
+  const normalized = [...new Set(governorates.map(normalizeGovernorate).filter((name): name is string => !!name && name !== 'Egypt'))]
   if (!normalized.length) {
     const mentioned = EGYPT_GOVERNORATES.filter(name => businessDescription.toLowerCase().includes(name.toLowerCase()))
-    if (mentioned.length === 0) return { label: 'Egypt (unverified scope)', governorates: [], egyptWide: false }
+    if (mentioned.length === 0) {
+      return { label: 'Egypt (Nationwide)', governorates: ['Cairo', 'Giza', 'Alexandria'], egyptWide: true }
+    }
     return { label: `Egypt — ${mentioned.join(', ')}`, governorates: mentioned, egyptWide: mentioned.length === EGYPT_GOVERNORATES.length }
   }
-  const egyptWide = normalized.length === EGYPT_GOVERNORATES.length
+  const egyptWide = normalized.length === EGYPT_GOVERNORATES.length || isNationwide
   return { label: egyptWide ? 'Egypt (all governorates)' : `Egypt — ${normalized.join(', ')}`, governorates: normalized, egyptWide }
+}
+
+export function geographyLabelAr(label: string): string {
+  if (label.includes('all governorates') || label.includes('Nationwide')) return 'مصر (نطاق عام)'
+  if (label.includes('unverified')) return 'مصر'
+  if (label.startsWith('Egypt — ')) {
+    const parts = label.replace('Egypt — ', '').split(', ').map(g => {
+      const arNames: Record<string, string> = { Cairo: 'القاهرة', Giza: 'الجيزة', Alexandria: 'الإسكندرية', Qalyubia: 'القليوبية', Sharqia: 'الشرقية', Dakahlia: 'الدقهلية' }
+      return arNames[g] ?? g
+    })
+    return `مصر — ${parts.join('، ')}`
+  }
+  if (label === 'Egypt') return 'مصر'
+  return label
 }
 
 export function isGreaterCairo(governorate: string): boolean {

@@ -79,19 +79,21 @@ export function routeSources(sector: string, options: { egyptOnly?: boolean } = 
 export function inferSector(text: string): string {
   const lower = text.toLowerCase()
   const rules: readonly [string, RegExp][] = [
-    ['saas', /\b(?:saas|software|app|platform|analytics|crm)\b/],
-    ['retail', /\b(?:shop|store|retail|products|goods|ecommerce|e-commerce)\b|\u0645\u062a\u062c\u0631|\u0645\u062d\u0644/],
-    ['restaurants', /\b(?:restaurant|cafe|food|menu|kitchen)\b|\u0645\u0637\u0639\u0645|\u0627\u0644\u0645\u0627\u0646\u064a\u0648/],
-    ['health', /\b(?:clinic|dental|doctor|health|pharmacy)\b|\u0639\u064a\u0627\u062f|\u0637\u0628/],
-    ['education', /\b(?:school|course|training|academy|education)\b|\u0645\u062f\u0631\u0633|\u062f\u0648\u0631\u0629/],
-    ['real_estate', /\b(?:property|apartment|villa|real estate|broker)\b|\u0639\u0642\u0627\u0631|\u0634\u0642\u0629/],
-    ['fmcg', /\b(?:snack|beverage|fmcg|consumer goods)\b/],
-    ['construction', /\b(?:ceramic|tile|repair|contractor|construction|tuckpointing|waterproofing)\b|\u0633\u064a\u0631\u0627\u0645\u064a\u0643|\u0628\u0646\u0627\u0621/],
-    ['b2b', /\b(?:b2b|supplier|packaging|manufacturer|wholesale)\b/],
-    ['professional_service', /\b(?:consultant|accountant|lawyer|agency|advisory)\b/],
+    ['saas', /\b(?:saas|software|app|platform|analytics|crm|martech|automation|marketing\s+platform|ai\s+platform|dashboard|b2b\s+saas)\b|منصة|برمجيات|برنامج|تطبيق|أداة|اداة|تسويق\s*ذكي|تسويق\s*رقمي|ذكاء\s*اصطناعي|أتمتة|اتمتة|سوشيال\s*ميديا|تحليلات|ماركتنج|شات\s*بوت/i],
+    ['retail', /\b(?:shop|store|retail|products|goods|ecommerce|e-commerce|marketplace)\b|متجر|محل|تجارة\s*إلكترونية|تجارة\s*الكترونية|تسوق|سوق/i],
+    ['restaurants', /\b(?:restaurant|cafe|food|menu|kitchen|catering)\b|مطعم|كافيه|مقهى|أكل|وجبات|مطبخ|حلويات/i],
+    ['health', /\b(?:clinic|dental|doctor|health|pharmacy|medical|hospital)\b|عيادة|طبيب|دكتور|صيدلية|أسنان|مستشفى|مركز\s*طبي/i],
+    ['education', /\b(?:school|course|training|academy|education|edtech|tutor)\b|مدرسة|دورة|كورس|تدريب|أكاديمية|تعليم|منصة\s*تعليمية/i],
+    ['real_estate', /\b(?:property|apartment|villa|real\s*estate|broker|realtor)\b|عقار|عقارات|شقة|فيلا|وسيط\s*عقاري|سمسار|تطوير\s*عقاري/i],
+    ['construction', /\b(?:ceramic|tile|repair|contractor|construction|tuckpointing|waterproofing|finishing)\b|سيراميك|بناء|مقاولات|تشطيب|ترميم|عزل|سباكة|نجارة/i],
+    ['fmcg', /\b(?:snack|beverage|fmcg|consumer\s*goods|food\s*products)\b|سلع\s*استهلاكية|أغذية|مشروبات|منتجات\s*غذائية/i],
+    ['b2b', /\b(?:b2b|supplier|packaging|manufacturer|wholesale|distributor)\b|توريد|مورد|موزع|جملة|مصنع|تغليف|شركات/i],
+    ['professional_service', /\b(?:consultant|consulting|accountant|lawyer|agency|advisory|freelance|marketing\s+agency)\b|استشارات|مستشار|محاسب|محامي|وكالة|أيجنسي|ايجنسي|خدمات\s*مهنية|خدمات\s*قانونية/i],
   ]
   const match = rules.find(([, pattern]) => pattern.test(lower))
-  return match ? match[0] : 'professional_service'
+  if (match) return match[0]
+  if (/(?:digital|online|platform|ai|ذكاء|رقمي|تقنية|tech)/i.test(lower)) return 'saas'
+  return 'professional_service'
 }
 
 export function authorityOf(sourceId: string): number {

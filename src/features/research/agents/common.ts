@@ -23,6 +23,42 @@ export interface Gathered {
   notes: string[]
 }
 
+function prioritizeCandidates(candidates: CandidateUrl[]): CandidateUrl[] {
+  const scored = candidates.map(candidate => {
+    const url = candidate.url.toLowerCase()
+    const title = (candidate.title ?? '').toLowerCase()
+    let score = 0
+
+    // Filter out forum threads, complaint sites, social media login walls
+    if (/(?:adslgate\.com|fatakat|shakawa|quora\.com|complaint|threads\/|login|accounts\/login)/i.test(url)) {
+      return { candidate, score: -100 }
+    }
+
+    // High priority: pricing, packages, plans, alternatives, features
+    if (/(?:pricing|price|prices|plans|packages|rates|features|alternatives|compare|باقات|أسعار|اسعار|خطط|بدائل|مقارنة)/i.test(url) ||
+        /(?:pricing|plans|packages|أسعار|اسعار|باقات|خطط|بدائل|مقارنة)/i.test(title)) {
+      score += 20
+    }
+
+    // Official company/platform domains or landing pages
+    try {
+      const parsed = new URL(candidate.url)
+      const pathDepth = parsed.pathname.split('/').filter(Boolean).length
+      if (pathDepth <= 1) score += 10
+      else if (pathDepth <= 2) score += 5
+    } catch {
+      // ignore
+    }
+
+    return { candidate, score }
+  })
+
+  return scored
+    .filter(item => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.candidate)
+}
+
 /**
  * Shared retrieval helper for every specialist. It reserves through the shared
  * ledger, records a visible tool_call per provider, and never opens the same page twice.
@@ -112,8 +148,9 @@ export async function gather(context: WorkerContext, options: GatherOptions): Pr
     })
   }
 
+  const prioritizedCandidates = prioritizeCandidates([...candidates.values()])
   let opened = 0
-  for (const candidate of candidates.values()) {
+  for (const candidate of prioritizedCandidates) {
     if (opened >= options.maxOpen) break
     if (Date.now() > context.deadlineAt) {
       notes.push('Stopped opening pages: the run time budget was exhausted.')

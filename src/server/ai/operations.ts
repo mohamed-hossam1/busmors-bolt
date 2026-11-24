@@ -14,11 +14,12 @@ export const OPERATIONS = {
   diagnose: `${rules} Produce a useful Markdown diagnosis in the user's language: observations, plausible constraint, evidence versus hypotheses, alternative explanations, practical constraints, and recommended action. Low qualification should consider offer/qualification/response processes; low demand should consider audience/message/route. Do not always recommend more posts or spend.`,
   roadmap: `${rules} Return JSON {"title":"...","summary":"...","uncertainty":"...","steps":[{"key":"unique-key","title":"...","objective":"...","rationale":"...","evidence":[],"uncertainty":"...","responsibility":"owner"|"system","executionMode":"director"|"owner","inputs":[],"dependencies":["earlier-step-key"],"expectedOutput":"...","checklist":["..."],"effort":"...","externalApproval":null}]}. Return a complete practical plan, 3-8 steps. No Now/Next/Later or horizon fields. Dependencies form a DAG and reference only earlier steps. Respect actual conversion route, goal, current facts, assets and constraints. Owner must approve activation. Unsupported external actions are owner steps with a usable checklist.`,
   analyze: `${rules} Explain supplied deterministically computed metrics, definitions, source period and limitations. Never calculate or replace values. Discuss alternative explanations and a useful next action. This is one-off analysis, no recurring monitoring or automatic plan changes.`,
+  research_profile: `${rules} Return JSON: {"sector":"...","category":"...","categoryAr":"...","searchQueries":["..."],"knownCompetitors":["..."],"targetAudience":"...","offeringsSummary":"..."}. The company is an early-stage startup or SME; NEVER include this company's own brand name in search queries (do not search for brand competitors). Generate 6 to 8 service-based, offering-based, and pricing-based search queries to discover actual direct competitors and their pricing packages in the target market (Egypt/MENA). Suggest 3-5 real known competitors in Egypt or the Arab world providing these services.`,
 } as const
 export type Operation = keyof typeof OPERATIONS
 export function validateOutput(operation: Operation, text: string): boolean {
   if (!text.trim() || text.length > 80000) return false
-  if (['chat','diagnose','analyze','brain_answer','title'].includes(operation)) return true
+  if (['chat','diagnose','analyze','brain_answer','title','research_profile'].includes(operation)) return true
   if (operation === 'orchestrate') return validateOrchestratorDecision(text)
   try {
     const v = JSON.parse(text)
