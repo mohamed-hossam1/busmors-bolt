@@ -2,6 +2,22 @@ import { supabase } from './supabase'
 
 export type AiOperation = 'chat' | 'roadmap' | 'roadmap_answer' | 'roadmap_revision' | 'roadmap_checkin'
 
+export interface ProviderAttemptInfo {
+  provider: string
+  model: string
+  attemptIndex: number
+  fallbackUsed: boolean
+  status: 'completed' | 'failed' | 'skipped' | 'aborted'
+  error?: string | null
+  errorCategory?: 'rate_limit' | 'timeout' | 'invalid_request' | 'auth_error' | 'server_error' | 'network_error' | 'context_limit' | 'empty_response' | 'invalid_output' | 'aborted' | 'disallowed' | null
+  statusCode?: number | null
+  usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number } | null
+  usageKnown: boolean
+  startedAt: string
+  endedAt: string
+  durationMs: number
+}
+
 export interface AiCallResult {
   ok: boolean
   text: string
@@ -9,12 +25,14 @@ export interface AiCallResult {
   reason?: string
   retryable?: boolean
   usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number }
+  usageKnown?: boolean
   callId?: string
   /** Winning provider/model/attempt after transparent fallback (fields only). */
   provider?: string
   model?: string
   attempt?: number
   fallbackUsed?: boolean
+  attempts?: ProviderAttemptInfo[]
 }
 
 /** Provider credentials never leave the authenticated Next.js gateway. */

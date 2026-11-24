@@ -42,7 +42,7 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_ANON_KEY: env.anonKey,
       SUPABASE_URL: env.supabaseUrl,
       ...(env.serviceRoleKey ? { SUPABASE_SERVICE_ROLE_KEY: env.serviceRoleKey } : {}),
-      ...(env.aiApiKey ? { AI_API_KEY: env.aiApiKey } : {}),
+      ...(env.aiApiKey ? { GROQ_API_KEY: env.aiApiKey } : {}),
       ...(env.aiProvider ? { AI_PROVIDER: env.aiProvider } : {}),
       ...(env.aiModel ? { AI_MODEL: env.aiModel } : {}),
       ...(env.firecrawlApiKey ? { FIRECRAWL_API_KEY: env.firecrawlApiKey } : {}),

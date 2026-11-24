@@ -123,3 +123,81 @@ export const EMPTY_METRICS: OrchestratorMetrics = {
 export function isDirectorIntent(value: unknown): value is DirectorIntent {
   return typeof value === 'string' && (DIRECTOR_INTENTS as readonly string[]).includes(value)
 }
+
+/**
+ * Orchestrator V2 logical internal capabilities (spec §2.4).
+ *
+ * Names are proposed contracts, not evidence of existing implementations. The
+ * central tool registry + server-side allowlist apply. The Orchestrator must not
+ * require a tool call for data already present in trusted runtime context, and no
+ * capability is exposed to the model unless it is implemented and enabled.
+ */
+export type OrchestratorCapability =
+  | 'read_business_brain'
+  | 'propose_brain_change'
+  | 'delegate_to_director'
+  | 'get_task_status'
+  | 'get_product_knowledge'
+
+export interface OrchestratorCapabilitySpec {
+  name: OrchestratorCapability
+  responsibility: string
+  boundary: string
+}
+
+export const ORCHESTRATOR_CAPABILITIES: readonly OrchestratorCapabilitySpec[] = [
+  {
+    name: 'read_business_brain',
+    responsibility: 'Read approved current business facts, optionally by relevant reference/query.',
+    boundary: 'Read-only, authorized workspace.',
+  },
+  {
+    name: 'propose_brain_change',
+    responsibility: 'Create an add/edit/delete proposal with source, rationale and old/new values as applicable.',
+    boundary: 'Creates a pending approval only; cannot approve or apply it.',
+  },
+  {
+    name: 'delegate_to_director',
+    responsibility: 'Submit an authorized marketing task with structured context or a continuation reference.',
+    boundary: 'Validated handoff, deduplicated by request; no specialist selection or execution planning.',
+  },
+  {
+    name: 'get_task_status',
+    responsibility: 'Retrieve factual execution status and available result references.',
+    boundary: 'Read-only, authorized task/workspace; no invented progress.',
+  },
+  {
+    name: 'get_product_knowledge',
+    responsibility: 'Retrieve the maintained Busmora feature/workflow reference if not already provided.',
+    boundary: 'Read-only; current capabilities, not speculation.',
+  },
+] as const
+
+/**
+ * Director handoff payload (spec §2.4). The runtime derives workspace identity and
+ * authorization from the authenticated session, never from model-provided ids.
+ */
+export interface DirectorHandoff {
+  /** Original user request, or a secure lossless reference to it. */
+  originalRequest: string
+  intendedOutcome: string
+  relevantConversation: { role: string; content: string }[]
+  approvedBrainContext: BrainFact[]
+  /** Clearly labelled unapproved facts used as temporary context. */
+  unapprovedFacts: string[]
+  constraints: string[]
+  /** Task/deliverable references for revisions. */
+  revisionRefs: string[]
+  /** Requested output language. */
+  outputLanguage: string
+}
+
+/** Status contract returned by get_task_status — factual, never invented. */
+export interface TaskStatusSnapshot {
+  taskId: string | null
+  status: OrchestratorOutcome | 'running' | 'queued' | 'awaiting_input'
+  /** Available result references, if any (ids only). */
+  resultRefs: string[]
+  /** True when this reflects an actual confirmed runtime state. */
+  confirmed: boolean
+}

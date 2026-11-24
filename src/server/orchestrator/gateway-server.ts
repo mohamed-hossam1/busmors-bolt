@@ -8,7 +8,7 @@ import { callOrchestratorModel } from './model'
 import { runOrchestrator, type OrchestratorDeps, type OrchestratorInput, type PriorRun } from '../../features/orchestrator/gateway'
 import { evaluateGuardrails, detectGreeting } from '../../features/orchestrator/guardrails'
 import { retrieveBrain, type BrainReader, type BrainRow } from '../../features/orchestrator/brain-tool'
-import { buildBrainAnswerPrompt, buildOrchestratePrompt } from '../../features/orchestrator/prompt'
+import { buildBrainAnswerPrompt, buildOrchestratePrompt, ORCHESTRATOR_SYSTEM_PROMPT, BRAIN_ANSWER_SYSTEM_PROMPT } from '../../features/orchestrator/prompt'
 import type { OrchestratorResult } from '../../features/orchestrator/contracts'
 import { normalizeDecision } from '../../features/orchestrator/decision'
 import { createTraceCollector, type TraceCollector } from '../observability'
@@ -95,17 +95,22 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
       runId: null,
       attempt: 1,
       instanceId: event.instanceId,
+      parentEventId: event.parentInstanceId ?? null,
       startedAt: event.startedAt,
       endedAt: event.endedAt,
       error: event.failureReason ?? null,
-      parentEventId: event.parentInstanceId ?? null,
     }
     if (event.type === 'tool_call') {
-      trace.recordTool({ ...base, toolName: event.agentId, agentId: event.agentId, agentRole: event.agentRole, status: event.status, operation: event.label })
+      trace.recordTool({ ...base, toolName: event.agentId, agentId: event.agentId, agentRole: event.agentRole, status: event.status, operation: event.label, input: event.parameters })
     } else {
       trace.recordAgent({ ...base, agentId: event.agentId, agentRole: event.agentRole, label: event.label, status: event.status })
     }
   }
+
+  // The Orchestrator agent instance is the parent of all model/tool events in this
+  // trace; minted once so every child event nests under a single root node.
+  const orchestratorInstanceId = crypto.randomUUID()
+  trace.recordAgent({ agentId: 'orchestrator', agentRole: 'orchestrator', instanceId: orchestratorInstanceId, label: 'Orchestrator', status: 'running', startedAt: new Date().toISOString() })
 
   const safe = async (label: string, run: () => unknown) => {
     try {
@@ -121,9 +126,10 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
     greet: (text) => detectGreeting(text),
     async decide(context) {
       const startedAt = new Date().toISOString()
+      const userPrompt = buildOrchestratePrompt({ request: context.request, history: context.history, region: context.region, hint: context.hint })
       const result = await callOrchestratorModel({
         operation: 'orchestrate',
-        userPrompt: buildOrchestratePrompt({ request: context.request, history: context.history, region: context.region, hint: context.hint }),
+        userPrompt,
         accessToken: token,
         signal: context.signal,
       })
@@ -137,6 +143,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
         startedAt,
         endedAt: new Date().toISOString(),
         error: result.ok ? null : result.reason ?? result.error ?? 'provider_error',
+        input: { systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT, userPrompt },
         outputText: result.ok ? result.text : null,
       })
       if (!result.ok) throw new Error(result.reason ?? 'provider_error')
@@ -160,9 +167,10 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
     },
     async answerFromBrain(context) {
       const startedAt = new Date().toISOString()
+      const userPrompt = buildBrainAnswerPrompt({ request: context.request, query: context.query, facts: context.facts })
       const result = await callOrchestratorModel({
         operation: 'brain_answer',
-        userPrompt: buildBrainAnswerPrompt({ request: context.request, query: context.query, facts: context.facts }),
+        userPrompt,
         accessToken: token,
         signal: context.signal,
       })
@@ -176,6 +184,7 @@ export async function runOrchestratorRequest(input: RunOrchestratorRequestInput)
         startedAt,
         endedAt: new Date().toISOString(),
         error: result.ok ? null : result.reason ?? result.error ?? 'provider_error',
+        input: { systemPrompt: BRAIN_ANSWER_SYSTEM_PROMPT, userPrompt },
         outputText: result.ok ? result.text : null,
       })
       if (!result.ok) throw new Error(result.reason ?? 'provider_error')

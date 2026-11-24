@@ -16,14 +16,6 @@ BEGIN
  SELECT id INTO d FROM save_business_draft('{}',0);
  INSERT INTO conversations(workspace_id,title) VALUES(auth.uid(),'Owner test') RETURNING id INTO own_conversation;
  BEGIN
-  PERFORM enqueue_task(own_conversation,'Forged direct origin','{"kind":"direct","conversationId":"22222222-2222-4222-8222-333333333333"}',gen_random_uuid());
-  RAISE EXCEPTION 'Forged JSON origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
- BEGIN
-  PERFORM enqueue_task(own_conversation,'Forged research origin',jsonb_build_object('kind','wizard_question','conversationId',own_conversation,'draftId',gen_random_uuid(),'questionId',gen_random_uuid(),'researchLinkId',gen_random_uuid()),gen_random_uuid());
-  RAISE EXCEPTION 'Unrelated research origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
- BEGIN
   INSERT INTO business_drafts(workspace_id) VALUES('22222222-2222-4222-8222-222222222222');
   RAISE EXCEPTION 'Cross-owner insert allowed';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
@@ -57,6 +49,24 @@ BEGIN
   RAISE EXCEPTION 'Cross-owner media write allowed';
  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
  RAISE NOTICE 'PASS: bootstrap idempotency, owner RLS, related-ID forgery, private credentials, protected approvals/connections, private media';
+END $$;
+RESET ROLE;
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
+DO $$
+DECLARE own_conversation uuid;
+BEGIN
+ SELECT id INTO own_conversation FROM conversations WHERE workspace_id='11111111-1111-4111-8111-111111111111' ORDER BY created_at LIMIT 1;
+ BEGIN
+  PERFORM enqueue_task(own_conversation,'Forged direct origin','{"kind":"direct","conversationId":"22222222-2222-4222-8222-333333333333"}',gen_random_uuid());
+  RAISE EXCEPTION 'Forged JSON origin accepted';
+ EXCEPTION WHEN others THEN IF SQLERRM NOT IN ('INVALID_ORIGIN','INVALID_TASK_ORIGIN') THEN RAISE; END IF; END;
+ BEGIN
+  PERFORM enqueue_task(own_conversation,'Forged research origin',jsonb_build_object('kind','wizard_question','conversationId',own_conversation,'draftId',gen_random_uuid(),'questionId',gen_random_uuid(),'researchLinkId',gen_random_uuid()),gen_random_uuid());
+  RAISE EXCEPTION 'Unrelated research origin accepted';
+ EXCEPTION WHEN others THEN IF SQLERRM NOT IN ('INVALID_ORIGIN','INVALID_TASK_ORIGIN') THEN RAISE; END IF; END;
+ RAISE NOTICE 'PASS: exact origin validation remains enforced for service-role task creation';
 END $$;
 RESET ROLE;
 ROLLBACK;

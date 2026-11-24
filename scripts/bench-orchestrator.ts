@@ -4,7 +4,7 @@
 //    measure the orchestration logic itself (guard, decision routing, event
 //    building) with no model or DB latency.
 // 2. Brain retrieval overhead: score a realistic approved-facts set in memory.
-// 3. Real-provider decision latency (only if AI_API_KEY is configured): call the
+// 3. Real-provider decision latency (only if GROQ_API_KEY is configured): call the
 //    configured OpenAI-compatible provider with the Orchestrator prompt and
 //    measure the actual decision-call latency (p50/p95).
 //
@@ -92,8 +92,8 @@ async function benchBrainRetrieval(): Promise<void> {
 
 async function benchRealProvider(): Promise<void> {
   const env = loadEnv()
-  const apiKey = env.AI_API_KEY
-  if (!apiKey) { console.log('Real-provider benchmark: skipped (no AI_API_KEY configured).'); return }
+  const apiKey = env.GROQ_API_KEY
+  if (!apiKey) { console.log('Real-provider benchmark: skipped (no GROQ_API_KEY configured).'); return }
   const provider = getModelConfigForOperation('orchestrate').provider || env.AI_PROVIDER || 'groq'
   const model = getModelConfigForOperation('orchestrate').model || env.AI_MODEL || 'openai/gpt-oss-120b'
   const base = provider === 'groq' ? 'https://api.groq.com/openai/v1'

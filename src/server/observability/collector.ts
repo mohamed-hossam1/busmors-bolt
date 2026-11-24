@@ -1,6 +1,6 @@
 import 'server-only'
 import { createAdminClient } from '../supabase-admin'
-import { MAX_BYTES, MAX_EVENTS, MODEL_TEXT_CAP, estimateBytes } from './config'
+import { MAX_BYTES, MAX_EVENTS, MODEL_TEXT_CAP, TOOL_INPUT_CAP, TOOL_OUTPUT_CAP, captureDetailEnabled, estimateBytes } from './config'
 import { projectValue, scrubString } from './sanitize'
 
 /**
@@ -31,20 +31,29 @@ export interface ModelRecord {
   attempt?: number
   runId?: string | null
   callId?: string | null
+  /** Agent instance that issued this model call (hierarchy key). */
+  instanceId?: string | null
+  parentEventId?: string | null
   usage?: {
     inputTokens?: number
     outputTokens?: number
     cachedTokens?: number
     reasoningTokens?: number
   } | null
+  /** False when provider did not report usage (e.g. failed/timed-out attempt). */
+  usageKnown?: boolean
   durationMs?: number
   startedAt?: string | null
   endedAt?: string | null
   fallbackUsed?: boolean
   retryAttempt?: number
+  status?: string | null
   error?: string | null
+  errorCategory?: string | null
   input?: { systemPrompt?: string; userPrompt?: string } | null
   outputText?: string | null
+  /** Provider-reported cost when available (never fabricated). */
+  cost?: { amount: number; currency: string; basis: string } | null
 }
 
 export interface ToolRecord {
@@ -73,14 +82,30 @@ export interface AgentRecord {
   agentRole?: string | null
   parentAgentId?: string | null
   instanceId?: string | null
+  parentEventId?: string | null
   label?: string | null
   status?: string | null
   startedAt?: string | null
   endedAt?: string | null
   error?: string | null
-  parentEventId?: string | null
   runId?: string | null
   attempt?: number
+  /** Sanitized assignment/context and result payloads (spec §13.4). */
+  input?: unknown
+  output?: unknown
+}
+
+export interface SkillRecord {
+  skillId: string
+  role?: string | null
+  instanceId?: string | null
+  parentEventId?: string | null
+  version?: string | null
+  contentHash?: string | null
+  status?: string | null
+  startedAt?: string | null
+  endedAt?: string | null
+  error?: string | null
 }
 
 export interface AdminTraceRow {
@@ -236,16 +261,29 @@ export class TraceCollector {
 
   recordModel(record: ModelRecord): void {
     if (!this.enabled) return
-    const inputTokens = Math.max(0, num(record.usage?.inputTokens))
-    const outputTokens = Math.max(0, num(record.usage?.outputTokens))
-    const input = record.input
-      ? {
-          operation: record.operation,
-          systemHead: record.input.systemPrompt ? scrubString(record.input.systemPrompt, MODEL_TEXT_CAP) : null,
-          userHead: record.input.userPrompt ? scrubString(record.input.userPrompt, MODEL_TEXT_CAP) : null,
-        }
-      : { operation: record.operation }
-    const output = record.outputText ? { textHead: scrubString(record.outputText, MODEL_TEXT_CAP) } : null
+    const hasNumbers =
+      record.usage != null &&
+      (typeof record.usage.inputTokens === 'number' || typeof record.usage.outputTokens === 'number')
+    const usageKnown = record.usageKnown ?? hasNumbers
+    const inputTokens = usageKnown ? Math.max(0, num(record.usage?.inputTokens)) : 0
+    const outputTokens = usageKnown ? Math.max(0, num(record.usage?.outputTokens)) : 0
+    const detail = captureDetailEnabled()
+    let input: Record<string, unknown> = { operation: record.operation }
+    if (record.input && detail) {
+      input = {
+        operation: record.operation,
+        systemHead: record.input.systemPrompt ? scrubString(record.input.systemPrompt, MODEL_TEXT_CAP) : null,
+        userHead: record.input.userPrompt ? scrubString(record.input.userPrompt, MODEL_TEXT_CAP) : null,
+      }
+    } else if (record.input) {
+      input = { operation: record.operation, captured: false }
+    }
+    const output = record.outputText && detail ? { textHead: scrubString(record.outputText, MODEL_TEXT_CAP) } : record.outputText ? { captured: false } : null
+    const metadata: Record<string, unknown> = {
+      usageStatus: usageKnown ? 'known' : 'unknown',
+    }
+    if (record.errorCategory) metadata.errorCategory = record.errorCategory
+    if (record.cost) metadata.cost = record.cost
     this.push({
       id: crypto.randomUUID(),
       trace_id: this.traceId,
@@ -255,11 +293,13 @@ export class TraceCollector {
       agent_role: 'model',
       run_id: record.runId ?? this.runId,
       attempt: record.attempt ?? this.attempt,
+      instance_id: uuidOrNull(record.instanceId),
+      parent_event_id: uuidOrNull(record.parentEventId),
       call_id: uuidOrNull(record.callId),
       operation: record.operation,
       provider: record.provider ?? null,
       model: record.model ?? null,
-      status: record.error ? 'failed' : 'completed',
+      status: record.status ?? (record.error ? 'failed' : 'completed'),
       started_at: record.startedAt ?? null,
       ended_at: record.endedAt ?? null,
       duration_ms: record.durationMs ?? duration(record.startedAt, record.endedAt) ?? null,
@@ -270,12 +310,12 @@ export class TraceCollector {
       llm_input_tokens: inputTokens,
       llm_output_tokens: outputTokens,
       llm_total_tokens: inputTokens + outputTokens,
-      cached_tokens: Math.max(0, num(record.usage?.cachedTokens)),
-      reasoning_tokens: Math.max(0, num(record.usage?.reasoningTokens)),
+      cached_tokens: usageKnown ? Math.max(0, num(record.usage?.cachedTokens)) : 0,
+      reasoning_tokens: usageKnown ? Math.max(0, num(record.usage?.reasoningTokens)) : 0,
       retry_attempt: record.retryAttempt ?? null,
       fallback_used: Boolean(record.fallbackUsed),
       error: record.error ?? null,
-      metadata: {},
+      metadata,
     })
   }
 
@@ -304,7 +344,7 @@ export class TraceCollector {
       duration_ms: record.durationMs ?? duration(record.startedAt, record.endedAt) ?? null,
       input_payload: record.input ? projectValue(record.input) : null,
       output_preview: record.output ? projectValue(record.output) : null,
-      output_truncated: outputBytes > 0,
+      output_truncated: outputBytes > TOOL_OUTPUT_CAP,
       output_original_bytes: record.outputOriginalBytes ?? (outputBytes || null),
       llm_input_tokens: 0,
       llm_output_tokens: 0,
@@ -318,8 +358,44 @@ export class TraceCollector {
     })
   }
 
+  /** A skill load event (spec §13.4): distinct successful loads only. */
+  recordSkill(record: SkillRecord): void {
+    if (!this.enabled) return
+    this.push({
+      id: crypto.randomUUID(),
+      trace_id: this.traceId,
+      event_type: 'skill',
+      seq: this.seq,
+      agent_id: record.skillId,
+      agent_role: 'skill',
+      run_id: this.runId,
+      attempt: this.attempt,
+      instance_id: uuidOrNull(record.instanceId),
+      parent_event_id: uuidOrNull(record.parentEventId),
+      status: record.status ?? 'completed',
+      started_at: record.startedAt ?? null,
+      ended_at: record.endedAt ?? null,
+      duration_ms: duration(record.startedAt, record.endedAt) ?? null,
+      output_truncated: false,
+      llm_input_tokens: 0,
+      llm_output_tokens: 0,
+      llm_total_tokens: 0,
+      cached_tokens: 0,
+      reasoning_tokens: 0,
+      fallback_used: false,
+      error: record.error ?? null,
+      metadata: {
+        skillId: record.skillId,
+        ...(record.role ? { role: record.role } : {}),
+        ...(record.version ? { version: record.version } : {}),
+        ...(record.contentHash ? { contentHash: record.contentHash } : {}),
+      },
+    })
+  }
+
   recordAgent(record: AgentRecord): void {
     if (!this.enabled) return
+    const detail = captureDetailEnabled()
     this.push({
       id: crypto.randomUUID(),
       trace_id: this.traceId,
@@ -336,6 +412,8 @@ export class TraceCollector {
       started_at: record.startedAt ?? null,
       ended_at: record.endedAt ?? null,
       duration_ms: duration(record.startedAt, record.endedAt) ?? null,
+      input_payload: record.input && detail ? projectValue(record.input) : record.input ? { captured: false } : null,
+      output_preview: record.output && detail ? projectValue(record.output) : record.output ? { captured: false } : null,
       output_truncated: false,
       llm_input_tokens: 0,
       llm_output_tokens: 0,
@@ -405,4 +483,30 @@ export function createTraceCollector(
   options: { sink?: TraceSink; enabled?: boolean } = {},
 ): TraceCollector {
   return new TraceCollector(identity, options)
+}
+
+/**
+ * Audit an administrative read of trace data (spec §13.7). Records actor, scope,
+ * trace reference and outcome via the service-role admin client. Best-effort and
+ * never throws; payloads are not duplicated into the audit log.
+ */
+export async function recordAdminReadAudit(entry: {
+  actorId: string
+  action: 'list' | 'detail' | 'payload' | 'export'
+  traceId?: string | null
+  scope: Record<string, unknown>
+  outcome: 'success' | 'denied' | 'error'
+}): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    await admin.rpc('record_admin_read_audit', {
+      p_actor_id: entry.actorId,
+      p_action: entry.action,
+      p_trace_id: entry.traceId ?? null,
+      p_scope: entry.scope,
+      p_outcome: entry.outcome,
+    })
+  } catch (error) {
+    console.error('[observability] read-audit failed:', error instanceof Error ? error.message : error)
+  }
 }

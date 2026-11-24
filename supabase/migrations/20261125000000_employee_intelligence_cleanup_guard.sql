@@ -13,6 +13,39 @@
 -- The future agent runtime can re-grant EXECUTE to `authenticated` in a later
 -- migration when a real execution path exists.
 
+-- The service role (background dispatcher, fail-fast executor, status-remediation
+-- script, and the local DB acceptance harness) must run the complete task
+-- lifecycle, not only the revoked functions. Grant the remaining lifecycle and
+-- workspace-bootstrap helpers to service_role so the privileged backend can
+-- admit, checkpoint, recover, heartbeat and stop tasks without the client grants.
+DO $$
+DECLARE
+  fn record;
+BEGIN
+  FOR fn IN
+    SELECT p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'bootstrap_workspace',
+        'admit_task',
+        'checkpoint_task',
+        'record_task_step',
+        'recover_tasks',
+        'heartbeat_task',
+        'claim_task',
+        'save_task_step',
+        'await_task_input',
+        'stop_task',
+        'decide_question_research',
+        'set_roadmap_step_status'
+      )
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', fn.signature);
+  END LOOP;
+END $$;
+
 DO $$
 DECLARE
   fn record;

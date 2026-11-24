@@ -25,20 +25,23 @@ BEGIN
   PERFORM bootstrap_workspace();
   INSERT INTO conversations(id, workspace_id, title) VALUES (c, w, 'Remediation');
   INSERT INTO tasks(workspace_id, conversation_id, type, status, user_request, origin)
-    VALUES (w, c, 'text', 'queued', 'queued request', jsonb_build_object('kind','direct','conversationId',c))
+    VALUES (w, c, 'simple_answer', 'queued', 'queued request', jsonb_build_object('kind','direct','conversationId',c))
     RETURNING id INTO queued_id;
   INSERT INTO tasks(workspace_id, conversation_id, type, status, user_request, origin, run_id)
-    VALUES (w, c, 'text', 'running', 'running request', jsonb_build_object('kind','direct','conversationId',c), gen_random_uuid())
+    VALUES (w, c, 'simple_answer', 'running', 'running request', jsonb_build_object('kind','direct','conversationId',c), gen_random_uuid())
     RETURNING id INTO running_id;
   INSERT INTO tasks(workspace_id, conversation_id, type, status, user_request, origin)
-    VALUES (w, c, 'text', 'awaiting_input', 'waiting request', jsonb_build_object('kind','direct','conversationId',c))
+    VALUES (w, c, 'simple_answer', 'awaiting_input', 'waiting request', jsonb_build_object('kind','direct','conversationId',c))
     RETURNING id INTO waiting_id;
 
   INSERT INTO discovery_drafts(id, workspace_id) VALUES ('dddddddd-dddd-4ddd-8ddd-dd000000000d', w);
   INSERT INTO discovery_questions(id, workspace_id, draft_id, question_key, position, schema, status, provenance)
-    VALUES (q, w, 'dddddddd-dddd-4ddd-8ddd-dd000000000d', 'goal', 1, '{}', 'researching', '{"previousStatus":"unanswered"}');
+    VALUES (q, w, 'dddddddd-dddd-4ddd-8ddd-dd000000000d', 'goal', 1, '{}', 'researching', '{"previousStatus":"unanswered","researchLinkId":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}');
   INSERT INTO question_research_links(id, workspace_id, draft_id, question_id, conversation_id, status, version)
     VALUES (l, w, 'dddddddd-dddd-4ddd-8ddd-dd000000000d', q, c, 'researching', 1);
+  UPDATE discovery_questions
+    SET provenance = jsonb_build_object('previousStatus','unanswered','researchLinkId',l::text)
+    WHERE id = q;
 
   INSERT INTO roadmaps(id, workspace_id, goal) VALUES (rm, w, 'Remediation roadmap');
   INSERT INTO roadmap_versions(id, workspace_id, roadmap_id, version, summary)

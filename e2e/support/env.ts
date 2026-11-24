@@ -38,7 +38,7 @@ export function loadE2EEnv(): E2EEnv {
     serviceRoleKey: process.env.E2E_SUPABASE_SECRET_KEY ?? process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY,
     databaseUrl: required('E2E_DATABASE_URL', 'DATABASE_URL'),
     baseUrl: (process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4179').replace(/\/$/, ''),
-    aiApiKey: process.env.E2E_AI_API_KEY ?? process.env.AI_API_KEY,
+    aiApiKey: process.env.E2E_AI_API_KEY ?? process.env.GROQ_API_KEY,
     aiProvider: process.env.E2E_AI_PROVIDER ?? process.env.AI_PROVIDER,
     aiModel: process.env.E2E_AI_MODEL ?? process.env.AI_MODEL,
     firecrawlApiKey: process.env.E2E_FIRECRAWL_API_KEY ?? process.env.FIRECRAWL_API_KEY,
@@ -60,6 +60,6 @@ export function assertSafeEnvironment(env = loadE2EEnv()) {
       throw new Error('E2E_DATABASE_URL does not appear to belong to E2E_SUPABASE_URL; refusing cleanup against a different project.')
     }
   }
-  if (!env.aiApiKey) throw new Error('Missing E2E_AI_API_KEY/AI_API_KEY: real agent tests never substitute model responses.')
+  if (!env.aiApiKey) throw new Error('Missing E2E_AI_API_KEY/GROQ_API_KEY: real agent tests never substitute model responses.')
   return env
 }

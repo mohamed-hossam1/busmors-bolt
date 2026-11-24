@@ -3,7 +3,7 @@ import { requireApiIdentity, apiError } from '@/server/auth'
 import { dispatchTasks } from '@/server/task-dispatcher'
 import type { TaskBackend } from '@/server/task-executor'
 import type { ExecutionTask } from '@/features/tasks/types'
-import { runOrchestratorRequest } from '@/server/orchestrator/gateway-server'
+import { runOrchestratorV2Request } from '@/server/orchestrator/gateway-server-v2'
 import { createClient } from '@supabase/supabase-js'
 import { publicSupabaseConfig } from '@/lib/supabase-config'
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     if (typeof body.conversationId !== 'string' || !body.conversationId) return Response.json({ error: 'Missing conversation.' }, { status: 400 })
     if (typeof body.request !== 'string' || !body.request.trim() || body.request.length > 12000) return Response.json({ error: 'Enter a message of up to 12,000 characters.' }, { status: 400 })
     if (typeof body.idempotencyKey !== 'string' || !body.idempotencyKey) return Response.json({ error: 'Missing request key.' }, { status: 400 })
-    result = await runOrchestratorRequest({
+    result = await runOrchestratorV2Request({
      supabase: db,
      workspaceId: user.id,
      token,

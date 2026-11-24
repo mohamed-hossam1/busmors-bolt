@@ -46,14 +46,6 @@ BEGIN
  BEGIN PERFORM update_deliverable('ffffffff-6666-4666-8666-666666666666',1,'Hijack','Hijack body'); RAISE EXCEPTION 'Foreign document edit accepted';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'NOT_FOUND' THEN RAISE; END IF; END;
 
- -- Continue with Director retains an exact, owner-checked document version.
- PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue the saved report',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',2),'90000000-0000-4000-8000-000000000001');
- PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue from version one',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',1),'90000000-0000-4000-8000-000000000002');
- BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge foreign document',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','ffffffff-6666-4666-8666-666666666666','version',1),'90000000-0000-4000-8000-000000000003'); RAISE EXCEPTION 'Foreign document origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
- BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge missing version',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',99),'90000000-0000-4000-8000-000000000004'); RAISE EXCEPTION 'Missing document version origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
-
  BEGIN PERFORM delete_deliverable('dddddddd-4444-4444-8444-444444444444',1); RAISE EXCEPTION 'Stale delete accepted';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'STALE_VERSION' THEN RAISE; END IF; END;
  PERFORM delete_deliverable('dddddddd-4444-4444-8444-444444444444',2);
@@ -61,6 +53,20 @@ BEGIN
  RAISE NOTICE 'PASS: owner-scoped bounded search/type/date/cursor library, immutable edit versions, stale/foreign edit rejection, exact document origin, governed delete';
 END $$;
 
+RESET ROLE;
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','aaaaaaaa-1111-4111-8111-111111111111',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
+DO $$
+BEGIN
+ PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue the saved report',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','eeeeeeee-5555-4555-8555-555555555555','version',1),'90000000-0000-4000-8000-000000000001');
+ PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue from version one',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','eeeeeeee-5555-4555-8555-555555555555','version',1),'90000000-0000-4000-8000-000000000002');
+ BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge foreign document',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','ffffffff-6666-4666-8666-666666666666','version',1),'90000000-0000-4000-8000-000000000003'); RAISE EXCEPTION 'Foreign document origin accepted';
+ EXCEPTION WHEN others THEN IF SQLERRM NOT IN ('INVALID_ORIGIN','INVALID_TASK_ORIGIN') THEN RAISE; END IF; END;
+ BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge missing version',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','eeeeeeee-5555-4555-8555-555555555555','version',99),'90000000-0000-4000-8000-000000000004'); RAISE EXCEPTION 'Missing document version origin accepted';
+ EXCEPTION WHEN others THEN IF SQLERRM NOT IN ('INVALID_ORIGIN','INVALID_TASK_ORIGIN') THEN RAISE; END IF; END;
+ RAISE NOTICE 'PASS: exact document origin validation remains enforced for service-role task creation';
+END $$;
 RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','bbbbbbbb-2222-4222-8222-222222222222',true);

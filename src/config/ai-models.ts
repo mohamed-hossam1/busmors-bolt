@@ -182,3 +182,68 @@ export function getModelConfigForOperation(operation: string): ModelConfig {
       return AI_MODELS.orchestrator
   }
 }
+
+/**
+ * Employee role model routes (spec §2.1, §2.5, §3.7, §4.7, §5.7, §6.7).
+ *
+ * Resolved centrally here — never hardcode provider/model ids in prompts, skills,
+ * tools or agent implementations. Production assignments are configured but NOT
+ * exercised by this rebuild; test mode resolves only the two allowlisted pairs
+ * (Groq openai/gpt-oss-120b and Dahl deepseek-ai/DeepSeek-V4-Flash-0731).
+ */
+export type EmployeeRole = 'orchestrator' | 'director' | 'research' | 'content' | 'marketing_analyst'
+
+export interface EmployeeRoleRoute {
+  role: EmployeeRole
+  primary: ModelConfig
+  fallbacks: readonly FallbackTargetConfig[]
+  /** Per-request application input cap (tokens, entire serialized request). */
+  inputCap: number
+  /** Per-request application completion cap (tokens, incl. reasoning where counted). */
+  completionCap: number
+}
+
+const TEST_GROQ: ModelConfig = { provider: 'groq', model: 'openai/gpt-oss-120b' }
+const TEST_DAHL: ModelConfig = { provider: 'dahl', model: 'deepseek-ai/DeepSeek-V4-Flash-0731' }
+const PROD_SOV_QWEN: ModelConfig = { provider: 'sovereigneg', model: 'SovereignEG/Qwen3.8-27B-FP8' }
+const PROD_SOV_HAIKU: ModelConfig = { provider: 'sovereigneg', model: 'claude-haiku-5.5' }
+const PROD_SOV_LUNA: ModelConfig = { provider: 'sovereigneg', model: 'gpt-6-luna' }
+
+const TEST_ROUTES: Record<EmployeeRole, EmployeeRoleRoute> = {
+  orchestrator: { role: 'orchestrator', primary: TEST_GROQ, fallbacks: [TEST_DAHL], inputCap: 3000, completionCap: 700 },
+  director: { role: 'director', primary: TEST_DAHL, fallbacks: [TEST_GROQ], inputCap: 12000, completionCap: 2500 },
+  research: { role: 'research', primary: TEST_DAHL, fallbacks: [TEST_GROQ], inputCap: 12000, completionCap: 2500 },
+  content: { role: 'content', primary: TEST_GROQ, fallbacks: [TEST_DAHL], inputCap: 4000, completionCap: 2000 },
+  marketing_analyst: { role: 'marketing_analyst', primary: TEST_DAHL, fallbacks: [TEST_GROQ], inputCap: 12000, completionCap: 2500 },
+}
+
+const PROD_ROUTES: Record<EmployeeRole, EmployeeRoleRoute> = {
+  orchestrator: { role: 'orchestrator', primary: { provider: 'groq', model: 'openai/gpt-oss-120b' }, fallbacks: [{ provider: 'sovereigneg', model: 'openai/gpt-oss-120b' }], inputCap: 3000, completionCap: 700 },
+  director: { role: 'director', primary: { provider: 'dahl', model: 'deepseek-ai/DeepSeek-V4-Flash-0731' }, fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }], inputCap: 12000, completionCap: 2500 },
+  research: { role: 'research', primary: PROD_SOV_QWEN, fallbacks: [TEST_DAHL, TEST_GROQ], inputCap: 12000, completionCap: 2500 },
+  content: { role: 'content', primary: PROD_SOV_HAIKU, fallbacks: [TEST_GROQ, TEST_DAHL], inputCap: 4000, completionCap: 2000 },
+  marketing_analyst: { role: 'marketing_analyst', primary: PROD_SOV_LUNA, fallbacks: [TEST_DAHL, TEST_GROQ], inputCap: 12000, completionCap: 2500 },
+}
+
+/** Resolve the model route for an Employee role under the current AI mode. */
+export function getEmployeeRoleRoute(role: EmployeeRole): EmployeeRoleRoute {
+  return CURRENT_AI_MODE === 'test' ? TEST_ROUTES[role] : PROD_ROUTES[role]
+}
+
+/**
+ * The global test-mode allowlist: only these exact provider/model pairs may run.
+ * Enforced before network dispatch, including fallbacks/BYOK/defaults/retries.
+ */
+export const TEST_MODE_ALLOWLIST: readonly { provider: ModelConfig['provider']; model: string }[] = [
+  { provider: 'groq', model: 'openai/gpt-oss-120b' },
+  { provider: 'dahl', model: 'deepseek-ai/DeepSeek-V4-Flash-0731' },
+]
+
+/** True when a provider/model pair is permitted in the current mode. */
+export function isProviderModelAllowed(provider: ModelConfig['provider'], model: string): boolean {
+  if (CURRENT_AI_MODE === 'test') {
+    return TEST_MODE_ALLOWLIST.some((p) => p.provider === provider && p.model === model)
+  }
+  // Production: any configured provider is allowed (paid routes are separately gated).
+  return true
+}

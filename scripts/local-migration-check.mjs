@@ -5,6 +5,9 @@
 import { SetupError, buildSchema, localConnection, logPath, redact, runFile, say, withDisposableDb } from './local-pg.mjs'
 
 const checks = [
+  'employee-cleanup-guard-db-check.sql',
+  'employee-cleanup-remediation-db-check.sql',
+  'employee-persistence-rpc-db-check.sql',
   'competition-db-check.sql',
   'intake-db-check.sql',
   'brain-governance-db-check.sql',
@@ -16,8 +19,6 @@ const checks = [
   'roadmap-generation-db-check.sql',
   'post-proposed-time-db-check.sql',
   'facebook-connection-db-check.sql',
-  'employee-cleanup-guard-db-check.sql',
-  'employee-cleanup-remediation-db-check.sql',
 ]
 
 const conn = localConnection()

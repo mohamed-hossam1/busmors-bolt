@@ -20,6 +20,20 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b(api[_-]?key|access[_-]?token|token|sig|signature|secret|password)\s*[=:]\s*[^\s&"']{4,}/gi,
 ]
 
+/**
+ * PII patterns (audit §6.2 High). Applied before storage/display so names,
+ * emails, phones, national ids, card numbers and addresses do not sit verbatim
+ * in a cross-tenant admin store. Redaction is conservative: a value that merely
+ * resembles sensitive data is masked rather than risked.
+ */
+const PII_PATTERNS: RegExp[] = [
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, // email
+  /(?:\+?20|0)?1[0125]\d{8}\b/g, // Egyptian mobile (11 digits, leading 0/20)
+  /\b(?:\+?\d[\d\s-]{7,}\d)\b/g, // generic long phone-like runs
+  /\b\d{14}\b/g, // Egyptian national id (14 digits)
+  /\b(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2})[\d\s-]{12,16}\b/g, // card-like PAN
+]
+
 /** Redact credential-shaped substrings and strip control characters. */
 export function scrub(input: string): string {
   let value = input
@@ -30,6 +44,9 @@ export function scrub(input: string): string {
       if (/^Authorization/i.test(match)) return 'Authorization: [REDACTED]'
       return '[REDACTED]'
     })
+  }
+  for (const pattern of PII_PATTERNS) {
+    value = value.replace(pattern, '[REDACTED_PII]')
   }
   // Drop ASCII control characters except tab/newline/carriage return.
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')

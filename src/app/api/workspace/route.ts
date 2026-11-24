@@ -5,9 +5,9 @@ export async function POST(request: Request) {
   const { data, error } = await supabase.rpc('bootstrap_workspace')
   if (error || data?.workspace_id !== user.id) throw new Error('Workspace unavailable')
   // The browser cannot read server env. Report whether the managed model is
-  // configured (AI_API_KEY + AI_PROVIDER + AI_MODEL) so Settings can tell the
+  // configured (GROQ_API_KEY + AI_PROVIDER + AI_MODEL) so Settings can tell the
   // user the workspace uses the managed model by default (BYOK is optional).
-  const managedModel = Boolean(process.env.AI_API_KEY)
+  const managedModel = Boolean(process.env.GROQ_API_KEY)
   return Response.json({ ...data, managedModel })
  } catch (error) { return apiError(error) }
 }

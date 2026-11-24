@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { Link } from '@/shared/i18n'
 import type { AdminTraceDetail as Detail } from './types'
 import {
+  buildExecutionTree,
   formatDateTime,
   formatDuration,
   formatNumber,
@@ -12,6 +13,8 @@ import {
   toFallbackGraphEvents,
   toGraphEvents,
   toTimelineItem,
+  type ExecutionNode,
+  type TimelineItem,
 } from './format'
 
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -36,6 +39,84 @@ function StatusPill({ status }: { status: string }) {
   return <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${style}`}>{status || 'unknown'}</span>
 }
 
+const KIND_STYLE: Record<TimelineItem['kind'], string> = {
+  model: 'bg-primary-100 text-primary-700',
+  tool: 'bg-amber-100 text-amber-800',
+  skill: 'bg-purple-100 text-purple-700',
+  agent: 'bg-ink-100 text-ink-600',
+}
+
+function Payload({ label, value }: { label: string; value: unknown }) {
+  if (value === undefined || value === null) return null
+  return (
+    <details className="mt-1 text-[11px] text-ink-600">
+      <summary className="cursor-pointer select-none">{label}</summary>
+      <pre className="mt-1 max-h-48 overflow-auto rounded bg-ink-50 p-2 text-[10px] text-ink-700">{safeStringify(value)}</pre>
+    </details>
+  )
+}
+
+function EventRow({ item }: { item: TimelineItem }) {
+  const meta = (item.metadata ?? {}) as Record<string, unknown>
+  return (
+    <div className="rounded-lg border border-ink-200 bg-white p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${KIND_STYLE[item.kind]}`}>{item.kind}</span>
+        <span className="font-semibold text-ink-900">{item.label}</span>
+        {item.detail && <span className="text-xs text-ink-500">{item.detail}</span>}
+        <StatusPill status={item.status} />
+        {item.fallbackUsed && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">fallback</span>}
+        {item.retryAttempt !== null && item.retryAttempt !== undefined && item.retryAttempt > 0 && (
+          <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">retry {item.retryAttempt}</span>
+        )}
+        {item.attempt !== null && item.attempt !== undefined && (
+          <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">attempt {item.attempt}</span>
+        )}
+        {typeof meta.version === 'string' && <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600">v{meta.version}</span>}
+        <span className="ml-auto text-[11px] text-ink-400">
+          {formatDateTime(item.startedAt)} · {formatDuration(item.durationMs)}
+        </span>
+      </div>
+      {item.tokens && (
+        <div className="mt-1 text-[11px] text-ink-500">
+          {item.usageKnown === false ? (
+            <span>tokens: unknown</span>
+          ) : (
+            <>
+              tokens: {formatNumber(item.tokens.input)} in / {formatNumber(item.tokens.output)} out / {formatNumber(item.tokens.total)} total
+              {item.tokens.cached > 0 && ` · ${formatNumber(item.tokens.cached)} cached`}
+              {item.tokens.reasoning > 0 && ` · ${formatNumber(item.tokens.reasoning)} reasoning`}
+            </>
+          )}
+        </div>
+      )}
+      {isRecord(meta.cost) && (
+        <div className="mt-1 text-[11px] text-ink-500">
+          cost: {String((meta.cost as Record<string, unknown>).amount)} {String((meta.cost as Record<string, unknown>).currency ?? '')} ({String((meta.cost as Record<string, unknown>).basis ?? 'unknown')})
+        </div>
+      )}
+      {item.error && <div className="mt-1 rounded bg-red-50 p-1.5 text-[11px] text-red-700">{item.error}</div>}
+      <Payload label="Input" value={item.input} />
+      <Payload label="Output" value={item.output} />
+    </div>
+  )
+}
+
+function TreeNode({ node }: { node: ExecutionNode }) {
+  return (
+    <li>
+      <EventRow item={node.item} />
+      {node.children.length > 0 && (
+        <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-ink-200 pl-3">
+          {node.children.map((child) => (
+            <TreeNode key={child.id} node={child} />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
 export default function AdminTraceDetail({ detail }: { detail: Detail }) {
   const { trace } = detail
 
@@ -46,8 +127,14 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
     return toGraphEvents(detail.events)
   }, [detail])
 
+  const tree = useMemo(() => buildExecutionTree(detail.events), [detail.events])
   const timeline = useMemo(() => detail.events.map(toTimelineItem), [detail.events])
   const attempts = useMemo(() => summarizeByAttempt(detail.events), [detail.events])
+
+  const hasUnknownUsage = useMemo(
+    () => detail.events.some((e) => e.event_type === 'model' && ((e.metadata as Record<string, unknown> | null)?.usageStatus === 'unknown' || (e.status === 'failed' && e.llm_total_tokens === 0))),
+    [detail.events],
+  )
 
   const totals = {
     llmInput: trace.llm_input_tokens,
@@ -85,9 +172,13 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
       </header>
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Metric label="LLM input" value={formatNumber(totals.llmInput)} />
-        <Metric label="LLM output" value={formatNumber(totals.llmOutput)} />
-        <Metric label="LLM total" value={formatNumber(totals.llmTotal)} hint={`${formatNumber(totals.modelCalls)} model call(s)`} />
+        <Metric label="LLM input" value={totals.llmTotal === 0 && hasUnknownUsage ? 'unknown' : formatNumber(totals.llmInput)} />
+        <Metric label="LLM output" value={totals.llmTotal === 0 && hasUnknownUsage ? 'unknown' : formatNumber(totals.llmOutput)} />
+        <Metric
+          label="LLM total"
+          value={totals.llmTotal === 0 && hasUnknownUsage ? 'unknown' : formatNumber(totals.llmTotal)}
+          hint={`${formatNumber(totals.modelCalls)} model call(s)${hasUnknownUsage ? ' · includes unknown' : ''}`}
+        />
         <Metric label="Tool calls" value={formatNumber(totals.toolCalls)} />
         <Metric label="Agents" value={formatNumber(totals.agentCount)} />
         <Metric label="Duration" value={formatDuration(trace.started_at && trace.completed_at ? Date.parse(trace.completed_at) - Date.parse(trace.started_at) : null)} />
@@ -124,10 +215,16 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
       )}
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-500">Execution events</h2>
-        <div className="overflow-hidden rounded-xl border border-ink-200 bg-white">
-          {graphEvents.length > 0 ? (
-            <ol className="space-y-1.5 p-3">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-500">Execution tree</h2>
+        <div className="overflow-hidden rounded-xl border border-ink-200 bg-white p-3">
+          {tree.length > 0 ? (
+            <ul className="space-y-1.5">
+              {tree.map((node) => (
+                <TreeNode key={node.id} node={node} />
+              ))}
+            </ul>
+          ) : graphEvents.length > 0 ? (
+            <ol className="space-y-1.5">
               {graphEvents.map((event, index) => (
                 <li key={String(event.id ?? `${String(event.instance_id ?? '')}:${String(event.seq ?? index)}`)} className="rounded-lg border border-ink-200 bg-white p-2.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -135,10 +232,6 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
                     <StatusPill status={String(event.status ?? '')} />
                     <span className="ml-auto text-[10px] uppercase tracking-wide text-ink-400">{String(event.agent_role ?? event.event_type ?? '')}</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-ink-500">
-                    {formatDateTime(event.started_at as string | null | undefined)}
-                    {event.ended_at ? ` → ${formatDateTime(event.ended_at as string | null | undefined)}` : ''}
-                  </p>
                 </li>
               ))}
             </ol>
@@ -154,40 +247,7 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
           {timeline.length === 0 && <li className="rounded-lg border border-ink-200 bg-white p-3 text-sm text-ink-500">No events captured for this trace.</li>}
           {timeline.map((item) => (
             <li key={item.id} className="rounded-xl border border-ink-200 bg-white p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                    item.kind === 'model' ? 'bg-primary-100 text-primary-700' : item.kind === 'tool' ? 'bg-amber-100 text-amber-800' : 'bg-ink-100 text-ink-600'
-                  }`}
-                >
-                  {item.kind}
-                </span>
-                <span className="font-semibold text-ink-900">{item.label}</span>
-                {item.detail && <span className="text-xs text-ink-500">{item.detail}</span>}
-                <StatusPill status={item.status} />
-                {item.attempt !== null && item.attempt !== undefined && (
-                  <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">attempt {item.attempt}</span>
-                )}
-                <span className="ml-auto text-[11px] text-ink-400">
-                  {formatDateTime(item.startedAt)} · {formatDuration(item.durationMs)}
-                </span>
-              </div>
-              {item.tokens && (
-                <div className="mt-1 text-[11px] text-ink-500">
-                  tokens: {formatNumber(item.tokens.input)} in / {formatNumber(item.tokens.output)} out / {formatNumber(item.tokens.total)} total
-                  {item.tokens.cached > 0 && ` · ${formatNumber(item.tokens.cached)} cached`}
-                  {item.tokens.reasoning > 0 && ` · ${formatNumber(item.tokens.reasoning)} reasoning`}
-                </div>
-              )}
-              {item.error && <div className="mt-1 rounded bg-red-50 p-1.5 text-[11px] text-red-700">{item.error}</div>}
-              {item.output !== undefined && item.output !== null && (
-                <details className="mt-1 text-[11px] text-ink-600">
-                  <summary className="cursor-pointer select-none">Payload</summary>
-                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-ink-50 p-2 text-[10px] text-ink-700">
-                    {safeStringify(item.output)}
-                  </pre>
-                </details>
-              )}
+              <EventRow item={item} />
             </li>
           ))}
         </ol>
@@ -211,10 +271,10 @@ export default function AdminTraceDetail({ detail }: { detail: Detail }) {
 function safeStringify(value: unknown): string {
   if (isRecord(value) || Array.isArray(value)) {
     try {
-      return JSON.stringify(value, null, 2).slice(0, 2000)
+      return JSON.stringify(value, null, 2).slice(0, 4000)
     } catch {
       return String(value)
     }
   }
-  return String(value).slice(0, 2000)
+  return String(value).slice(0, 4000)
 }

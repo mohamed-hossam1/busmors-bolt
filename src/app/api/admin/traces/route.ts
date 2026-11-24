@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
-    await requireAdminIdentity()
+    const identity = await requireAdminIdentity()
     const url = new URL(request.url)
     const numeric = (key: string): number | undefined => {
       const raw = url.searchParams.get(key)
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       to: url.searchParams.get('to') ?? undefined,
       workspaceId: url.searchParams.get('workspaceId') ?? undefined,
       userId: url.searchParams.get('userId') ?? undefined,
-    })
+    }, identity.user.id)
     return Response.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     return apiError(error)

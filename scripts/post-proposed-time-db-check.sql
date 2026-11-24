@@ -4,13 +4,16 @@
 \set ON_ERROR_STOP on
 BEGIN;
 INSERT INTO auth.users(id) VALUES('c6666666-6666-4666-8666-666666666666');
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claim.sub','c6666666-6666-4666-8666-666666666666',true);
 SELECT set_config('request.jwt.claim.role','authenticated',true);
+DO $$ BEGIN PERFORM bootstrap_workspace(); END $$;
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','c6666666-6666-4666-8666-666666666666',true);
+SELECT set_config('request.jwt.claim.role','service_role',true);
 DO $$
 DECLARE c uuid; t tasks; saved jsonb; future timestamptz:=date_trunc('minute',now()+interval '3 days'); good planned_posts; m messages;
 BEGIN
- PERFORM bootstrap_workspace();
  INSERT INTO conversations(workspace_id,title) VALUES(auth.uid(),'Proposed times') RETURNING id INTO c;
  t:=enqueue_task(c,'Write 3 posts for next week',jsonb_build_object('kind','direct','conversationId',c),gen_random_uuid());
  t:=admit_task(t.id,gen_random_uuid());
@@ -27,7 +30,7 @@ BEGIN
  IF (SELECT (provenance->>'proposedAt')::timestamptz FROM post_versions WHERE post_id=good.id) IS DISTINCT FROM future THEN RAISE EXCEPTION 'Provenance missing proposed time'; END IF;
  SELECT * INTO m FROM messages WHERE type='post_reference' AND payload->>'postId'=good.id::text;
  IF (m.payload->>'proposedFor')::timestamptz IS DISTINCT FROM future THEN RAISE EXCEPTION 'Post reference missing proposed time'; END IF;
- IF EXISTS(SELECT 1 FROM planned_posts WHERE scheduled_for IS NOT NULL) THEN RAISE EXCEPTION 'A schedule was invented'; END IF;
+  IF EXISTS(SELECT 1 FROM planned_posts WHERE workspace_id=auth.uid() AND scheduled_for IS NOT NULL) THEN RAISE EXCEPTION 'A schedule was invented'; END IF;
  RAISE NOTICE 'PASS: proposed times stored as suggestions only; past and malformed times dropped without losing posts';
 END $$;
 ROLLBACK;

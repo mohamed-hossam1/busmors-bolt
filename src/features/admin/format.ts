@@ -23,7 +23,7 @@ export function formatDuration(ms: number | null | undefined): string {
 
 export interface TimelineItem {
   id: string
-  kind: 'model' | 'tool' | 'agent'
+  kind: 'model' | 'tool' | 'agent' | 'skill'
   label: string
   detail: string
   status: string
@@ -31,24 +31,30 @@ export interface TimelineItem {
   endedAt: string | null
   durationMs: number | null
   tokens?: { input: number; output: number; total: number; cached: number; reasoning: number }
+  usageKnown?: boolean
   provider?: string | null
   model?: string | null
   attempt?: number | null
+  retryAttempt?: number | null
+  fallbackUsed?: boolean
   error?: string | null
+  input?: unknown
   output?: unknown
+  metadata?: Record<string, unknown> | null
 }
 
 export function eventLabel(event: AdminTraceEventRow): string {
   const meta = (event.metadata ?? {}) as Record<string, unknown>
   if (event.event_type === 'model') return event.operation ?? 'model'
   if (event.event_type === 'tool') return event.tool_name ?? event.agent_id ?? 'tool'
+  if (event.event_type === 'skill') return (meta.skillId as string) ?? event.agent_id ?? 'skill'
   return (typeof meta.label === 'string' && meta.label) || event.agent_id || 'agent'
 }
 
 export function toTimelineItem(event: AdminTraceEventRow): TimelineItem {
   const base: TimelineItem = {
     id: event.id,
-    kind: event.event_type === 'model' ? 'model' : event.event_type === 'tool' ? 'tool' : 'agent',
+    kind: event.event_type === 'model' ? 'model' : event.event_type === 'tool' ? 'tool' : event.event_type === 'skill' ? 'skill' : 'agent',
     label: eventLabel(event),
     detail:
       event.event_type === 'model'
@@ -61,9 +67,15 @@ export function toTimelineItem(event: AdminTraceEventRow): TimelineItem {
     endedAt: event.ended_at,
     durationMs: event.duration_ms,
     attempt: event.attempt,
+    retryAttempt: event.retry_attempt,
+    fallbackUsed: event.fallback_used,
     error: event.error,
+    metadata: event.metadata,
   }
   if (event.event_type === 'model') {
+    const usageStatus = (event.metadata as Record<string, unknown> | null)?.usageStatus
+    const usageKnown = usageStatus === 'unknown' ? false : (usageStatus === 'known' ? true : event.status !== 'failed')
+    base.usageKnown = usageKnown
     base.tokens = {
       input: event.llm_input_tokens,
       output: event.llm_output_tokens,
@@ -73,15 +85,63 @@ export function toTimelineItem(event: AdminTraceEventRow): TimelineItem {
     }
     base.provider = event.provider
     base.model = event.model
+    base.input = event.input_payload
     base.output = event.output_preview
   } else if (event.event_type === 'tool') {
     base.provider = event.provider
+    base.input = event.input_payload
     base.output = event.output_preview
     if (event.output_truncated) base.detail = `${base.detail} (truncated)`
+  } else if (event.event_type === 'skill') {
+    base.input = event.metadata
+    base.output = event.metadata
   } else {
-    base.output = event.input_payload
+    base.input = event.input_payload
+    base.output = event.output_preview
   }
   return base
+}
+
+export interface ExecutionNode {
+  id: string
+  parentId: string | null
+  depth: number
+  item: TimelineItem
+  children: ExecutionNode[]
+}
+
+/**
+ * Build a parent/child execution tree from the flat event list using
+ * parent_event_id (and instance_id as a fallback), preserving seq order.
+ * Agent events become nodes; model/tool/skill events nest under the agent event
+ * that issued them, or under their parent_event_id when present.
+ */
+export function buildExecutionTree(events: AdminTraceEventRow[]): ExecutionNode[] {
+  const items = events.map(toTimelineItem)
+  const byId = new Map<string, number>()
+  events.forEach((event, index) => byId.set(event.id, index))
+  const nodes: ExecutionNode[] = events.map((event, index) => ({
+    id: event.id,
+    parentId: event.parent_event_id ?? null,
+    depth: 0,
+    item: items[index],
+    children: [],
+  }))
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const roots: ExecutionNode[] = []
+  for (const node of nodes) {
+    const parent = node.parentId ? nodeById.get(node.parentId) : undefined
+    if (parent && parent !== node) parent.children.push(node)
+    else roots.push(node)
+  }
+  const assignDepth = (list: ExecutionNode[], depth: number) => {
+    for (const node of list) {
+      node.depth = depth
+      if (node.children.length) assignDepth(node.children, depth + 1)
+    }
+  }
+  assignDepth(roots, 0)
+  return roots
 }
 
 export interface AttemptSummary {

@@ -20,6 +20,26 @@ export const MODEL_TEXT_CAP = 2048
 export const MAX_EVENTS = 1000
 export const MAX_BYTES = 8 * 1024 * 1024
 
+/**
+ * Capture policy (spec §13.6). Detailed, sanitized prompt/response capture is
+ * ON for isolated test executions (AI_MODE=test) and OFF by default in
+ * production. Enabling detail never authorizes a paid provider or bypasses the
+ * test model allowlist. Set OBSERVABILITY_CAPTURE=full|metadata to override.
+ */
+export type CaptureMode = 'full' | 'metadata'
+
+export function captureMode(): CaptureMode {
+  const override = process.env.OBSERVABILITY_CAPTURE
+  if (override === 'full') return 'full'
+  if (override === 'metadata') return 'metadata'
+  return process.env.AI_MODE === 'test' ? 'full' : 'metadata'
+}
+
+/** True when detailed (bounded, sanitized) prompt/response bodies may be stored. */
+export function captureDetailEnabled(): boolean {
+  return captureMode() === 'full'
+}
+
 /** Rough per-value overhead (object keys, json punctuation) used by the byte counter. */
 const PER_KEY_OVERHEAD = 24
 

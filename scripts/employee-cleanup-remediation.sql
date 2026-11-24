@@ -1,5 +1,6 @@
 -- Employee intelligence cleanup: status remediation for the retired execution path.
 -- Run only against an isolated/local database, as the service role/postgres.
+-- Run inside a transaction (psql --single-transaction) or via the local check.
 -- No records are deleted. Historical completed/failed/partial/cancelled tasks are
 -- left untouched.
 --
@@ -32,19 +33,32 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', w.workspace_id::text, true);
     PERFORM set_config('request.jwt.claim.role', 'service_role', true);
 
-    -- 1) Fail non-terminal Employee tasks that can no longer execute.
+    -- 1) Fail non-terminal Employee tasks that can no longer execute. These may be
+    -- queued, running, or awaiting_input, so stop_task (which requires an active
+    -- running lease) cannot be used uniformly. A direct, scoped UPDATE marks them
+    -- failed with a clear reason, records a system message, and leaves history
+    -- intact. No records are deleted.
     FOR r IN
-      SELECT id, run_id
+      SELECT id, conversation_id
       FROM public.tasks
       WHERE workspace_id = w.workspace_id
         AND status IN ('queued', 'running', 'awaiting_input')
     LOOP
-      PERFORM public.stop_task(
-        r.id,
-        r.run_id,
-        'failed',
-        'Employee intelligence is being rebuilt. This capability is temporarily unavailable.'
-      );
+      UPDATE public.tasks
+        SET status = 'failed',
+            result_summary = 'Employee intelligence is being rebuilt. This capability is temporarily unavailable.',
+            version = version + 1,
+            updated_at = now()
+        WHERE id = r.id AND status IN ('queued', 'running', 'awaiting_input');
+      UPDATE public.task_steps
+        SET status = 'failed', completed_at = now(),
+            output = jsonb_build_object('error', 'Employee intelligence is being rebuilt. This capability is temporarily unavailable.')
+        WHERE task_id = r.id AND status = 'running';
+      INSERT INTO public.messages(workspace_id, conversation_id, role, type, content, payload)
+        VALUES (w.workspace_id, r.conversation_id, 'system', 'error',
+          'Employee intelligence is being rebuilt. This capability is temporarily unavailable.',
+          jsonb_build_object('taskId', r.id, 'status', 'failed'))
+        ON CONFLICT DO NOTHING;
     END LOOP;
 
     -- 2) Fail Research links still waiting on the retired research pipeline. This
@@ -83,4 +97,3 @@ BEGIN
   END LOOP;
 END $$;
 
-COMMIT;

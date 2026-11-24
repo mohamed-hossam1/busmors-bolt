@@ -14,7 +14,7 @@ DECLARE
   c uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 BEGIN
   BEGIN
-    PERFORM enqueue_task(c, 'blocked', '{"kind":"direct","conversationId":' || quote_literal(c) || '}'::jsonb, gen_random_uuid());
+    PERFORM enqueue_task(c, 'blocked', jsonb_build_object('kind','direct','conversationId',c), gen_random_uuid());
     RAISE EXCEPTION 'enqueue_task was executable by authenticated';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;

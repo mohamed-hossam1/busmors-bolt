@@ -1,7 +1,7 @@
 'use client'
 
 import { useDialog } from '../hooks/useDialog'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from '@/shared/i18n'
 import { useSearchParams } from 'next/navigation'
 import { useLocaleRouter as useRouter } from '@/context/I18nContext'
@@ -30,6 +30,8 @@ import { useTaskRunner } from '../features/tasks/TaskRunnerProvider'
 import { PostPreviewCard } from '../components/chat/PostPreview'
 import MarkdownContent from '../components/chat/MarkdownContent'
 import DeliverableOfferCard from '../components/chat/DeliverableOfferCard'
+import AgentCanvas from '../components/chat/AgentCanvas'
+import type { CanvasAgentEvent } from '@/features/agents/canvas'
 import FacebookPostPreview from '../components/publishing/FacebookPostPreview'
 import { usePreviewPageName } from '../hooks/usePreviewPageName'
 import { formatConversationTitle } from '../lib/chat-title'
@@ -72,6 +74,7 @@ export default function EmployeePage() {
   const composedRef = useRef<string | null>(null)
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null)
   const [viewingDeliverable, setViewingDeliverable] = useState<{ title: string; content: string } | null>(null)
+  const [canvasEvents, setCanvasEvents] = useState<CanvasAgentEvent[]>([])
 
   useDialog(showHistory || !!viewingDeliverable, () => { setShowHistory(false); setViewingDeliverable(null) })
 
@@ -86,6 +89,16 @@ export default function EmployeePage() {
     setConversationId(id)
     if (workspaceIdRef.current) saveActiveConversation(workspaceIdRef.current, id)
   }
+
+  // Load the customer-safe Agent Canvas projection for a conversation (real events only).
+  const refreshCanvas = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversation/canvas?conversationId=${encodeURIComponent(id)}`, { cache: 'no-store' })
+      if (!res.ok) return
+      const body = (await res.json()) as { events?: CanvasAgentEvent[] }
+      if (viewedConversationRef.current === id) setCanvasEvents(Array.isArray(body.events) ? body.events : [])
+    } catch { /* Canvas is best-effort; the conversation still works without it. */ }
+  }, [])
 
   const displayedMessages = useMemo(() => {
     const greetingText = t('greetingProactive')
@@ -216,9 +229,10 @@ export default function EmployeePage() {
       }
     }
     void refresh()
-    const interval = setInterval(() => void refresh(), 1800)
+    void refreshCanvas(conversationId)
+    const interval = setInterval(() => { void refresh(); if (viewedConversationRef.current === conversationId) void refreshCanvas(conversationId) }, 1800)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [conversationId])
+  }, [conversationId, refreshCanvas])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [displayedMessages.length, running])
 
@@ -322,6 +336,7 @@ export default function EmployeePage() {
       }
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== tempId))
       if (workspaceIdRef.current) await loadConversationsList(workspaceIdRef.current)
+      void refreshCanvas(conversationId)
     } catch {
       setInput(textToSend)
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== tempId))
@@ -376,6 +391,7 @@ export default function EmployeePage() {
         {(actionError || runnerError) && <p role="alert" className="m-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{actionError || runnerError}</p>}
 
         <div className="flex-1 space-y-4 overflow-y-auto p-3.5 sm:p-6">
+          {canvasEvents.length > 0 && <AgentCanvas events={canvasEvents} />}
           {displayedMessages.map((msg) => (
             <MessageBubble
               key={msg.id}

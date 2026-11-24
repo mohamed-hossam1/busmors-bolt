@@ -6,7 +6,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
 import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
-import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
+import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, getEmployeeRoleRoute, type FallbackTargetConfig, type ModelConfig, type EmployeeRole } from '../config/ai-models'
+import { ROLE_TEMPERATURE } from '../features/agents/contracts'
+import type { ProviderAttemptInfo } from '../lib/agents'
+import { checkProviderPreflight, estimateSerializedTokens, recordProviderOutcome } from './ai/rate-limiter'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,7 +21,7 @@ const corsHeaders = {
 // by a fixed system prompt, a low token cap and a short provider timeout.
 // `roadmap` is included: it is a one-shot, server-owned generation from confirmed
 // Discovery answers (no task row, no research allowance), like brain_answer.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title', 'roadmap', 'roadmap_answer', 'roadmap_revision', 'roadmap_checkin'])
+const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'orchestrate_v2', 'brain_answer', 'title', 'roadmap', 'roadmap_answer', 'roadmap_revision', 'roadmap_checkin'])
 
 interface GenerateRequest {
   signal?: AbortSignal
@@ -31,6 +34,12 @@ interface GenerateRequest {
   maxTokens?: number
   temperature?: number
   jsonMode?: boolean
+  /** OpenAI-style tool definitions for native tool-calling (Orchestrator V2). */
+  tools?: { type: 'function'; function: { name: string; description?: string; parameters: unknown } }[]
+  /** When set, the provider is asked to call one of the supplied tools. */
+  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }
+  /** Multi-turn messages for tool loops (overrides system+user when present). */
+  messages?: { role: string; content: string | null; tool_calls?: unknown; tool_call_id?: string; name?: string }[]
   /** When true, uses the shared business key instead of the caller's own key.
    * Only allowed for onboarding website crawling (extraction of the caller's
    * own submitted site) — the shared key is the business's, not the user's. */
@@ -38,6 +47,18 @@ interface GenerateRequest {
   crawlOperation?: CrawlOperation
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   providerTimeoutMs?: number
+}
+
+/** A tool call requested by the model (OpenAI-compatible shape). */
+export interface ToolCallRequest {
+  id: string
+  name: string
+  args: string
+}
+
+export interface ToolCallResponse {
+  text: string
+  toolCalls: ToolCallRequest[]
 }
 
 interface KeyRow {
@@ -80,7 +101,7 @@ export async function generateAi(req: Request) {
     const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) ?? ''
     // Two distinct admin clients are deliberately separated:
     //  - The shared-crawl path only needs to verify the caller's JWT and, when
-    //    AI_API_KEY is present, never touches a service_role-only credential. An
+    //    GROQ_API_KEY is present, never touches a service_role-only credential. An
     //    anon/publishable key can verify the JWT via admin.auth.getUser(token),
     //    so it is enough there.
     //  - The task path (reserve_task_call, read_ai_key, tasks/ai_keys tables) is
@@ -98,7 +119,15 @@ export async function generateAi(req: Request) {
 
     const body = (await req.json()) as GenerateRequest
     body.signal = req.signal
-    if (typeof body.userPrompt !== 'string' || !body.userPrompt.trim() || body.userPrompt.length > 50000) {
+    const hasMessages = Array.isArray(body.messages) && body.messages.length > 0
+    const promptOk = typeof body.userPrompt === 'string' && body.userPrompt.trim().length > 0 && body.userPrompt.length <= 50000
+    if (!promptOk && !hasMessages) {
+      return new Response(JSON.stringify({ error: 'missing prompt' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (typeof body.userPrompt === 'string' && body.userPrompt.length > 50000) {
       return new Response(JSON.stringify({ error: 'missing prompt' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -121,6 +150,18 @@ export async function generateAi(req: Request) {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
+    }
+
+    // Orchestrator V2 native tool-calling path: one model turn with tools.
+    // Bounded by the fixed V2 system prompt, a low token cap and a short timeout.
+    if ((body.operation as string) === 'orchestrate_v2') {
+      return await handleOrchestratorV2Request(admin, body, workspaceId)
+    }
+
+    // Agent role turn (Director / specialists): structured JSON action, role-routed
+    // via getEmployeeRoleRoute, no task row. Application-mediated calling.
+    if ((body.operation as string) === 'agent_role') {
+      return await handleAgentRoleRequest(admin, body, workspaceId)
     }
 
     // Everything below is the task path. It needs service_role-only RPCs
@@ -174,9 +215,9 @@ export async function generateAi(req: Request) {
     let key = (keyMeta as KeyRow | null) ?? null
     let managedKey: string | null = null
     if (!key || key.status !== 'active') {
-      managedKey = process.env.AI_API_KEY ?? null
       const provider = opConfig.provider || process.env.AI_PROVIDER || 'groq'
       const model = opConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
+      managedKey = resolveApiKeyForProvider(provider)
       if (managedKey && provider && model) key = { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
     }
 
@@ -256,11 +297,11 @@ export function resolveApiKeyForProvider(provider: string, explicitKey?: string 
   if (explicitKey) return explicitKey
   switch (provider) {
     case 'dahl':
-      return process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY || null
+      return process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || null
     case 'sovereigneg':
-      return process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY || null
+      return process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || null
     case 'groq':
-      return process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+      return process.env.GROQ_API_KEY || null
     case 'anthropic':
       return process.env.ANTHROPIC_API_KEY || null
     case 'openai':
@@ -270,7 +311,8 @@ export function resolveApiKeyForProvider(provider: string, explicitKey?: string 
     case 'openrouter':
       return process.env.OPENROUTER_API_KEY || null
     default:
-      return process.env.AI_API_KEY || null
+      // The managed provider key is the Groq key (formerly AI_API_KEY).
+      return process.env.GROQ_API_KEY || null
   }
 }
 
@@ -281,6 +323,8 @@ export interface ExecutionTarget {
   apiKey?: string | null
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   timeoutMs?: number
+  inputCap?: number
+  completionCap?: number
 }
 
 export interface FallbackExecutionResult {
@@ -288,15 +332,51 @@ export interface FallbackExecutionResult {
   target: ExecutionTarget
   attemptIndex: number
   fallbackUsed: boolean
+  usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number }
+  usageKnown: boolean
+  toolCalls?: ToolCallRequest[]
+  attempts: ProviderAttemptInfo[]
+}
+
+type ErrorCategory = NonNullable<ProviderAttemptInfo['errorCategory']>
+
+class ProviderCallError extends Error {
+  readonly category: ErrorCategory
+  readonly statusCode: number | null
+  readonly retryable: boolean
+  constructor(message: string, category: ErrorCategory, statusCode: number | null = null, retryable = true) {
+    super(message)
+    this.category = category
+    this.statusCode = statusCode
+    this.retryable = retryable
+  }
+}
+
+/**
+ * Compact older non-system messages when falling back to a tighter provider cap,
+ * keeping system instructions, initial task context, and recent turns intact.
+ */
+function compactMessagesForCap(
+  messages: { role: string; content: string | null; tool_calls?: unknown; tool_call_id?: string; name?: string }[] | undefined,
+  maxTokens: number,
+  systemPrompt: string,
+  tools?: unknown[],
+): typeof messages {
+  if (!messages || messages.length <= 3) return messages
+  const est = estimateSerializedTokens({ systemPrompt, messages, tools })
+  if (est <= maxTokens) return messages
+  const out = messages.map((m) => ({ ...m }))
+  for (let i = 1; i < out.length - 2; i++) {
+    if (out[i].role === 'tool' && typeof out[i].content === 'string' && out[i].content!.length > 600) {
+      out[i].content = out[i].content!.slice(0, 600) + '… [compacted]'
+    }
+    if (estimateSerializedTokens({ systemPrompt, messages: out, tools }) <= maxTokens) break
+  }
+  return out
 }
 
 /**
  * Reusable execution template: executes an AI request with transparent multi-tiered fallback.
- * 1. Tries primary target.
- * 2. If it fails, times out, or produces invalid output, automatically falls back to:
- *    - Fallback: openai/gpt-oss-120b on Groq (default reasoning)
- *    - Emergency Fallback: openai/gpt-oss-20b on Groq (default reasoning)
- * 3. Can be called by ANY operation or request across the application.
  */
 export async function executeWithFallback(options: {
   primary: ExecutionTarget
@@ -340,17 +420,41 @@ export async function executeWithFallback(options: {
       ),
       apiKey: (fb as ExecutionTarget).apiKey ?? resolveApiKeyForProvider(fb.provider),
       reasoningEffort: fb.reasoningEffort,
-      timeoutMs: fb.timeoutMs ?? 20000,
+      timeoutMs: fb.timeoutMs ?? 25000,
+      inputCap: (fb as ExecutionTarget).inputCap ?? (fb.provider === 'groq' ? 6500 : 12000),
+      completionCap: (fb as ExecutionTarget).completionCap ?? (fb.provider === 'groq' ? 2500 : 2500),
     })
   }
 
   const deadline = Date.now() + totalDeadlineMs
   let lastError: Error | null = null
+  const attempts: ProviderAttemptInfo[] = []
 
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i]
     const remaining = deadline - Date.now()
     if (remaining < 2000) break
+    if (request.signal?.aborted) {
+      const nowIso = new Date().toISOString()
+      attempts.push({
+        provider: target.provider,
+        model: target.model,
+        attemptIndex: i,
+        fallbackUsed: i > 0,
+        status: 'aborted',
+        error: 'aborted',
+        errorCategory: 'aborted',
+        statusCode: null,
+        usage: null,
+        usageKnown: false,
+        startedAt: nowIso,
+        endedAt: nowIso,
+        durationMs: 0,
+      })
+      const err = new Error('aborted')
+      ;(err as { attempts?: ProviderAttemptInfo[] }).attempts = attempts
+      throw err
+    }
 
     const apiKey = target.apiKey || resolveApiKeyForProvider(target.provider)
     if (!apiKey) {
@@ -358,10 +462,96 @@ export async function executeWithFallback(options: {
       continue
     }
 
-    const targetRequest: GenerateRequest = {
+    const targetMessages = target.inputCap
+      ? compactMessagesForCap(request.messages, target.inputCap, request.systemPrompt, request.tools)
+      : request.messages
+
+    const targetMaxTokens = target.completionCap
+      ? Math.min(request.maxTokens ?? target.completionCap, target.completionCap)
+      : request.maxTokens
+
+    const estimatedInput = estimateSerializedTokens({
+      systemPrompt: request.systemPrompt,
+      userPrompt: request.userPrompt,
+      messages: targetMessages as { role: string; content: string | null }[] | undefined,
+      tools: request.tools,
+    })
+
+    let preflight = checkProviderPreflight({
+      provider: target.provider,
+      model: target.model,
+      estimatedInputTokens: estimatedInput,
+      inputCap: target.inputCap,
+      completionCap: targetMaxTokens,
+    })
+
+    // If blocked ONLY by a short provider TPM reset window on the final available
+    // target (e.g. Groq multi-turn loop after reading search/scrape output), honor
+    // the reset header once within the remaining request deadline.
+    if (
+      !preflight.allowed &&
+      preflight.reason === 'tpm_limit' &&
+      i === targets.length - 1 &&
+      typeof preflight.waitMs === 'number' &&
+      preflight.waitMs > 0 &&
+      preflight.waitMs <= 25_000 &&
+      remaining > preflight.waitMs + 5_000 &&
+      !request.signal?.aborted
+    ) {
+      console.warn(`${logPrefix} Waiting ${Math.ceil(preflight.waitMs / 1000)}s for ${target.provider} quota reset (${preflight.detail})`)
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, preflight.waitMs! + 150)
+        request.signal?.addEventListener('abort', () => { clearTimeout(t); resolve() }, { once: true })
+      })
+      preflight = checkProviderPreflight({
+        provider: target.provider,
+        model: target.model,
+        estimatedInputTokens: estimatedInput,
+        inputCap: target.inputCap,
+        completionCap: targetMaxTokens,
+      })
+    }
+
+    if (!preflight.allowed) {
+      const nowIso = new Date().toISOString()
+      const category: ErrorCategory =
+        preflight.reason === 'disallowed_in_mode'
+          ? 'disallowed'
+          : preflight.reason === 'input_cap_exceeded'
+            ? 'context_limit'
+            : 'rate_limit'
+      attempts.push({
+        provider: target.provider,
+        model: target.model,
+        attemptIndex: i,
+        fallbackUsed: i > 0,
+        status: 'skipped',
+        error: preflight.detail ?? preflight.reason ?? 'preflight_rejected',
+        errorCategory: category,
+        statusCode: null,
+        usage: null,
+        usageKnown: false,
+        startedAt: nowIso,
+        endedAt: nowIso,
+        durationMs: 0,
+      })
+      lastError = new Error(preflight.reason === 'input_cap_exceeded' ? 'context_limit_exceeded' : 'provider_error_429')
+      console.warn(`${logPrefix} Preflight skipped ${target.provider}/${target.model}: ${preflight.detail}`)
+      continue
+    }
+
+    const resolvedEffort = target.reasoningEffort ?? (
+      target.provider === 'groq' && target.model.includes('gpt-oss') && request.reasoningEffort === 'none'
+        ? undefined
+        : request.reasoningEffort
+    )
+
+    const targetRequest: GenerateRequest & { toolCallsResult?: ToolCallRequest[]; usageKnown?: boolean } = {
       ...request,
-      reasoningEffort: target.reasoningEffort ?? (target.provider === 'groq' && target.model.includes('gpt-oss') ? undefined : request.reasoningEffort),
-      providerTimeoutMs: Math.min(target.timeoutMs ?? 20000, remaining),
+      messages: targetMessages,
+      maxTokens: targetMaxTokens,
+      reasoningEffort: resolvedEffort,
+      providerTimeoutMs: Math.min(target.timeoutMs ?? 25000, remaining),
     }
 
     const keyRow: KeyRow = {
@@ -372,32 +562,271 @@ export async function executeWithFallback(options: {
       status: 'active',
     }
 
+    const startedMs = Date.now()
+    const startedAt = new Date(startedMs).toISOString()
     try {
       const text = await callProvider(keyRow, apiKey, targetRequest)
-      if (!text || !text.trim()) throw new Error('empty_provider_response')
-
-      if (validate && !validate(text)) {
-        throw new Error('invalid_output')
+      const hasToolCalls = Array.isArray(targetRequest.toolCallsResult) && targetRequest.toolCallsResult.length > 0
+      // A tool-calling turn may legitimately have empty assistant content.
+      if ((!text || !text.trim()) && !hasToolCalls) {
+        throw new ProviderCallError('empty_provider_response', 'empty_response', 200, true)
       }
+
+      if (validate && text && !validate(text)) {
+        throw new ProviderCallError('invalid_output', 'invalid_output', 200, true)
+      }
+
+      const endedMs = Date.now()
+      const usageKnown = Boolean(targetRequest.usageKnown)
+      attempts.push({
+        provider: target.provider,
+        model: target.model,
+        attemptIndex: i,
+        fallbackUsed: i > 0,
+        status: 'completed',
+        error: null,
+        errorCategory: null,
+        statusCode: 200,
+        usage: usageKnown ? (targetRequest.usage ?? null) : null,
+        usageKnown,
+        startedAt,
+        endedAt: new Date(endedMs).toISOString(),
+        durationMs: endedMs - startedMs,
+      })
 
       return {
         text,
         target,
         attemptIndex: i,
         fallbackUsed: i > 0,
+        usage: usageKnown ? targetRequest.usage : undefined,
+        usageKnown,
+        toolCalls: targetRequest.toolCallsResult,
+        attempts,
       }
     } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err))
+      const endedMs = Date.now()
+      const callErr = err instanceof ProviderCallError ? err : null
+      const msg = err instanceof Error ? err.message : String(err)
+      const isTimeout = err instanceof Error && /Timeout|Abort/.test(err.name)
+      const category: ErrorCategory = request.signal?.aborted
+        ? 'aborted'
+        : callErr?.category ?? (isTimeout ? 'timeout' : 'network_error')
+      const statusCode = callErr?.statusCode ?? null
+      lastError = err instanceof Error ? err : new Error(msg)
+      if (!request.signal?.aborted && (category === 'timeout' || category === 'server_error' || category === 'network_error')) {
+        recordProviderOutcome({ provider: target.provider, status: statusCode ?? (category === 'timeout' ? 504 : 500) })
+      }
+
+      attempts.push({
+        provider: target.provider,
+        model: target.model,
+        attemptIndex: i,
+        fallbackUsed: i > 0,
+        status: request.signal?.aborted ? 'aborted' : 'failed',
+        error: isTimeout ? 'timeout' : msg,
+        errorCategory: category,
+        statusCode,
+        usage: null,
+        usageKnown: false,
+        startedAt,
+        endedAt: new Date(endedMs).toISOString(),
+        durationMs: endedMs - startedMs,
+      })
+
+      // Caller aborted or invalid_request (400/422): do not mask with blind fallback.
+      if (request.signal?.aborted || (callErr && !callErr.retryable)) {
+        break
+      }
+
       const nextTarget = targets[i + 1]
       if (nextTarget) {
-        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${lastError.message}). Falling back to: ${nextTarget.provider}/${nextTarget.model}`)
+        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${category}: ${lastError.message}). Falling back to: ${nextTarget.provider}/${nextTarget.model}`)
       } else {
-        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${lastError.message}). All fallback options exhausted.`)
+        console.warn(`${logPrefix} Target ${target.provider}/${target.model} failed (${category}: ${lastError.message}). All fallback options exhausted.`)
       }
     }
   }
 
-  throw lastError ?? new Error('all_targets_failed')
+  const finalError = lastError ?? new Error('all_targets_failed')
+  ;(finalError as { attempts?: ProviderAttemptInfo[] }).attempts = attempts
+  throw finalError
+}
+
+/**
+ * Orchestrator V2: one model turn with native tool-calling. The system prompt is
+ * supplied by the caller (the canonical V2 prompt); tools and messages are
+ * caller-supplied and validated against the central registry downstream. No task
+ * row, no allowance. Uses the managed key, else the workspace's own key.
+ */
+async function handleOrchestratorV2Request(
+  admin: SupabaseClient,
+  body: GenerateRequest,
+  workspaceId: string,
+): Promise<Response> {
+  const opConfig = getModelConfigForOperation('orchestrate')
+  const request: GenerateRequest = {
+    systemPrompt: body.systemPrompt,
+    userPrompt: body.userPrompt,
+    messages: body.messages,
+    tools: body.tools,
+    toolChoice: body.toolChoice,
+    signal: body.signal,
+    jsonMode: false,
+    temperature: body.temperature ?? opConfig.temperature ?? 0.2,
+    maxTokens: 1400,
+    reasoningEffort: 'low',
+    providerTimeoutMs: 20000,
+  }
+
+  const provider = opConfig.provider || 'groq'
+  const model = opConfig.model || 'openai/gpt-oss-120b'
+  const managedKey = resolveApiKeyForProvider(provider)
+  let key: KeyRow | null = managedKey
+    ? { workspace_id: workspaceId, provider, model, custom_base_url: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : (process.env.AI_BASE_URL ?? null), status: 'active' }
+    : null
+  let plaintextKey: string | null = managedKey
+
+  if (!key || !plaintextKey) {
+    const { data: keyMeta } = await admin.from('ai_keys').select('workspace_id, provider, model, custom_base_url, status').eq('workspace_id', workspaceId).maybeSingle()
+    if (keyMeta && (keyMeta as KeyRow).status === 'active') {
+      key = keyMeta as KeyRow
+      plaintextKey = await decryptKey(workspaceId, admin)
+    }
+  }
+  if (!key || !plaintextKey) {
+    return new Response(JSON.stringify({ error: 'no_active_key' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  try {
+    const result = await executeWithFallback({
+      primary: {
+        provider,
+        model,
+        apiKey: plaintextKey,
+        baseUrl: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : (process.env.AI_BASE_URL ?? null),
+        timeoutMs: 20000,
+        inputCap: 3000,
+        completionCap: 1400,
+      },
+      fallbacks: AI_FALLBACK_TEMPLATE,
+      request,
+      logPrefix: '[orchestrator-v2]',
+    })
+    const toolCalls = result.toolCalls ?? []
+    return new Response(JSON.stringify({
+      text: result.text,
+      toolCalls,
+      usage: result.usage ?? null,
+      usageKnown: result.usageKnown,
+      provider: result.target.provider,
+      model: result.target.model,
+      attempt: result.attemptIndex,
+      fallbackUsed: result.fallbackUsed,
+      attempts: result.attempts,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    const rawMessage = err instanceof Error ? err.message : 'generation failed'
+    const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|context_limit_exceeded|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
+    const attempts = (err as { attempts?: ProviderAttemptInfo[] }).attempts ?? []
+    return new Response(JSON.stringify({ error: message, attempts }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+}
+
+/**
+ * Agent role turn (Director / specialists): supports native OpenAI tool calling
+ * (and optional JSON mode) routed via getEmployeeRoleRoute with role caps.
+ */
+async function handleAgentRoleRequest(
+  admin: SupabaseClient,
+  body: GenerateRequest,
+  workspaceId: string,
+): Promise<Response> {
+  const role = (body as GenerateRequest & { role?: EmployeeRole }).role
+  if (!role || !['director', 'research', 'content', 'marketing_analyst'].includes(role)) {
+    return new Response(JSON.stringify({ error: 'invalid_role' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+  const route = getEmployeeRoleRoute(role)
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0
+  const request: GenerateRequest = {
+    systemPrompt: body.systemPrompt,
+    userPrompt: body.userPrompt,
+    messages: body.messages,
+    tools: body.tools,
+    toolChoice: hasTools ? (body.toolChoice ?? 'auto') : undefined,
+    signal: body.signal,
+    jsonMode: body.jsonMode ?? false,
+    temperature: body.temperature ?? ROLE_TEMPERATURE[role] ?? 0.3,
+    maxTokens: Math.min(route.completionCap, 2500),
+    reasoningEffort: 'low',
+    providerTimeoutMs: 45000,
+  }
+
+  const provider = route.primary.provider
+  const model = route.primary.model
+  const managedKey = resolveApiKeyForProvider(provider)
+  let key: KeyRow | null = managedKey
+    ? { workspace_id: workspaceId, provider, model, custom_base_url: provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : provider === 'sovereigneg' ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1') : (process.env.AI_BASE_URL ?? null), status: 'active' }
+    : null
+  let plaintextKey: string | null = managedKey
+  if (!key || !plaintextKey) {
+    const { data: keyMeta } = await admin.from('ai_keys').select('workspace_id, provider, model, custom_base_url, status').eq('workspace_id', workspaceId).maybeSingle()
+    if (keyMeta && (keyMeta as KeyRow).status === 'active') { key = keyMeta as KeyRow; plaintextKey = await decryptKey(workspaceId, admin) }
+  }
+  if (!key || !plaintextKey) {
+    return new Response(JSON.stringify({ error: 'no_active_key', attempts: [] }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  const fallbacks: ExecutionTarget[] = route.fallbacks.map((fb) => ({
+    provider: fb.provider,
+    model: fb.model,
+    apiKey: resolveApiKeyForProvider(fb.provider),
+    baseUrl: fb.provider === 'dahl' ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1') : fb.provider === 'sovereigneg' ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1') : null,
+    timeoutMs: fb.timeoutMs ?? (fb.provider === 'groq' ? 25000 : 45000),
+    reasoningEffort: fb.reasoningEffort,
+    inputCap: fb.provider === 'groq' ? Math.min(route.inputCap, 6500) : route.inputCap,
+    completionCap: fb.provider === 'groq' ? Math.min(route.completionCap, 2500) : route.completionCap,
+  }))
+
+  try {
+    const result = await executeWithFallback({
+      primary: {
+        provider,
+        model,
+        apiKey: plaintextKey,
+        baseUrl: (key as KeyRow).custom_base_url,
+        timeoutMs: provider === 'dahl' ? 45000 : 25000,
+        inputCap: route.inputCap,
+        completionCap: route.completionCap,
+      },
+      fallbacks,
+      request,
+      totalDeadlineMs: 90000,
+      logPrefix: `[agent-${role}]`,
+    })
+    return new Response(JSON.stringify({
+      text: result.text,
+      toolCalls: result.toolCalls ?? [],
+      usage: result.usage ?? null,
+      usageKnown: result.usageKnown,
+      provider: result.target.provider,
+      model: result.target.model,
+      attempt: result.attemptIndex,
+      fallbackUsed: result.fallbackUsed,
+      attempts: result.attempts,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    const rawMessage = err instanceof Error ? err.message : 'generation failed'
+    const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|context_limit_exceeded|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
+    const attempts = (err as { attempts?: ProviderAttemptInfo[] }).attempts ?? []
+    return new Response(JSON.stringify({ error: message, attempts }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
 }
 
 /**
@@ -426,11 +855,7 @@ async function handleOrchestratorRequest(
     providerTimeoutMs: 20000,
   }
 
-  const managedKey = opConfig.provider === 'dahl'
-    ? ((process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY) ?? null)
-    : opConfig.provider === 'sovereigneg'
-      ? ((process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY) ?? null)
-      : (process.env.AI_API_KEY ?? null)
+  const managedKey = resolveApiKeyForProvider(opConfig.provider || 'groq')
   const provider = opConfig.provider || 'groq'
   const model = opConfig.model || 'openai/gpt-oss-120b'
   let key: KeyRow | null = managedKey && provider && model
@@ -485,7 +910,7 @@ async function handleOrchestratorRequest(
       validate: (generated) => validateOutput(operation, generated),
       logPrefix: '[orchestrator]',
     })
-    return new Response(JSON.stringify({ text: result.text, usage: body.usage ?? null, provider: result.target.provider, model: result.target.model, attempt: result.attemptIndex, fallbackUsed: result.fallbackUsed }), {
+    return new Response(JSON.stringify({ text: result.text, usage: result.usage ?? null, provider: result.target.provider, model: result.target.model, attempt: result.attemptIndex, fallbackUsed: result.fallbackUsed }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
@@ -526,11 +951,11 @@ async function handleSharedCrawlRequest(
   }
 
   // Primary: DeepSeek-V4-Flash via general Dahl provider
-  const dahlKey = process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_CRAWL_API_KEY || process.env.AI_API_KEY || null
+  const dahlKey = process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_CRAWL_API_KEY || null
   const dahlBaseUrl = process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1'
 
-  // Fallback: Groq API key
-  const fallbackKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+  // Fallback: Groq API key (formerly AI_API_KEY)
+  const fallbackKey = process.env.GROQ_API_KEY || null
 
   let sharedRpcKey: string | null = null
   if (!dahlKey && !fallbackKey) {
@@ -641,12 +1066,12 @@ async function handleSharedCrawlRequest(
 async function callProvider(
   key: KeyRow,
   apiKey: string,
-  body: GenerateRequest
+  body: GenerateRequest & { toolCallsResult?: ToolCallRequest[]; usageKnown?: boolean }
 ): Promise<string> {
   const isHigh = body.reasoningEffort === 'high'
   const maxTokens = (isHigh && body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens ?? 4096, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
-  const providerTimeout = Math.min(isHigh ? 60000 : 25000, Math.max(1000, body.providerTimeoutMs ?? (isHigh ? 45000 : 25000)))
+  const providerTimeout = Math.min(isHigh ? 60000 : 45000, Math.max(1000, body.providerTimeoutMs ?? (isHigh ? 45000 : 25000)))
 
   if (key.provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -665,14 +1090,21 @@ async function callProvider(
         messages: [{ role: 'user', content: body.userPrompt }],
       }),
     })
-    if (res.status === 401 || res.status === 403) throw new Error('invalid_key')
-    if (!res.ok) throw new Error(`provider_error_${res.status}`)
+    recordProviderOutcome({ provider: key.provider, status: res.status, headers: res.headers })
+    if (res.status === 401 || res.status === 403) throw new ProviderCallError('invalid_key', 'auth_error', res.status, false)
+    if (res.status === 429) throw new ProviderCallError('provider_error_429', 'rate_limit', 429, true)
+    if (res.status === 400 || res.status === 422) throw new ProviderCallError(`provider_error_${res.status}`, 'invalid_request', res.status, false)
+    if (!res.ok) throw new ProviderCallError(`provider_error_${res.status}`, res.status >= 500 ? 'server_error' : 'network_error', res.status, true)
     const data = await res.json()
     const text = data?.content?.[0]?.text
-    if (typeof text !== 'string') throw new Error('unexpected_provider_response')
-    if (body.jsonMode && data?.stop_reason === 'max_tokens') throw new Error('truncated_json_response')
+    if (typeof text !== 'string') throw new ProviderCallError('unexpected_provider_response', 'invalid_output', 200, true)
+    if (body.jsonMode && data?.stop_reason === 'max_tokens') throw new ProviderCallError('truncated_json_response', 'invalid_output', 200, true)
 
-    body.usage = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens }
+    const hasIn = typeof data.usage?.input_tokens === 'number'
+    const hasOut = typeof data.usage?.output_tokens === 'number'
+    body.usageKnown = hasIn || hasOut
+    body.usage = body.usageKnown ? { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens } : undefined
+    recordProviderOutcome({ provider: key.provider, status: 200, headers: res.headers, actualTokens: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0) })
 
     return text
   }
@@ -692,11 +1124,28 @@ async function callProvider(
               : key.provider === 'sovereigneg'
                 ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1').replace(/\/$/, '')
                 : (key.custom_base_url ?? '').replace(/\/$/, '')
-  if (!base) throw new Error('missing_base_url')
+  if (!base) throw new ProviderCallError('missing_base_url', 'invalid_request', null, false)
   if (key.provider === 'custom') {
     const configuredAllowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)
     const allowed = [...new Set([...configuredAllowed, 'https://inference.dahl.global/v1', 'https://backend.sovereigneg.com/v1'])]
-    if (!base.startsWith('https://') || !allowed.includes(base)) throw new Error('unapproved_base_url')
+    if (!base.startsWith('https://') || !allowed.includes(base)) throw new ProviderCallError('unapproved_base_url', 'invalid_request', null, false)
+  }
+
+  const messages = body.messages && body.messages.length > 0
+    ? [...body.messages]
+    : [
+        ...(body.systemPrompt ? [{ role: 'system', content: body.systemPrompt }] : []),
+        { role: 'user', content: body.userPrompt },
+      ]
+  // Preserve body.systemPrompt when callers pass multi-turn messages without a leading system role.
+  if (body.systemPrompt && !messages.some((m) => m.role === 'system')) {
+    messages.unshift({ role: 'system', content: body.systemPrompt })
+  }
+  // OpenAI-compatible json_object mode (notably Groq) rejects requests whose
+  // messages never mention "json". Guarantee the keyword is present so a
+  // structured turn does not fail with a 400 merely due to prompt wording.
+  if (body.jsonMode && !/json/i.test(JSON.stringify(messages))) {
+    messages.unshift({ role: 'system', content: 'Respond with a single valid JSON object.' })
   }
 
   const res = await fetch(`${base}/chat/completions`, {
@@ -710,27 +1159,62 @@ async function callProvider(
       model: key.model,
       ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
       temperature,
-      messages: [
-        { role: 'system', content: body.systemPrompt },
-        { role: 'user', content: body.userPrompt },
-      ],
+      messages,
       ...(body.jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      ...(body.reasoningEffort && !(key.provider === 'groq' && key.model.startsWith('openai/gpt-oss-')) ? {
+      ...(body.tools && body.tools.length > 0 ? { tools: body.tools, tool_choice: body.toolChoice ?? 'auto' } : {}),
+      ...(body.reasoningEffort && body.reasoningEffort !== 'none' ? {
         reasoning_effort: key.provider === 'groq'
-          ? (body.reasoningEffort === 'none' ? undefined : (body.jsonMode && body.reasoningEffort === 'high' ? 'medium' : body.reasoningEffort))
+          ? (body.jsonMode && body.reasoningEffort === 'high' ? 'medium' : body.reasoningEffort)
           : body.reasoningEffort,
       } : {}),
     }),
   })
-  if (res.status === 401 || res.status === 403) throw new Error('invalid_key')
-  if (!res.ok) throw new Error(`provider_error_${res.status}`)
+  if (res.status === 401 || res.status === 403) {
+    recordProviderOutcome({ provider: key.provider, status: res.status, headers: res.headers })
+    throw new ProviderCallError('invalid_key', 'auth_error', res.status, true)
+  }
+  if (res.status === 429) {
+    recordProviderOutcome({ provider: key.provider, status: 429, headers: res.headers })
+    throw new ProviderCallError('provider_error_429', 'rate_limit', 429, true)
+  }
+  if (res.status === 400 || res.status === 422) {
+    const errSnippet = (await res.text().catch(() => '')).slice(0, 240)
+    if (errSnippet) console.warn(`[ai-generate] ${key.provider} HTTP ${res.status}:`, errSnippet)
+    const isToolUseGlitch = /tool_use_failed/i.test(errSnippet)
+    throw new ProviderCallError(`provider_error_${res.status}`, isToolUseGlitch ? 'invalid_output' : 'invalid_request', res.status, isToolUseGlitch)
+  }
+  if (!res.ok) {
+    throw new ProviderCallError(`provider_error_${res.status}`, res.status >= 500 ? 'server_error' : 'network_error', res.status, true)
+  }
   const data = await res.json()
   const choice = data?.choices?.[0]
   const text = choice?.message?.content
-  if (typeof text !== 'string') throw new Error('unexpected_provider_response')
-  if (body.jsonMode && choice?.finish_reason === 'length') throw new Error('truncated_json_response')
+  const hasIn = typeof data.usage?.prompt_tokens === 'number'
+  const hasOut = typeof data.usage?.completion_tokens === 'number'
+  body.usageKnown = hasIn || hasOut
+  body.usage = body.usageKnown ? { inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens } : undefined
+  recordProviderOutcome({
+    provider: key.provider,
+    status: 200,
+    headers: res.headers,
+    actualTokens: body.usageKnown ? ((data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0)) : null,
+  })
 
-  body.usage = { inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens }
+  // Tool-calling response: content may be null while tool_calls is populated.
+  const rawToolCalls = choice?.message?.tool_calls
+  if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
+    const toolCalls: ToolCallRequest[] = rawToolCalls
+      .filter((tc: { function?: { name?: unknown; arguments?: unknown } }) => typeof tc?.function?.name === 'string')
+      .map((tc: { id?: unknown; function: { name: string; arguments?: unknown } }) => ({
+        id: typeof tc.id === 'string' ? tc.id : crypto.randomUUID(),
+        name: tc.function.name,
+        args: typeof tc.function.arguments === 'string' ? tc.function.arguments : '{}',
+      }))
+    body.toolCallsResult = toolCalls
+    return typeof text === 'string' ? text : ''
+  }
+  if (typeof text !== 'string') throw new ProviderCallError('unexpected_provider_response', 'invalid_output', 200, true)
+  if (body.jsonMode && choice?.finish_reason === 'length') throw new ProviderCallError('truncated_json_response', 'invalid_output', 200, true)
 
   return text
 }

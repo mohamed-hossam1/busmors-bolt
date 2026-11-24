@@ -1,6 +1,6 @@
 import 'server-only'
 import { createAdminClient } from '../supabase-admin'
-import { MAX_BYTES, MAX_EVENTS, observabilityEnabled } from '../observability'
+import { MAX_BYTES, MAX_EVENTS, observabilityEnabled, recordAdminReadAudit } from '../observability'
 import type {
   AdminTraceDetail,
   AdminTraceEventRow,
@@ -51,7 +51,7 @@ function sanitizeSearch(q: string): string {
   return q.replace(/[,()%\\]/g, ' ').trim().slice(0, 120)
 }
 
-export async function listTraces(filters: AdminTraceListFilters): Promise<AdminTraceListResult> {
+export async function listTraces(filters: AdminTraceListFilters, actorId?: string): Promise<AdminTraceListResult> {
   const admin = createAdminClient()
   const page = Math.max(1, Math.trunc(filters.page ?? 1))
   const pageSize = Math.min(100, Math.max(1, Math.trunc(filters.pageSize ?? 20)))
@@ -72,6 +72,9 @@ export async function listTraces(filters: AdminTraceListFilters): Promise<AdminT
     .order('started_at', { ascending: false, nullsFirst: false })
     .range(from, to)
   if (error) throw error
+  if (actorId) {
+    await recordAdminReadAudit({ actorId, action: 'list', scope: { page, pageSize, status: filters.status ?? null, route: filters.route ?? null, q: q || null }, outcome: 'success' })
+  }
   return {
     data: (data ?? []).map((row) => normalizeRow(row as Record<string, unknown>)),
     page,
@@ -80,7 +83,7 @@ export async function listTraces(filters: AdminTraceListFilters): Promise<AdminT
   }
 }
 
-export async function getTraceDetail(id: string): Promise<AdminTraceDetail | null> {
+export async function getTraceDetail(id: string, actorId?: string): Promise<AdminTraceDetail | null> {
   const admin = createAdminClient()
   const { data: traceRow, error: traceError } = await admin
     .from('admin_trace_list')
@@ -88,7 +91,11 @@ export async function getTraceDetail(id: string): Promise<AdminTraceDetail | nul
     .eq('id', id)
     .maybeSingle()
   if (traceError) throw traceError
-  if (!traceRow) return null
+  if (!traceRow) {
+    if (actorId) await recordAdminReadAudit({ actorId, action: 'detail', traceId: id, scope: {}, outcome: 'denied' })
+    return null
+  }
+  if (actorId) await recordAdminReadAudit({ actorId, action: 'detail', traceId: id, scope: { workspaceId: (traceRow as Record<string, unknown>).workspace_id ?? null }, outcome: 'success' })
 
   const { data: eventRows, error: eventError } = await admin
     .from('admin_trace_events')
