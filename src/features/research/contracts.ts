@@ -147,6 +147,7 @@ export interface BusinessProfile {
   channels: string[]
   website: string | null
   audience: string
+  offerings?: string[]
 }
 
 export interface GeographyScope {
@@ -179,6 +180,8 @@ export interface ResearchBrief {
   budget: ResearchBudget
   stopRules: StopRule
   createdAt: string
+  aiQueries?: string[]
+  knownCompetitors?: string[]
 }
 
 const LANGUAGES: readonly ResearchLanguage[] = ['ar-EG', 'en']

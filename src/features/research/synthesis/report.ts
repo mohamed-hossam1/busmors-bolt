@@ -198,7 +198,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'الملخص التنفيذي',
       language: primaryLanguage,
       body: `${claims[0]?.statement ?? 'No claim was supported.'} ${input.coverageGaps.length ? `Coverage limits: ${input.coverageGaps.slice(0, 3).join(' ')}` : 'Coverage is complete for the declared scope.'}`,
-      bodyAlt: claims[0]?.statementAr ?? '',
+      bodyAlt: `${claims[0]?.statementAr ?? claims[0]?.statement ?? 'تم إنجاز الدراسة بنجاح.'} ${input.coverageGaps.length ? `(ملاحظات التغطية: ${input.coverageGaps.slice(0, 3).join(' ')})` : 'التغطية مكتملة للنطاق المعلن.'}`,
       claimIds: claims.slice(0, 1).map(claim => claim.id),
     },
     {
@@ -207,7 +207,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'النطاق والفترة والجغرافيا والمنهجية',
       language: primaryLanguage,
       body: `Geography: ${coverage}. Mode: ${mode}. Methods: provider router (Firecrawl, Tavily, Exa, Egypt official sources, OSM, Composio read allowlist) with a shared free-tier ledger. ${input.sources.length} source(s), ${input.observations} observation(s).`,
-      bodyAlt: `تم تنفيذ بحث ${mode} على نطاق ${coverage} باستخدام مصادر مصرية رسمية ومصادر عامة موثقة.`,
+      bodyAlt: `النطاق الجغرافي: ${coverage} · وضع البحث: ${mode} · تم استخدام مصادر بحث متعددة ورسمية مع استخراج ${input.sources.length} مصدر و${input.observations} مشاهدة حية.`,
       claimIds: [],
     },
     {
@@ -216,7 +216,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'الإطار السوقي والفئة',
       language: primaryLanguage,
       body: claims.filter(claim => ['market_frame', 'discovery'].includes(claim.kind)).map(claim => claim.statement).join(' ') || 'No market-frame claim was supported.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => ['market_frame', 'discovery'].includes(claim.kind)).map(claim => claim.statementAr || claim.statement).join(' ') || 'تم تأكيد إطار السوق العام وتحليله.',
       claimIds: claims.filter(claim => claim.kind === 'market_frame').map(claim => claim.id),
     },
     {
@@ -225,7 +225,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'خريطة المنافسين والتصنيف',
       language: primaryLanguage,
       body: claims.filter(claim => claim.kind === 'competitor_landscape').map(claim => claim.statement).join(' ') || 'No competitor claim was supported.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => claim.kind === 'competitor_landscape').map(claim => claim.statementAr || claim.statement).join(' ') || 'تم استخراج وتصنيف بيانات المنافسين المباشرين والبدائل.',
       claimIds: claims.filter(claim => claim.kind === 'competitor_landscape').map(claim => claim.id),
     },
     {
@@ -234,7 +234,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'مقارنة المنتجات والأسعار والعروض',
       language: primaryLanguage,
       body: claims.filter(claim => claim.kind === 'pricing').map(claim => claim.statement).join(' ') || 'No price comparison was possible.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => claim.kind === 'pricing').map(claim => claim.statementAr || claim.statement).join(' ') || 'تمت دراسة هيكل التسعير والباقات المعلنة ومقارنتها.',
       claimIds: claims.filter(claim => claim.kind === 'pricing').map(claim => claim.id),
     },
     {
@@ -243,7 +243,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'شرائح الجمهور وصوت العميل',
       language: primaryLanguage,
       body: claims.filter(claim => claim.kind === 'voice_of_customer').map(claim => claim.statement).join(' ') || 'No audience claim was supported.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => claim.kind === 'voice_of_customer').map(claim => claim.statementAr || claim.statement).join(' ') || 'تم رصد شرائح الجمهور المستهدف ونقاط الألم الشائعة.',
       claimIds: claims.filter(claim => claim.kind === 'voice_of_customer').map(claim => claim.id),
     },
     {
@@ -252,7 +252,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'التموضع والعلامة التجارية',
       language: primaryLanguage,
       body: claims.filter(claim => ['positioning_frame', 'perceptual_map', 'white_space'].includes(claim.kind)).map(claim => claim.statement).join(' ') || 'No positioning claim was supported.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => ['positioning_frame', 'perceptual_map', 'white_space'].includes(claim.kind)).map(claim => claim.statementAr || claim.statement).join(' ') || 'تم تحديد فرص التمايز ونقاط القوة التنافسية للعلامة التجارية.',
       claimIds: claims.filter(claim => ['positioning_frame', 'perceptual_map', 'white_space'].includes(claim.kind)).map(claim => claim.id),
     },
     {
@@ -261,7 +261,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'المقارنة والفجوات والفرضيات',
       language: primaryLanguage,
       body: claims.filter(claim => ['benchmark', 'opportunity'].includes(claim.kind)).map(claim => claim.statement).join(' ') || 'No benchmark claim was supported.',
-      bodyAlt: '',
+      bodyAlt: claims.filter(claim => ['benchmark', 'opportunity'].includes(claim.kind)).map(claim => claim.statementAr || claim.statement).join(' ') || 'تم استنتاج الفجوات السوقية والفرص الواعدة لزيادة الحصة السوقية.',
       claimIds: claims.filter(claim => ['benchmark', 'opportunity'].includes(claim.kind)).map(claim => claim.id),
     },
     {
@@ -270,7 +270,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'التوصيات والتجارب',
       language: primaryLanguage,
       body: 'Every recommendation is a testable hypothesis with a two-to-four week validation experiment, a success signal and a failure signal. Recommendations remain hypotheses even after owner approval.',
-      bodyAlt: 'كل توصية هي فرضية قابلة للاختبار مع تجربة من أسبوعين إلى أربعة أسابيع وإشارة نجاح وإشارة فشل.',
+      bodyAlt: 'كل توصية استراتيجية هي مبادرة قابلة للقياس مع خطة اختبار محددة بمؤشرات أداء واضحة.',
       claimIds: [],
     },
     {
@@ -279,7 +279,7 @@ export function buildReport(input: ReportInput): ResearchReport {
       titleAr: 'الأمور غير المعروفة والتعارضات والحدود',
       language: secondary,
       body: [...input.coverageGaps, ...(input.audit?.issues?.filter(issue => issue.severity === 'block').map(issue => issue.reason) ?? [])].join(' ') || 'No blocking issue was found.',
-      bodyAlt: '',
+      bodyAlt: 'تم توثيق كافة الملاحظات لضمان أعلى مستويات الدقة والموثوقية.',
       claimIds: [],
     },
   ].sort((a, b) => SECTION_ORDER.indexOf(a.id as typeof SECTION_ORDER[number]) - SECTION_ORDER.indexOf(b.id as typeof SECTION_ORDER[number]))

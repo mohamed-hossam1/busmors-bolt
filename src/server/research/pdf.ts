@@ -2,12 +2,28 @@ import 'server-only'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { PdfInspect, PdfInspectTransport, PdfRenderTransport } from '../../features/research/deliverable/pdf'
 
 const run = promisify(execFile)
-const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome'
+
+function resolveChromePath(): string {
+  const envPath = process.env.CHROME_PATH
+  if (envPath && existsSync(envPath)) return envPath
+  const candidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+  ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  return '/usr/bin/google-chrome'
+}
 
 /** Chromium headless print. No server-side rendering service is required. */
 export function createPdfRenderer(): PdfRenderTransport {
@@ -17,8 +33,9 @@ export function createPdfRenderer(): PdfRenderTransport {
       const htmlPath = join(workdir, 'report.html')
       await writeFile(htmlPath, html, 'utf8')
       await mkdir(dirname(options.pdfPath), { recursive: true })
+      const chromePath = resolveChromePath()
       try {
-        await run(CHROME, [
+        await run(chromePath, [
           '--headless=new',
           '--no-sandbox',
           '--disable-gpu',

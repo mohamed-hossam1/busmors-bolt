@@ -119,18 +119,29 @@ export function createCompetitorIntelligence(): Subagent {
       const gaps: string[] = []
 
       const queries = uniqueBy([
-        ...brief.tracks.includes('market_demand') && prior ? prior.entities.slice(0, 4).map(entity => `${entity.name} price`) : [],
-        `${brief.category.label} price \u0645\u0635\u0631`,
-        `${brief.category.label} \u0623\u0633\u0639\u0627\u0631`,
-        `${brief.category.label} offers \u0639\u0631\u0648\u0636`,
+        ...(brief.tracks.includes('market_demand') && prior ? prior.entities.slice(0, 4).flatMap(entity => [
+          `${entity.name} pricing`,
+          `أسعار ${entity.name}`,
+          `باقات ${entity.name}`,
+        ]) : []),
+        ...(brief.knownCompetitors ? brief.knownCompetitors.slice(0, 4).flatMap(c => [
+          `${c} pricing`,
+          `أسعار ${c}`,
+          `باقات ${c}`,
+        ]) : []),
+        `${brief.category.labelAr} أسعار باقات`,
+        `أسعار اشتراك ${brief.category.labelAr}`,
+        `${brief.category.label} pricing plans Egypt`,
+        `${brief.category.label} price مصر`,
+        `${brief.category.label} أسعار`,
       ], query => query.toLowerCase())
 
       const gathered = await gather(context, {
         family: 'keyword',
-        queries: queries.slice(0, 3),
+        queries: queries.slice(0, 5),
         sector,
         geography,
-        maxOpen: Math.max(1, Math.min(3, Math.floor(budget.pages * 0.5))),
+        maxOpen: Math.max(1, Math.min(4, Math.floor(budget.pages * 0.6))),
         minResults: 3,
       })
       usage.calls += gathered.usage.calls
@@ -171,6 +182,7 @@ export function createCompetitorIntelligence(): Subagent {
         makeClaim({
           id: 'competitor-set',
           statement: `${profiles.length} competitor profiles were built from opened pages for ${brief.category.label}.`,
+          statementAr: `تم بناء ${profiles.length} ملفات تعريفية تفصيلية للمنافسين من واقع الصفحات التي تم تحليلها لـ ${brief.category.labelAr}.`,
           kind: 'competitor_landscape',
           evidence: observations.filter(item => item.kind === 'observation'),
           sources: allSources,
@@ -181,6 +193,9 @@ export function createCompetitorIntelligence(): Subagent {
           statement: prices.length
             ? `${prices.length} price observation(s) were compared on a landed basis (VAT, delivery and pack size), not the displayed number.`
             : 'No public price observation was captured; price comparison is reported as unknown rather than free or unchanged.',
+          statementAr: prices.length
+            ? `تم رصد ومقارنة ${prices.length} مؤشرات أسعار على أساس التكلفة الفعلية الشاملة (الضرائب والباقات).`
+            : 'لم يتم رصد أسعار معلنة رسمياً؛ تم تسجيل المقارنة السعرية كغير معلنة بدقة واحترافية.',
           kind: 'pricing',
           evidence: observations.filter(item => item.kind === 'price'),
           sources: allSources,

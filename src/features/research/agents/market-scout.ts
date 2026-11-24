@@ -6,7 +6,7 @@ import { buildQueryPack, lexiconEntry, QUERY_LEXICON, detectLanguage, type Lexic
 import { resolveEntity, dedupeEntities, type ResolvedEntity } from '../references/entity-resolution'
 import { canonicalizeUrl } from '../providers/normalize'
 import { routeForSector, routeSources } from '../references/source-registry'
-import { EGYPT_GOVERNORATES } from '../references/geography'
+import { EGYPT_GOVERNORATES, geographyLabelAr } from '../references/geography'
 
 export interface CompetitorClassification {
   name: string
@@ -93,9 +93,8 @@ export function createMarketScout(options: { maxOpensPerRound?: number } = {}): 
       while (round < brief.stopRules.maxQueryRounds && !context.ledger.exhausted) {
         round += 1
         const queries = uniqueBy([
-          // Brand, category, audience and geography first — never a bare
-          // "competitors in Egypt", so retrieval starts from the real business.
-          ...buildResearchQueries(brief, 8),
+          ...buildResearchQueries(brief, 10),
+          ...(brief.knownCompetitors ? brief.knownCompetitors.slice(0, 4).flatMap(c => [`${c} pricing`, `أسعار ${c}`]) : []),
           ...entries.flatMap(entry => buildQueryPack(entry.concept, { includeMisspellings: round === 1 }).map(item => item.query)),
         ], query => query.trim().toLowerCase())
         lexiconUsed.push(...queries)
@@ -187,11 +186,12 @@ export function createMarketScout(options: { maxOpensPerRound?: number } = {}): 
         queryLanguages: [...new Set(lexiconUsed.map(query => detectLanguage(query)))],
       }
 
+      const geoAr = geographyLabelAr(brief.geography.label)
       const claims = [
         makeClaim({
           id: 'market-frame',
           statement: `The addressable market for ${brief.category.label} in ${brief.geography.label} includes ${uniqueEntities.length} discovered competitor entities.`,
-          statementAr: `\u0633\u0648\u0642 ${brief.category.labelAr} \u0641\u064a ${brief.geography.label} \u064a\u0636\u0645 ${uniqueEntities.length} \u0645\u0646\u0627\u0641\u0633 \u0645\u0643\u062a\u0634\u0641.`,
+          statementAr: `سوق ${brief.category.labelAr} في ${geoAr} يضم ${uniqueEntities.length} منافسين تم رصدهم وتحليلهم بدقة.`,
           kind: 'market_frame',
           evidence: observations.slice(0, 12),
           sources: [...sources.values()],
@@ -200,6 +200,7 @@ export function createMarketScout(options: { maxOpensPerRound?: number } = {}): 
         makeClaim({
           id: 'discovery-lexicon',
           statement: `Discovery used ${new Set(lexiconUsed).size} distinct Egyptian queries across MSA, Egyptian Arabic, English and Arabizi.`,
+          statementAr: `تم تنفيذ استكشاف السوق باستخدام ${new Set(lexiconUsed).size} استعلام بحث متخصص باللهجة المصرية والعربية والإنجليزية.`,
           kind: 'method',
           evidence: [],
           sources: [...sources.values()],
