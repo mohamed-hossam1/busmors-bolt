@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, Megaphone, Search, Star, Video } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Megaphone, Search, Star, Video } from 'lucide-react'
 import { useCopy } from '@/hooks/useCopy'
 import type { TranslationKey } from '@/lib/i18n'
 import { formatCount, formatMoney, formatPercent } from '@/features/meta-ads/format'
@@ -43,6 +43,8 @@ function hasVideo(ad: AdRow): boolean {
 type HealthFilter = 'all' | Health
 type SortKey = 'spend' | 'results' | 'costPerResult' | 'name'
 type SortDir = 'asc' | 'desc'
+type PageSize = 5 | 10 | 25 | 'all'
+const PAGE_SIZE_OPTIONS: PageSize[] = [5, 10, 25, 'all']
 
 function AdCard({ ad, currency, locale, isBest }: { ad: AdRow; currency: string; locale: 'ar' | 'en'; isBest: boolean }) {
   const { t } = useCopy()
@@ -162,6 +164,9 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('spend')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [pageSize, setPageSize] = useState<PageSize>(10)
+  const [page, setPage] = useState(1)
+  const listTopRef = useRef<HTMLDivElement>(null)
 
   const counts = useMemo(() => {
     const base: Record<HealthFilter, number> = { all: ads.length, good: 0, average: 0, poor: 0, unknown: 0 }
@@ -177,6 +182,7 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
     return best?.adId ?? null
   }, [ads])
 
+  // Pipeline: full ads → search + health + video filter → sort → pagination slice.
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const list = ads.filter((ad) => {
@@ -205,9 +211,28 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
 
   const filterActive = health !== 'all' || videoOnly || query.trim() !== ''
 
+  const totalPages = pageSize === 'all' ? 1 : Math.ceil(filtered.length / pageSize)
+  const safePage = Math.max(1, Math.min(page, totalPages))
+  const pageStart = pageSize === 'all' ? 0 : (safePage - 1) * pageSize
+  const visibleAds = useMemo(
+    () => (pageSize === 'all' ? filtered : filtered.slice(pageStart, pageStart + pageSize)),
+    [filtered, pageSize, pageStart],
+  )
+
+  const goToPage = (next: number) => {
+    setPage(next)
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
+  const changePageSize = (size: PageSize) => {
+    setPageSize(size)
+    setPage(1)
+  }
+
   const chooseSort = (key: SortKey) => {
     setSortKey(key)
     setSortDir(key === 'costPerResult' ? 'asc' : 'desc')
+    setPage(1)
   }
 
   if (ads.length === 0) {
@@ -244,7 +269,10 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
           <input
             type="text"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(1)
+            }}
             placeholder={t('adsSearch')}
             aria-label={t('adsSearch')}
             className="w-full rounded-xl border border-ink-300 bg-white py-2 pe-3 ps-9 text-sm text-ink-900 placeholder:text-ink-500 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -258,7 +286,10 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setHealth(item.key)}
+                onClick={() => {
+                  setHealth(item.key)
+                  setPage(1)
+                }}
                 aria-pressed={active}
                 className={`${PILL_BASE} ${active ? PILL_ACTIVE : PILL_IDLE}`}
               >
@@ -274,7 +305,10 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setVideoOnly((value) => !value)}
+            onClick={() => {
+              setVideoOnly((value) => !value)
+              setPage(1)
+            }}
             aria-pressed={videoOnly}
             className={`${PILL_BASE} ${videoOnly ? PILL_ACTIVE : PILL_IDLE}`}
           >
@@ -298,12 +332,40 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
           })}
           <button
             type="button"
-            onClick={() => setSortDir((value) => (value === 'asc' ? 'desc' : 'asc'))}
+            onClick={() => {
+              setSortDir((value) => (value === 'asc' ? 'desc' : 'asc'))
+              setPage(1)
+            }}
             aria-label={t(sortDir === 'asc' ? 'adsSortAsc' : 'adsSortDesc')}
             className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 bg-white text-ink-500 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
           >
             {sortDir === 'asc' ? <ArrowUp size={14} aria-hidden="true" /> : <ArrowDown size={14} aria-hidden="true" />}
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-ink-500">{t('adsPerPage')}:</span>
+          <div className="flex flex-wrap items-center gap-1">
+            {PAGE_SIZE_OPTIONS.map((size) => {
+              const active = pageSize === size
+              const label = size === 'all' ? t('adsPerPageAll') : String(size)
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => changePageSize(size)}
+                  aria-pressed={active}
+                  className={`rounded-xl border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ${
+                    active
+                      ? 'border-primary-600 bg-primary-50 font-medium text-primary-800'
+                      : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300 hover:text-ink-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {filterActive && (
@@ -318,10 +380,70 @@ export default function AdsList({ ads, currency, locale }: { ads: AdRow[]; curre
           <p className="text-sm text-ink-600">{t('adsNoMatchingAds')}</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((ad) => (
+        <div ref={listTopRef} className="space-y-3 scroll-mt-4">
+          {visibleAds.map((ad) => (
             <AdCard key={ad.adId} ad={ad} currency={currency} locale={locale} isBest={ad.adId === bestAdId} />
           ))}
+
+          {pageSize !== 'all' && totalPages > 1 && (
+            <div className="card flex flex-col items-center justify-between gap-3 px-4 py-3 sm:flex-row">
+              <p className="text-xs text-ink-500">
+                {t('adsShowingRange', {
+                  from: pageStart + 1,
+                  to: Math.min(pageStart + pageSize, filtered.length),
+                  total: filtered.length,
+                })}
+              </p>
+
+              <nav aria-label={t('adsPagination')} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => goToPage(safePage - 1)}
+                  disabled={safePage <= 1}
+                  aria-label={t('adsPrevPage')}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 text-xs font-medium text-ink-600 transition-colors hover:border-primary-300 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-ink-200 disabled:hover:text-ink-600"
+                >
+                  <ChevronLeft size={14} aria-hidden="true" className="rtl:rotate-180" />
+                  <span className="hidden sm:inline">{t('adsPrevPage')}</span>
+                </button>
+
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => {
+                  const active = pageNumber === safePage
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() => goToPage(pageNumber)}
+                      aria-current={active ? 'page' : undefined}
+                      aria-label={t('adsPageOf', { page: pageNumber, total: totalPages })}
+                      className={`flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs font-medium tabular-nums transition-colors ${
+                        active
+                          ? 'border-primary-600 bg-primary-50 text-primary-800'
+                          : 'border-ink-200 bg-white text-ink-600 hover:border-primary-300 hover:text-primary-700'
+                      }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  )
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => goToPage(safePage + 1)}
+                  disabled={safePage >= totalPages}
+                  aria-label={t('adsNextPage')}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 text-xs font-medium text-ink-600 transition-colors hover:border-primary-300 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-ink-200 disabled:hover:text-ink-600"
+                >
+                  <span className="hidden sm:inline">{t('adsNextPage')}</span>
+                  <ChevronRight size={14} aria-hidden="true" className="rtl:rotate-180" />
+                </button>
+              </nav>
+
+              <p className="text-xs tabular-nums text-ink-500 sm:hidden">
+                {t('adsPageOf', { page: safePage, total: totalPages })}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
