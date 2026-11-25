@@ -1,4 +1,11 @@
-import { APICallError, generateText, type LanguageModel, type LanguageModelUsage } from 'ai'
+import {
+  APICallError,
+  generateText,
+  type LanguageModel,
+  type LanguageModelUsage,
+  type ModelMessage,
+  type ToolSet,
+} from 'ai'
 import {
   assertModelAllowed,
   assertProviderCredentials,
@@ -274,3 +281,191 @@ export function createModelGateway(deps: ModelGatewayDeps = {}) {
 }
 
 export const generateWithRole = createModelGateway()
+
+/**
+ * Multi-step, tool-enabled agent turn.
+ *
+ * Unlike generateWithRole (single prompt/response), this drives the model through
+ * a tool loop: the model may call tools, receive results, and continue for up to
+ * maxSteps steps or until shouldStop() returns true (used by the runtime to honor
+ * the shared LLM-call budget). It keeps the same bounded, role-based fallback as
+ * the single-shot gateway and reports per-step usage, text, and tool calls.
+ */
+
+export interface AgentTurnStep {
+  index: number
+  text: string
+  toolCalls: unknown
+  toolResults: unknown
+  usage: GatewayUsage
+  finishReason?: string
+}
+
+export interface AgentTurnResult {
+  text: string
+  provider: string
+  model: string
+  usage: GatewayUsage
+  steps: AgentTurnStep[]
+  finishReason?: string
+  latencyMs: number
+  totalLatencyMs: number
+  fallback: FallbackMetadata
+  warnings?: unknown[]
+}
+
+export interface AgentTurnOptions {
+  role: AgentRole
+  system: string
+  messages?: ModelMessage[]
+  prompt?: string
+  tools?: ToolSet
+  maxSteps?: number
+  temperature?: number
+  abortSignal?: AbortSignal
+  timeoutMs?: number
+  /** Return true to stop starting new steps (e.g. shared budget reached). */
+  shouldStop?: (completedSteps: number) => boolean
+  onStepFinish?: (step: AgentTurnStep) => void
+}
+
+interface AgentGenerateCallOptions {
+  model: LanguageModel
+  system?: string
+  messages?: ModelMessage[]
+  prompt?: string
+  tools?: ToolSet
+  temperature?: number
+  maxRetries: number
+  abortSignal?: AbortSignal
+  timeout?: number
+  stopWhen?: (result: { steps: unknown[] }) => boolean
+  onStepFinish?: (step: unknown) => void
+}
+
+interface AgentGenerateResult {
+  text: string
+  usage?: Partial<LanguageModelUsage> | null
+  finishReason?: string
+  steps?: unknown[]
+  warnings?: unknown[]
+}
+
+type AgentGenerateLike = (options: AgentGenerateCallOptions) => Promise<AgentGenerateResult>
+
+export interface AgentGatewayDeps {
+  generateText?: AgentGenerateLike
+}
+
+function normalizeStep(step: unknown, index: number): AgentTurnStep {
+  const record = (step && typeof step === 'object' ? step : {}) as Record<string, unknown>
+  return {
+    index,
+    text: typeof record.text === 'string' ? record.text : '',
+    toolCalls: record.toolCalls ?? record.toolCalls ?? null,
+    toolResults: record.toolResults ?? null,
+    usage: normalizeUsage(record.usage as GenerateTextLikeResult['usage']),
+    finishReason: typeof record.finishReason === 'string' ? record.finishReason : undefined,
+  }
+}
+
+export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
+  const generate = deps.generateText ?? (generateText as unknown as AgentGenerateLike)
+
+  return async function runAgentTurn(options: AgentTurnOptions): Promise<AgentTurnResult> {
+    const chain = getRoleModelChain(options.role)
+    if (chain.length === 0) {
+      throw new Error(`No active model targets configured for role ${options.role}.`)
+    }
+    const maxSteps = options.maxSteps && options.maxSteps > 0 ? Math.trunc(options.maxSteps) : undefined
+
+    const attempts: ModelAttempt[] = []
+    const startedAt = Date.now()
+    let lastError: unknown
+
+    for (let attemptIndex = 0; attemptIndex < chain.length; attemptIndex++) {
+      if (options.abortSignal?.aborted) {
+        throw new DOMException('The request was aborted.', 'AbortError')
+      }
+
+      const target = chain[attemptIndex]
+      assertModelAllowed(target.provider, target.model)
+      assertProviderCredentials(target.provider)
+
+      const attemptStartedAt = Date.now()
+      let stepIndex = 0
+      const steps: AgentTurnStep[] = []
+      const stopWhen = (result: { steps: unknown[] }): boolean => {
+        const completed = Array.isArray(result?.steps) ? result.steps.length : 0
+        if (maxSteps !== undefined && completed >= maxSteps) return true
+        if (options.shouldStop?.(completed)) return true
+        return false
+      }
+      const onStepFinish = (rawStep: unknown): void => {
+        const step = normalizeStep(rawStep, stepIndex++)
+        steps.push(step)
+        options.onStepFinish?.(step)
+      }
+
+      try {
+        const result = await generate({
+          model: getLanguageModel(target),
+          system: options.system,
+          messages: options.messages,
+          prompt: options.prompt,
+          tools: options.tools,
+          temperature: options.temperature ?? target.temperature,
+          maxRetries: 0,
+          abortSignal: options.abortSignal,
+          timeout: options.timeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
+          stopWhen,
+          onStepFinish,
+        })
+
+        const latencyMs = Date.now() - attemptStartedAt
+        attempts.push({ attemptIndex, provider: target.provider, model: target.model, ok: true, latencyMs })
+
+        const firstFailure = attempts.find((attempt) => !attempt.ok)?.error
+        return {
+          text: result.text,
+          provider: target.provider,
+          model: target.model,
+          usage: normalizeUsage(result.usage),
+          steps,
+          finishReason: result.finishReason,
+          latencyMs,
+          totalLatencyMs: Date.now() - startedAt,
+          fallback: {
+            used: attemptIndex > 0,
+            from: attemptIndex > 0 ? { provider: chain[0].provider, model: chain[0].model } : undefined,
+            to: { provider: target.provider, model: target.model },
+            reason: firstFailure?.reason,
+            attempts,
+          },
+          warnings: result.warnings,
+        }
+      } catch (error) {
+        lastError = error
+        const latencyMs = Date.now() - attemptStartedAt
+        const reason = classifyFailure(error)
+        const details = errorMessage(error)
+        attempts.push({
+          attemptIndex,
+          provider: target.provider,
+          model: target.model,
+          ok: false,
+          latencyMs,
+          error: { ...details, statusCode: getErrorStatusCode(error), reason },
+        })
+
+        if (options.abortSignal?.aborted || !isEligibleTechnicalFailure(error)) {
+          throw error
+        }
+      }
+    }
+
+    throw lastError ?? new Error('All configured model targets failed.')
+  }
+}
+
+export const runAgentTurn = createAgentTurnRunner()
