@@ -1,8 +1,10 @@
 import type { BrainNode } from '../../lib/types'
 import type {
+  DirectorProposal,
   DiscoveryGoal,
   DiscoveryPlanContext,
   DiscoveryPrefill,
+  DiscoveryQuestion,
   DiscoveryQuestionOption,
   DiscoveryQuestionSchema,
   PlannedQuestion,
@@ -298,6 +300,34 @@ export const DISCOVERY_QUESTIONS: Record<DiscoveryGoal, DiscoveryQuestionDef[]> 
 
 export function fixedQuestionsForGoal(goal: string): DiscoveryQuestionDef[] {
   return DISCOVERY_QUESTIONS[normalizeGoal(goal)] ?? DISCOVERY_QUESTIONS.something_else
+}
+
+export function isAskDirectorEligible(question: Pick<DiscoveryQuestion, 'question_key' | 'schema'>): boolean {
+  if (typeof question.schema.askDirectorEligible === 'boolean') return question.schema.askDirectorEligible
+  const definition = Object.values(DISCOVERY_QUESTIONS)
+    .flat()
+    .find((item) => item.key === question.question_key)
+  return definition?.askDirectorEligible ?? false
+}
+
+export function directorProposalFromProvenance(
+  provenance: Record<string, unknown> | null | undefined,
+): DirectorProposal | null {
+  if (!provenance || typeof provenance !== 'object') return null
+  const value = provenance.directorProposal
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  if (typeof record.proposedAnswer !== 'string' || !record.proposedAnswer.trim()) return null
+  if (record.proposedAnswer.length > 260) return null
+  if (typeof record.rationale !== 'string' || !record.rationale.trim() || record.rationale.length > 280) return null
+  if (record.confidence !== 'low' && record.confidence !== 'medium' && record.confidence !== 'high') return null
+  return {
+    proposedAnswer: record.proposedAnswer.trim(),
+    rationale: record.rationale.trim(),
+    confidence: record.confidence,
+    ...(record.mode === 'roadmap_quick_answer' ? { mode: 'roadmap_quick_answer' as const } : {}),
+    ...(typeof record.askedAt === 'string' ? { askedAt: record.askedAt } : {}),
+  }
 }
 
 /**

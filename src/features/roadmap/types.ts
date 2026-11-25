@@ -38,6 +38,16 @@ export interface DiscoveryAnswerValue {
   choice?: string
 }
 
+export type DirectorConfidence = 'low' | 'medium' | 'high'
+
+export interface DirectorProposal {
+  proposedAnswer: string
+  rationale: string
+  confidence: DirectorConfidence
+  mode?: 'roadmap_quick_answer'
+  askedAt?: string
+}
+
 export interface DiscoveryQuestionOption {
   value: string
   label: string

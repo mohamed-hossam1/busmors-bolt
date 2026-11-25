@@ -842,7 +842,16 @@
     "secondaryChallengesHelp": "أضف أي تحديات أخرى تريد أن تضعها الخطة في الاعتبار. تبقى ثانوية مقارنة بهدفك الأساسي.",
     "somethingElseNoteLabel": "صف وضعك (اختياري)",
     "somethingElseNotePlaceholder": "في جملة أو جملتين، ما الذي يحدث في مشروعك؟",
-    "saveNote": "حفظ الملاحظة"
+    "saveNote": "حفظ الملاحظة",
+    "askDirectorButton": "اسأل مدير التسويق الخاص بي",
+    "askDirectorThinking": "جارٍ التفكير…",
+    "askDirectorSuggestedBadge": "مقترح من مدير التسويق",
+    "askDirectorConfidenceLow": "ثقة منخفضة",
+    "askDirectorConfidenceMedium": "ثقة متوسطة",
+    "askDirectorConfidenceHigh": "ثقة عالية",
+    "askDirectorUseSuggestion": "استخدم هذا الاقتراح",
+    "askDirectorError": "تعذر على مدير التسويق الإجابة الآن. إجاباتك المحفوظة لم تتغير.",
+    "askDirectorRetry": "إعادة المحاولة"
   }
 ,
   

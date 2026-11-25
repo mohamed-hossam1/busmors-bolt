@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase'
 import type { BrainNode } from '../../lib/types'
 import { eligibleBrainFacts, planPrefill, planToRpc } from './discovery'
 import type {
+  DirectorProposal,
   DiscoveryDraft,
   DiscoveryLoad,
   DiscoveryQuestion,
@@ -122,4 +123,28 @@ export async function requestPrefill(
   } catch {
     return []
   }
+}
+
+export async function requestDirectorSuggestion(
+  draftId: string,
+  questionId: string,
+  locale?: string,
+): Promise<{ mode: 'roadmap_quick_answer'; proposal: DirectorProposal }> {
+  const response = await fetch('/api/roadmap/ask-director', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ draftId, questionId, locale }),
+  })
+  const data = (await response.json().catch(() => ({}))) as {
+    mode?: unknown
+    proposal?: unknown
+    error?: unknown
+  }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The Marketing Director could not answer right now.')
+  }
+  if (data.mode !== 'roadmap_quick_answer' || !data.proposal || typeof data.proposal !== 'object') {
+    throw new Error('The Marketing Director returned an invalid suggestion.')
+  }
+  return { mode: 'roadmap_quick_answer', proposal: data.proposal as DirectorProposal }
 }

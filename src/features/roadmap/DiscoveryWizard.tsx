@@ -32,8 +32,10 @@ import type { BrainNode } from '../../lib/types'
 import {
   answerLabel,
   buildDiscoveryPlan,
+  directorProposalFromProvenance,
   getDiscoveryGoals,
   goalDefinition,
+  isAskDirectorEligible,
   isOpenStatus,
   isPositiveStatus,
   localizeQuestionSchema,
@@ -45,6 +47,7 @@ import {
   loadDiscoveryFacts,
   loadDiscoveryQuestion,
   planDiscoveryDraft,
+  requestDirectorSuggestion,
   requestPrefill,
   saveDiscoveryAnswer,
   saveDiscoveryDraft,
@@ -52,6 +55,7 @@ import {
 } from './api'
 import { mergePrefillSuggestions, type MergedSuggestion, type QuestionPrefillMerge } from './prefill-merge'
 import type {
+  DirectorProposal,
   DiscoveryAnswerValue,
   DiscoveryDraft,
   DiscoveryGoal,
@@ -73,10 +77,30 @@ const CHALLENGE_ICONS: Record<string, typeof Lightbulb> = {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+interface DirectorCardState {
+  status: 'idle' | 'loading' | 'error'
+  error?: string
+}
+
 interface LocalAnswer {
   status: AnswerStatus
   value: DiscoveryAnswerValue | null
   provenance: Record<string, unknown>
+}
+
+function withDirectorProposal(
+  question: DiscoveryQuestion,
+  provenance: Record<string, unknown>,
+): Record<string, unknown> {
+  const proposal = directorProposalFromProvenance(question.provenance)
+  if (!proposal) return provenance
+  return { ...provenance, directorProposal: question.provenance.directorProposal }
+}
+
+function confidenceLabel(confidence: DirectorProposal['confidence'], t: (key: AppKey) => string): string {
+  if (confidence === 'high') return t('askDirectorConfidenceHigh')
+  if (confidence === 'medium') return t('askDirectorConfidenceMedium')
+  return t('askDirectorConfidenceLow')
 }
 
 function rpcCode(error: unknown): string {
@@ -150,6 +174,9 @@ interface QuestionCardProps {
   onLoadLatest: (question: DiscoveryQuestion) => void
   onSaveMine: (question: DiscoveryQuestion) => void
   onSelectSuggestion: (question: DiscoveryQuestion, suggestion: MergedSuggestion) => void
+  directorState: DirectorCardState
+  onAskDirector: (question: DiscoveryQuestion) => void
+  onUseDirector: (question: DiscoveryQuestion, proposal: DirectorProposal) => void
 }
 
 function prefillSourceBadge(suggestion: MergedSuggestion, t: (key: AppKey, values?: Record<string, string | number>) => string): string {
@@ -176,6 +203,9 @@ function QuestionCard({
   onLoadLatest,
   onSaveMine,
   onSelectSuggestion,
+  directorState,
+  onAskDirector,
+  onUseDirector,
 }: QuestionCardProps) {
   const { t } = useCopy()
   const { locale } = useI18n()
@@ -196,6 +226,8 @@ function QuestionCard({
   const visibleSuggestions = (merge?.suggestions ?? []).filter(
     (suggestion) => suggestion.suggestedAnswer.trim().toLowerCase() !== currentText,
   )
+  const directorProposal = directorProposalFromProvenance(question.provenance)
+  const askDirectorEligible = isAskDirectorEligible(question)
 
   return (
     <article className={`card p-5 transition sm:p-6 ${index === 0 ? 'border-primary-200' : ''}`}>
@@ -308,6 +340,26 @@ function QuestionCard({
         </div>
       )}
 
+      {directorProposal && (
+        <div className="mt-4 rounded-xl border border-primary-200 bg-primary-50/60 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge bg-primary-100 text-primary-800">
+              <Sparkles size={12} /> {t('askDirectorSuggestedBadge')}
+            </span>
+            <span className="badge bg-white/70 text-primary-700">{confidenceLabel(directorProposal.confidence, t)}</span>
+          </div>
+          <p className="mt-2 text-sm font-medium text-ink-900">{directorProposal.proposedAnswer}</p>
+          <p className="mt-1 text-xs leading-5 text-ink-600">{directorProposal.rationale}</p>
+          <button
+            type="button"
+            onClick={() => onUseDirector(question, directorProposal)}
+            className="btn-secondary mt-3 min-h-8 px-3 py-1 text-xs"
+          >
+            {t('askDirectorUseSuggestion')}
+          </button>
+        </div>
+      )}
+
       {!blocked && !reused && selectedOther && (
         <label className="mt-3 block text-xs font-medium text-ink-700">
           {t('yourAnswer')}
@@ -380,6 +432,17 @@ function QuestionCard({
         >
           {t('statusNotApplicable')}
         </button>
+        {askDirectorEligible && (
+          <button
+            type="button"
+            onClick={() => onAskDirector(question)}
+            disabled={directorState.status === 'loading'}
+            className="rounded-full border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-800 transition hover:border-primary-400 disabled:opacity-60"
+          >
+            {directorState.status === 'loading' ? <Spinner size={12} /> : <Sparkles size={12} />}
+            {' '}{t('askDirectorButton')}
+          </button>
+        )}
         {positive && (
           <button type="button" onClick={() => onStatus(question, 'unanswered')} className="rounded-full border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 hover:border-red-300 hover:text-red-700">
             {t('clearAnswer')}
@@ -387,6 +450,27 @@ function QuestionCard({
         )}
       </div>
       <p className="mt-2 text-[11px] leading-5 text-ink-500">{t('unknownsSeparateNote')}</p>
+
+      {directorState.status === 'loading' && (
+        <div role="status" aria-live="polite" className="mt-3 flex items-center gap-2 rounded-xl bg-ink-100 px-3 py-2 text-xs font-medium text-ink-700">
+          <span className="flex items-center gap-1" aria-hidden>
+            <span className="h-2 w-2 animate-pulse rounded-full bg-primary-500" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-primary-500 [animation-delay:0.15s]" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-primary-500 [animation-delay:0.3s]" />
+          </span>
+          {t('askDirectorThinking')}
+        </div>
+      )}
+
+      {directorState.status === 'error' && (
+        <div role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">
+          <p>{t('askDirectorError')}</p>
+          {directorState.error && <p className="mt-1 text-[11px] text-red-700">{directorState.error}</p>}
+          <button type="button" onClick={() => onAskDirector(question)} className="mt-2 text-xs font-semibold underline">
+            {t('askDirectorRetry')}
+          </button>
+        </div>
+      )}
 
       {conflict && (
         <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -432,6 +516,7 @@ export default function DiscoveryWizard() {
   const [secondaryGoals, setSecondaryGoals] = useState<DiscoveryGoal[]>([])
   const [somethingElseNote, setSomethingElseNote] = useState('')
   const [contextBusy, setContextBusy] = useState(false)
+  const [directorState, setDirectorState] = useState<Record<string, DirectorCardState>>({})
 
   const questionsRef = useRef<DiscoveryQuestion[]>([])
   const draftRef = useRef<DiscoveryDraft | null>(null)
@@ -439,6 +524,7 @@ export default function DiscoveryWizard() {
   const localRef = useRef<Record<string, LocalAnswer>>({})
   const pendingRef = useRef<Record<string, LocalAnswer>>({})
   const inFlightRef = useRef<Record<string, boolean>>({})
+  const directorInFlightRef = useRef<Record<string, boolean>>({})
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const applyQuestions = useCallback((next: DiscoveryQuestion[]) => {
@@ -508,6 +594,7 @@ export default function DiscoveryWizard() {
       setPreliminary(nextDraft.status === 'planned')
       setGoalPicker(false)
       applyLocal({})
+      setDirectorState({})
       const ctx = parseDiscoveryContext(nextDraft.context_refs ?? [])
       setSecondaryGoals(ctx.secondaryGoals)
       setSomethingElseNote(ctx.somethingElseNote)
@@ -566,6 +653,7 @@ export default function DiscoveryWizard() {
       setDraft(synced.draft)
       applyQuestions(synced.questions)
       applyLocal({})
+      setDirectorState({})
       setEditingReuse({})
       setOtherMode({})
       setConflict(null)
@@ -609,7 +697,13 @@ export default function DiscoveryWizard() {
     setSaveError('')
     let rerun = false
     try {
-      const saved = await saveDiscoveryAnswer(question.id, question.version, answer.status, answer.value, answer.provenance)
+      const saved = await saveDiscoveryAnswer(
+        question.id,
+        question.version,
+        answer.status,
+        answer.value,
+        withDirectorProposal(question, answer.provenance),
+      )
       if (pendingRef.current[questionId]) {
         rerun = true
       } else {
@@ -758,7 +852,13 @@ export default function DiscoveryWizard() {
     setSaveError('')
     try {
       const latest = await loadDiscoveryQuestion(question.id)
-      const saved = await saveDiscoveryAnswer(latest.id, latest.version, answer.status, answer.value, answer.provenance)
+      const saved = await saveDiscoveryAnswer(
+        latest.id,
+        latest.version,
+        answer.status,
+        answer.value,
+        withDirectorProposal(latest, answer.provenance),
+      )
       replaceQuestion(saved)
       removeLocal(question.id)
       setConflict(null)
@@ -786,6 +886,57 @@ export default function DiscoveryWizard() {
       queueAnswer(question, { status: 'answered', value: { choice: suggestion.suggestedAnswer }, provenance })
     } else {
       queueAnswer(question, { status: 'answered', value: { choice: '__other__', text: suggestion.suggestedAnswer }, provenance })
+    }
+  }
+
+  const askDirector = async (question: DiscoveryQuestion) => {
+    const current = draftRef.current
+    if (!current || directorInFlightRef.current[question.id]) return
+    directorInFlightRef.current[question.id] = true
+    setDirectorState((previous) => ({ ...previous, [question.id]: { status: 'loading' } }))
+    try {
+      const result = await requestDirectorSuggestion(current.id, question.id, locale)
+      const latest = questionsRef.current.find((row) => row.id === question.id) ?? question
+      replaceQuestion({
+        ...latest,
+        provenance: { ...latest.provenance, directorProposal: result.proposal },
+      })
+      setDirectorState((previous) => ({ ...previous, [question.id]: { status: 'idle' } }))
+    } catch (error) {
+      setDirectorState((previous) => ({
+        ...previous,
+        [question.id]: {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'The Marketing Director could not answer right now.',
+        },
+      }))
+    } finally {
+      directorInFlightRef.current[question.id] = false
+    }
+  }
+
+  const useDirectorSuggestion = (question: DiscoveryQuestion, proposal: DirectorProposal) => {
+    const schema = localizeQuestionSchema(question.question_key, question.schema, locale)
+    const normalized = proposal.proposedAnswer.trim().toLowerCase()
+    const option = (schema.options ?? []).find(
+      (item) => item.value !== '__other__'
+        && (item.value.toLowerCase() === normalized || item.label.toLowerCase() === normalized),
+    )
+    setEditingReuse((previous) => ({ ...previous, [question.id]: false }))
+    setOtherMode((previous) => ({ ...previous, [question.id]: !option }))
+    const provenance = {
+      ...question.provenance,
+      kind: 'director_suggestion',
+      directorProposal: proposal,
+    }
+    if (option) {
+      queueAnswer(question, { status: 'answered', value: { choice: option.value }, provenance })
+    } else {
+      queueAnswer(question, {
+        status: 'answered',
+        value: { choice: '__other__', text: proposal.proposedAnswer },
+        provenance,
+      })
     }
   }
 
@@ -1075,6 +1226,9 @@ export default function DiscoveryWizard() {
                 onLoadLatest={(item) => void loadLatest(item)}
                 onSaveMine={(item) => void saveMine(item)}
                 onSelectSuggestion={selectSuggestion}
+                directorState={directorState[question.id] ?? { status: 'idle' }}
+                onAskDirector={(item) => void askDirector(item)}
+                onUseDirector={useDirectorSuggestion}
               />
             )
           })}

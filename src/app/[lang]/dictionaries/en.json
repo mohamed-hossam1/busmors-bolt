@@ -842,7 +842,16 @@
     "secondaryChallengesHelp": "Add any other challenges you want the plan to keep in mind. They stay secondary to your main goal.",
     "somethingElseNoteLabel": "Describe your situation (optional)",
     "somethingElseNotePlaceholder": "In a sentence or two, what is happening in your business?",
-    "saveNote": "Save note"
+    "saveNote": "Save note",
+    "askDirectorButton": "Ask my Marketing Director",
+    "askDirectorThinking": "Thinking…",
+    "askDirectorSuggestedBadge": "Suggested by Marketing Director",
+    "askDirectorConfidenceLow": "Low confidence",
+    "askDirectorConfidenceMedium": "Medium confidence",
+    "askDirectorConfidenceHigh": "High confidence",
+    "askDirectorUseSuggestion": "Use this suggestion",
+    "askDirectorError": "The Marketing Director could not answer right now. Your saved answers are unchanged.",
+    "askDirectorRetry": "Retry"
   },
   "Marketing": {
     "processflow": {
