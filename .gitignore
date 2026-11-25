@@ -15,3 +15,5 @@ bus2/
 .agents/
 supabase/.branches/
 supabase/.temp/
+
+node_modules
