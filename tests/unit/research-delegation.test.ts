@@ -163,12 +163,13 @@ describe('director → research delegation', () => {
     )
     assert.equal(
       delegateCalls.find((c) => c.role === 'content')?.status,
-      'unavailable',
-      'content remains honestly unavailable',
+      'completed',
+      'content is now enabled and returns a structured result',
     )
 
-    // One Director LLM step + one Research LLM step on the SAME shared tracker.
-    assert.equal(tracker.snapshot().llmCalls, 2)
+    // One Director LLM step + one Research LLM step + one Content LLM step on the
+    // SAME shared tracker (content delegation is enabled in Phase 5 Part A).
+    assert.equal(tracker.snapshot().llmCalls, 3)
 
     await collector.flush()
     // Nested agents share one collector, so it may flush more than once; flatten.

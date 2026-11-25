@@ -11,6 +11,8 @@ import type {
 } from '../director-store'
 import type { LoadedSkill } from '../skill-loader'
 import type { ResearchResult } from '../agents/research'
+import type { ContentResult } from '../agents/content'
+import type { ContentDraft } from './content-tools'
 
 /**
  * Director tools (Phase 3, spec 3.5).
@@ -80,10 +82,29 @@ export interface BrainProposalCapture {
   conflict: boolean
 }
 
+/**
+ * Enriched Calendar draft reference captured when the Director saves a post
+ * draft. `platform` / `caption` / `hashtags` / `visualBrief` / `status` are
+ * always populated by the tool (kept optional here for backwards compatibility
+ * with any existing consumers). A saved draft is always `status: 'draft'` and
+ * never auto-scheduled.
+ */
+export interface DraftCapture {
+  postId: string
+  version: number
+  created: boolean
+  proposedFor: string | null
+  platform?: 'facebook' | 'instagram'
+  caption?: string
+  hashtags?: string
+  visualBrief?: string
+  status?: string
+}
+
 export interface DirectorRunState {
   clarification: ClarificationCard | null
   deliverables: Array<{ deliverableId: string; version: number; created: boolean; title: string }>
-  drafts: Array<{ postId: string; version: number; created: boolean; proposedFor: string | null }>
+  drafts: DraftCapture[]
   brainProposals: BrainProposalCapture[]
 }
 
@@ -114,12 +135,21 @@ export interface CompactResearchResult {
   topSources: Array<{ title: string; url: string }>
 }
 
+/** A compact, bounded creative summary handed back to the Director model. */
+export interface CompactContentResult {
+  status: ContentResult['status']
+  drafts: ContentDraft[]
+  notes: string[]
+  limitations: string[]
+  stopReason: string
+}
+
 /** What a specialist returns to the Director. */
 export interface DelegateSpecialistResult {
   status: 'completed' | 'partial' | 'failed' | 'awaiting_input' | 'cancelled' | 'unavailable'
   role: DelegateSpecialistRequest['role']
   message?: string
-  result?: CompactResearchResult
+  result?: CompactResearchResult | CompactContentResult
 }
 
 export interface DirectorToolDeps {
@@ -133,7 +163,8 @@ export interface DirectorToolDeps {
   /**
    * Runs a specialist subtask. When omitted (isolated tool tests) delegate_agent
    * reports unavailability honestly. The Director implementation invokes the
-   * Research Agent for role "research" and reports the others unavailable.
+   * Research Agent for role "research" and the Content Agent for role "content",
+   * and reports marketing-analyst unavailable until it is enabled.
    */
   delegate?: (request: DelegateSpecialistRequest) => Promise<DelegateSpecialistResult>
   /** Optional cap on direct web calls by the Director in a single turn. */
@@ -349,7 +380,14 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
           idempotencyKey: args.idempotencyKey ?? null,
         }
         const result = await deps.calendar.createOrUpdateDraft(input)
-        deps.runState.drafts.push(result)
+        deps.runState.drafts.push({
+          ...result,
+          platform: args.platform,
+          caption: args.caption,
+          hashtags: args.hashtags ?? '',
+          visualBrief: args.visualBrief ?? '',
+          status: 'draft',
+        })
         return { status: 'draft_saved', ...result }
       },
     },
@@ -436,7 +474,7 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'delegate_agent',
       description:
-        'Delegate a well-scoped subtask to a specialist. Provide goal, scope, context references and desired output. Research Agent is available and returns structured, source-linked findings; content and marketing-analyst report unavailability honestly until enabled. To revise returned research, delegate again to research with revisionFeedback (the concrete gap) and the prior result.',
+        'Delegate a well-scoped subtask to a specialist. Provide goal, scope, context references and desired output. BOTH the Research Agent (structured, source-linked findings) and the Content Agent (structured creative drafts: posts, variants, scripts, briefs, plans) are enabled; marketing-analyst reports unavailability honestly until enabled. To revise returned work, delegate again to the same role with revisionFeedback (the concrete gap/defect) and the prior result so valid work is preserved.',
       external: false,
       inputSchema: delegateAgentInput,
       execute: async (args: z.infer<typeof delegateAgentInput>) => {

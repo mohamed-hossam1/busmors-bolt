@@ -10,13 +10,17 @@ import {
   createDirectorRunState,
   createDirectorToolDefinitions,
   type ClarificationCard,
+  type CompactContentResult,
   type CompactResearchResult,
   type DelegateSpecialistRequest,
   type DelegateSpecialistResult,
+  type DraftCapture,
 } from '../tools/director-tools'
 import { getSkillCatalog, loadSkill, type SkillSummary } from '../skill-loader'
 import { runResearchAgent, type ResearchResult } from './research'
+import { runContentAgent, type ContentResult } from './content'
 import type { ResearchPriorResult } from '../tools/research-tools'
+import type { ContentPriorResult } from '../tools/content-tools'
 import { AGENT_BUDGETS } from '../../../config/agent-budgets'
 import type { BrainStore } from '../brain-store'
 import type {
@@ -97,10 +101,12 @@ export interface DirectorOutput {
   usedTools: string[]
   clarification: ClarificationCard | null
   deliverables: Array<{ deliverableId: string; version: number; created: boolean; title: string }>
-  drafts: Array<{ postId: string; version: number; created: boolean; proposedFor: string | null }>
+  drafts: DraftCapture[]
   brainProposals: Array<{ proposalId: string; status: 'pending'; duplicate: boolean; conflict: boolean }>
   /** Structured results from Research Agent delegations (Phase 4). */
   research: ResearchResult[]
+  /** Structured results from Content Agent delegations (Phase 5 Part A). */
+  content: ContentResult[]
 }
 
 export interface RunDirectorOptions {
@@ -204,6 +210,44 @@ function parsePriorResult(raw: string | undefined): ResearchPriorResult | null {
   }
 }
 
+function parseContentPriorResult(raw: string | undefined): ContentPriorResult | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const record = parsed as Record<string, unknown>
+    return {
+      drafts: Array.isArray(record.drafts) ? (record.drafts as ContentPriorResult['drafts']) : undefined,
+      notes: Array.isArray(record.notes) ? (record.notes as string[]) : undefined,
+      limitations: Array.isArray(record.limitations) ? (record.limitations as string[]) : undefined,
+      text: typeof record.text === 'string' ? record.text : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Compact a full Content result into a clean, bounded payload for the Director
+ * model (spec 3.7 clean-context): the structured drafts with capped body length,
+ * plus notes/limitations/stopReason — never an unbounded raw dump. The full
+ * result is still kept on DirectorOutput.content for persistence/trace.
+ */
+function compactContentResult(result: ContentResult): CompactContentResult {
+  const bodyMax = 2000
+  return {
+    status: result.status,
+    drafts: result.drafts.slice(0, 20).map((draft) => ({
+      ...draft,
+      body: draft.body.length > bodyMax ? `${draft.body.slice(0, bodyMax).trimEnd()}…` : draft.body,
+      sourceRefs: draft.sourceRefs.slice(0, 8),
+    })),
+    notes: result.notes.slice(0, 10),
+    limitations: result.limitations.slice(0, 12),
+    stopReason: result.stopReason,
+  }
+}
+
 function assertStoreSource(options: RunDirectorOptions): void {
   if (!options.supabase && (!options.brain || !options.deliverables || !options.calendar || !options.workspace)) {
     throw new Error(
@@ -241,19 +285,71 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
   const collector = options.collector
   const instanceId = options.instanceId ?? crypto.randomUUID()
 
-  // Bounded specialist delegation. Only the Research Agent is enabled in Phase 4;
-  // content and marketing-analyst keep returning honest `unavailable`. Concurrency
-  // is capped at the shared maxConcurrentSpecialistSubtasks, and a targeted
-  // revision reuses the last research result when the model omits priorResult.
+  // Bounded specialist delegation. Both the Research Agent and the Content Agent
+  // are enabled (Phase 5 Part A); marketing-analyst keeps returning an honest
+  // `unavailable`. Concurrency is capped at the shared
+  // maxConcurrentSpecialistSubtasks, and a targeted revision reuses the last
+  // result of that role when the model omits priorResult.
   const researchResults: ResearchResult[] = []
   let lastResearch: ResearchResult | null = null
   let researchDelegationCount = 0
   const maxResearchDelegations = 2
+
+  const contentResults: ContentResult[] = []
+  let lastContent: ContentResult | null = null
+  let contentDelegationCount = 0
+  const maxContentDelegations = 2
+
   const limiter = createConcurrencyLimiter(AGENT_BUDGETS.maxConcurrentSpecialistSubtasks)
   const delegate = async (request: DelegateSpecialistRequest): Promise<DelegateSpecialistResult> => {
-    if (request.role !== 'research') {
-      return { status: 'unavailable', role: request.role, message: `Specialist ${request.role} is not enabled yet` }
+    if (request.role === 'marketing-analyst') {
+      return {
+        status: 'unavailable',
+        role: 'marketing-analyst',
+        message: 'Specialist marketing-analyst is not enabled yet',
+      }
     }
+
+    if (request.role === 'content') {
+      if (contentDelegationCount >= maxContentDelegations && lastContent) {
+        return {
+          status: 'completed',
+          role: 'content',
+          message:
+            'Content run limit reached for this turn. Use the existing drafts and save the deliverable/calendar drafts now.',
+          result: compactContentResult(lastContent),
+        }
+      }
+      contentDelegationCount += 1
+      const prior =
+        parseContentPriorResult(request.priorResult) ?? (request.revisionFeedback ? lastContent : null)
+      return limiter.run(async () => {
+        const contentResult = await runContentAgent({
+          workspaceId: options.workspaceId,
+          assignment: {
+            goal: request.goal,
+            scope: request.scope,
+            context: request.context,
+            outputLanguage: request.outputLanguage,
+          },
+          priorResult: prior,
+          revisionFeedback: request.revisionFeedback,
+          traceContext: { traceId: options.traceContext.traceId, parentEventId: instanceId },
+          tracker,
+          collector,
+          abortSignal: options.abortSignal,
+          runTurn: options.runTurn,
+          brain: stores.brain,
+          deliverables: stores.deliverables,
+          calendar: stores.calendar,
+        })
+        contentResults.push(contentResult)
+        lastContent = contentResult
+        return { status: contentResult.status, role: 'content', result: compactContentResult(contentResult) }
+      })
+    }
+
+    // role === 'research'
     if (researchDelegationCount >= maxResearchDelegations && lastResearch) {
       return {
         status: 'completed',
@@ -365,5 +461,6 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
     drafts: runState.drafts,
     brainProposals: runState.brainProposals,
     research: researchResults,
+    content: contentResults,
   }
 }

@@ -1,9 +1,10 @@
 'use client'
 
-import { FileText, CalendarClock, ExternalLink } from 'lucide-react'
+import { FileText, ExternalLink } from 'lucide-react'
 import { Link } from '@/shared/i18n'
 import { useCopy } from '../../hooks/useCopy'
 import type { DeliverableRefData, DraftRefData } from './employeeCards'
+import PostDraftApprovalCard from './PostDraftApprovalCard'
 
 function DeliverableCard({ item }: { item: DeliverableRefData }) {
   const { t } = useCopy()
@@ -24,28 +25,6 @@ function DeliverableCard({ item }: { item: DeliverableRefData }) {
   )
 }
 
-function DraftCard({ item }: { item: DraftRefData }) {
-  const { t } = useCopy()
-  return (
-    <Link
-      href="/scheduling"
-      className="mt-2 flex items-center gap-3 rounded-xl border border-ink-200 bg-white p-3 transition-colors hover:border-primary-300 hover:bg-primary-50/30"
-    >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fuchsia-100 text-fuchsia-700">
-        <CalendarClock size={16} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-ink-900">{t('draftStatusLabel')}</span>
-        <span className="block text-[11px] text-ink-500">
-          {t('versionLabel', { version: item.version })}
-          {item.proposedFor ? ` · ${t('proposedForLabel', { time: item.proposedFor.slice(0, 16).replace('T', ' ') })}` : ''}
-        </span>
-      </span>
-      <ExternalLink size={14} className="shrink-0 text-ink-400" />
-    </Link>
-  )
-}
-
 export default function ReferenceCards({
   deliverables,
   drafts,
@@ -57,7 +36,7 @@ export default function ReferenceCards({
   return (
     <>
       {deliverables?.map((item) => <DeliverableCard key={item.deliverableId} item={item} />)}
-      {drafts?.map((item) => <DraftCard key={item.postId} item={item} />)}
+      {drafts?.map((item) => <PostDraftApprovalCard key={item.postId} item={item} />)}
     </>
   )
 }

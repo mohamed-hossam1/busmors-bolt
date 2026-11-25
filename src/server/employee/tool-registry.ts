@@ -101,7 +101,16 @@ export const ROLE_TOOL_ALLOWLIST: Record<AgentRole, readonly string[]> = {
     'exa_search',
     'firecrawl_scrape',
   ],
-  content: [],
+  // Content Agent: strictly read-only creative specialist (spec 5.4).
+  // No Calendar/Brain/Deliverable writes, no publishing/scheduling, no
+  // ask_clarification, no delegate_agent, no web tools, no filesystem/shell.
+  content: [
+    'read_skill',
+    'read_business_brain',
+    'read_deliverables',
+    'read_calendar',
+    'get_task_context',
+  ],
   'marketing-analyst': [],
 }
 

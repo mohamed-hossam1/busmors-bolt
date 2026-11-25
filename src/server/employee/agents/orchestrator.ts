@@ -321,6 +321,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
             drafts: [],
             brainProposals: [],
             research: [],
+            content: [],
           }
         }
         directorAttempts += 1

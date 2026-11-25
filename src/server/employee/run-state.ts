@@ -38,6 +38,13 @@ export interface DraftRef {
   version: number
   created: boolean
   proposedFor: string | null
+  /** Enriched draft metadata captured at save time (optional for compat). */
+  platform?: 'facebook' | 'instagram'
+  caption?: string
+  hashtags?: string
+  visualBrief?: string
+  /** A saved post draft is always 'draft' — never an auto-schedule/publish. */
+  status?: string
 }
 
 export interface EmployeeRunState {

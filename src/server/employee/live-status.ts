@@ -13,7 +13,7 @@ const TOOL_LABELS_AR: Readonly<Record<string, string>> = {
   exa_search: 'البحث المتعمق في مصادر الويب...',
   firecrawl_scrape: 'قراءة تفاصيل صفحة الويب...',
   delegate_to_director: 'التحويل إلى مدير التسويق...',
-  delegate_agent: 'إسناد مهمة بحث إلى المختص...',
+  delegate_agent: 'إسناد مهمة إلى المختص...',
   read_skill: 'تحميل إرشادات التنفيذ...',
 }
 
@@ -30,7 +30,7 @@ const TOOL_LABELS_EN: Readonly<Record<string, string>> = {
   exa_search: 'Searching web intelligence...',
   firecrawl_scrape: 'Reading source webpage...',
   delegate_to_director: 'Handing off to Marketing Director...',
-  delegate_agent: 'Delegating specialist research...',
+  delegate_agent: 'Delegating to a specialist...',
   read_skill: 'Loading execution playbook...',
 }
 
@@ -45,6 +45,7 @@ export function describeLiveTraceStep(event: TraceEventLike, isArabic: boolean):
       if (role === 'orchestrator') return isArabic ? 'فهم طلبك ومراجعة السياق...' : 'Understanding your request...'
       if (role === 'director') return isArabic ? 'مدير التسويق يضع الخطة ويراجع البيانات...' : 'Marketing Director is analyzing and planning...'
       if (role === 'research') return isArabic ? 'الباحث يجمع أدلة السوق والمنافسين...' : 'Research specialist is gathering market evidence...'
+      if (role === 'content') return isArabic ? 'مختص المحتوى يصيغ المنشورات والنصوص الإبداعية...' : 'Content specialist is drafting creative copy...'
     }
     return null
   }

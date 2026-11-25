@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/Spinner'
 import { loadPosts, recoverPosts, updatePosts } from '../server/calendar-actions'
-import { preparePostRetry, publishNow, resolveContextHolds, schedulePost } from '../server/publishing-actions'
+import { approveAndPublishPost, approveAndSchedulePost, preparePostRetry, publishNow, resolveContextHolds, schedulePost } from '../server/publishing-actions'
 import { useCopy } from '../hooks/useCopy'
 import { useAuth } from '../context/AuthContext'
 import { formatWorkspaceTime } from '../lib/region'
@@ -131,19 +131,21 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [error, setError] = useState('')
   // Step-2 dialogs.
-  const [scheduling, setScheduling] = useState<PlannedPost | null>(null)
+  const [scheduling, setScheduling] = useState<{ post: PlannedPost; approve: boolean } | null>(null)
   const [scheduleValue, setScheduleValue] = useState('')
   const [scheduleBounds, setScheduleBounds] = useState<{ min: string; max: string } | null>(null)
   // Clock used for display ("Scheduled" vs "Published via Facebook schedule"); refreshed on each load.
   const [now, setNow] = useState(currentTime)
   const [dialogError, setDialogError] = useState('')
   const [confirmPublish, setConfirmPublish] = useState<PlannedPost | null>(null)
+  const [confirmApprovePublish, setConfirmApprovePublish] = useState<PlannedPost | null>(null)
   const [confirmRetry, setConfirmRetry] = useState<PlannedPost | null>(null)
   const [confirmReview, setConfirmReview] = useState<PlannedPost | null>(null)
 
   useDialog(!!editing, () => setEditing(null))
   useDialog(!!scheduling, () => setScheduling(null))
   useDialog(!!confirmPublish, () => { if (!busy) setConfirmPublish(null) })
+  useDialog(!!confirmApprovePublish, () => { if (!busy) setConfirmApprovePublish(null) })
   useDialog(!!confirmRetry, () => setConfirmRetry(null))
   useDialog(!!confirmReview, () => setConfirmReview(null))
 
@@ -233,8 +235,8 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
     return !message
   }
 
-  const openSchedule = (post: PlannedPost) => {
-    setScheduling(post)
+  const openSchedule = (post: PlannedPost, approve = false) => {
+    setScheduling({ post, approve })
     // Prefill the proposed time only when Facebook would accept it.
     const range = scheduleWindow(tz)
     setScheduleBounds({ min: range.min, max: range.max })
@@ -248,14 +250,23 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
     const instant = localToInstant(scheduleValue, tz)
     if (!instant) { setDialogError(t('scheduleTimeMissing')); return }
     if (!scheduleWindow(tz).fits(Date.parse(instant))) { setDialogError(t('errTimeOutOfRange')); return }
-    const post = scheduling
-    if (await runAction(() => schedulePost(post.id, post.version, instant))) setScheduling(null)
+    const { post, approve } = scheduling
+    const action = approve
+      ? () => approveAndSchedulePost(post.id, post.version, instant, post.status)
+      : () => schedulePost(post.id, post.version, instant)
+    if (await runAction(action)) setScheduling(null)
   }
   const confirmPublishNow = async () => {
     if (!confirmPublish) return
     const post = confirmPublish
     await runAction(() => publishNow(post.id, post.version))
     setConfirmPublish(null)
+  }
+  const confirmApprovePublishNow = async () => {
+    if (!confirmApprovePublish) return
+    const post = confirmApprovePublish
+    await runAction(() => approveAndPublishPost(post.id, post.version, post.status))
+    setConfirmApprovePublish(null)
   }
 
   /** Which actions a card offers: step 1, step 2, scheduled, failed, on hold, or read-only once published. */
@@ -264,6 +275,8 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
     const published = post.status === 'published' || post.status === 'scheduled'
     const sending = post.status === 'publishing'
     const contextHold = post.execution_state === 'held' && (post.holds ?? []).some((hold) => hold.kind === 'context')
+    const needsApproval = ['draft', 'pending_approval', 'rejected'].includes(post.status)
+    const canApproveAndSend = needsApproval && post.platform === 'facebook'
     return {
       post,
       pageName,
@@ -271,7 +284,9 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
       busy,
       canPublish,
       publishHint,
-      onApprove: ['draft', 'pending_approval', 'rejected'].includes(post.status) ? () => setStatus(post, 'approved') : undefined,
+      onApprove: needsApproval ? () => setStatus(post, 'approved') : undefined,
+      onApproveSchedule: canApproveAndSend ? () => openSchedule(post, true) : undefined,
+      onApprovePublish: canApproveAndSend ? () => setConfirmApprovePublish(post) : undefined,
       onReject: ['draft', 'pending_approval', 'rejected', 'approved'].includes(post.status) ? () => setStatus(post, 'rejected') : undefined,
       onEdit: published || sending ? undefined : () => { setEditing(post); setEditText(post.caption) },
       onCopy: () => void copyCaption(post),
@@ -446,9 +461,9 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
 
       {scheduling && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-3 sm:p-4" onClick={() => setScheduling(null)}>
-          <div role="dialog" aria-modal="true" aria-label={t('scheduleDialogTitle')} className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 font-bold text-base sm:text-lg">{t('scheduleDialogTitle')}</h3>
-            <div className="card p-3"><FacebookPostPreview compact pageName={pageName} caption={scheduling.caption} hashtags={scheduling.hashtags} timezone={tz} timeLabelKind="draft" /></div>
+          <div role="dialog" aria-modal="true" aria-label={t(scheduling.approve ? 'approveAndSchedule' : 'scheduleDialogTitle')} className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 font-bold text-base sm:text-lg">{t(scheduling.approve ? 'approveAndSchedule' : 'scheduleDialogTitle')}</h3>
+            <div className="card p-3"><FacebookPostPreview compact pageName={pageName} caption={scheduling.post.caption} hashtags={scheduling.post.hashtags} timezone={tz} timeLabelKind="draft" /></div>
             <label className="mt-4 block">
               <span className="mb-1.5 block text-sm font-medium text-ink-700">{t('scheduleTimeLabel', { zone: tz })}</span>
               <input
@@ -466,7 +481,7 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
             {dialogError && <p className="mt-2 text-xs text-red-600">{dialogError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setScheduling(null)} className="btn-secondary flex-1 sm:flex-initial">{t('cancel')}</button>
-              <button onClick={() => void confirmSchedule()} disabled={busy} className="btn-primary flex-1 sm:flex-initial">{t('schedule')}</button>
+              <button onClick={() => void confirmSchedule()} disabled={busy} className="btn-primary flex-1 sm:flex-initial">{t(scheduling.approve ? 'approveAndSchedule' : 'schedule')}</button>
             </div>
           </div>
         </div>
@@ -482,6 +497,22 @@ export default function CalendarPage({ initial }: { initial: PlannedPost[] }) {
               <button onClick={() => setConfirmPublish(null)} disabled={busy} className="btn-secondary flex-1 sm:flex-initial">{t('cancel')}</button>
               <button onClick={() => void confirmPublishNow()} disabled={busy} className="btn-primary flex-1 sm:flex-initial justify-center">
                 {busy && <Spinner size={14} />}{busy ? t('publishing') : t('publishNow')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmApprovePublish && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-3 sm:p-4" onClick={() => { if (!busy) setConfirmApprovePublish(null) }}>
+          <div role="dialog" aria-modal="true" aria-label={t('approveAndPublish')} className="card modal-panel w-full max-w-lg p-4 sm:p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 font-bold text-base sm:text-lg">{t('approveAndPublish')}</h3>
+            <div className="card p-3"><FacebookPostPreview compact pageName={pageName} caption={confirmApprovePublish.caption} hashtags={confirmApprovePublish.hashtags} timezone={tz} timeLabelKind="draft" /></div>
+            <p className="mt-3 text-sm text-ink-700">{t('approveAndPublishConfirm', { page: pageName })}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setConfirmApprovePublish(null)} disabled={busy} className="btn-secondary flex-1 sm:flex-initial">{t('cancel')}</button>
+              <button onClick={() => void confirmApprovePublishNow()} disabled={busy} className="btn-primary flex-1 sm:flex-initial justify-center">
+                {busy && <Spinner size={14} />}{busy ? t('publishing') : t('approveAndPublish')}
               </button>
             </div>
           </div>
@@ -706,6 +737,8 @@ function PostChip({ post, tz, onSelect }: { post: PlannedPost; tz: string; onSel
 function PostCard({
   post,
   onApprove,
+  onApproveSchedule,
+  onApprovePublish,
   onReject,
   onEdit,
   onCopy,
@@ -728,6 +761,8 @@ function PostCard({
   canPublish?: boolean
   publishHint?: string | null
   onApprove?: () => void
+  onApproveSchedule?: () => void
+  onApprovePublish?: () => void
   onReject?: () => void
   onEdit?: () => void
   onCopy?: () => void
@@ -873,6 +908,16 @@ function PostCard({
                 {t('approve')}
               </button>
             )}
+            {onApproveSchedule && (
+              <button onClick={onApproveSchedule} disabled={busy || !canPublish} className="btn-secondary px-3 py-1.5 text-xs flex-1 sm:flex-initial justify-center shadow-2xs">
+                <CalendarDays size={13} /> {t('approveAndSchedule')}
+              </button>
+            )}
+            {onApprovePublish && (
+              <button onClick={onApprovePublish} disabled={busy || !canPublish} className="btn-secondary px-3 py-1.5 text-xs flex-1 sm:flex-initial justify-center shadow-2xs">
+                {t('approveAndPublish')}
+              </button>
+            )}
             {onEdit && (
               <button onClick={onEdit} className="btn-secondary px-3 py-1.5 text-xs flex-1 sm:flex-initial justify-center shadow-2xs">
                 {t('edit')}
@@ -884,6 +929,11 @@ function PostCard({
               </button>
             )}
           </div>
+        )}
+        {!canPublish && publishHint && (onApproveSchedule || onApprovePublish) && (
+          <p className="mt-2 text-xs text-ink-500">
+            {publishHint === t('connectPageFirst') ? <Link href="/settings" className="font-semibold text-primary-700 hover:underline">{publishHint}</Link> : publishHint}
+          </p>
         )}
       </div>
     </div>
