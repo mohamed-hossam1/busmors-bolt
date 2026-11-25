@@ -8,6 +8,7 @@ export const ROUTES = {
     ROADMAP: '/roadmap',
     BRAIN: '/brain',
     SCHEDULING: '/scheduling',
+    ADS: '/ads',
     DELIVERABLES: '/deliverables',
     SETTINGS: '/settings',
     ONBOARDING: '/onboarding',

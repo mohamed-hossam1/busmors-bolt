@@ -17,6 +17,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report test-results/e2e/report",
     "test:db:local": "node scripts/local-migration-check.mjs",
+    "test:meta-ads": "node --experimental-transform-types --import ./scripts/testing/ts-register.mjs --test tests/meta-ads/*.test.ts",
     "test:posts:db": "node scripts/db-check.cjs scripts/planned-posts-db-check.sql",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"
@@ -36,6 +37,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "reactflow": "^11.11.4",
+    "recharts": "^3.11.1",
     "server-only": "^0.0.1",
     "zod": "^4.6.7"
   },
