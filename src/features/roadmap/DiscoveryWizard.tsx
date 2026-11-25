@@ -37,22 +37,27 @@ import {
   isOpenStatus,
   isPositiveStatus,
   localizeQuestionSchema,
+  parseDiscoveryContext,
+  withDiscoveryContext,
 } from './discovery'
 import {
   loadDiscovery,
   loadDiscoveryFacts,
   loadDiscoveryQuestion,
   planDiscoveryDraft,
+  requestPrefill,
   saveDiscoveryAnswer,
   saveDiscoveryDraft,
   syncDiscoveryQuestions,
 } from './api'
+import { mergePrefillSuggestions, type MergedSuggestion, type QuestionPrefillMerge } from './prefill-merge'
 import type {
   DiscoveryAnswerValue,
   DiscoveryDraft,
   DiscoveryGoal,
   DiscoveryQuestion,
   DiscoveryQuestionOption,
+  PrefillSuggestion,
 } from './types'
 
 const CHALLENGE_ICONS: Record<string, typeof Lightbulb> = {
@@ -135,6 +140,7 @@ interface QuestionCardProps {
   showOther: boolean
   editingReuse: boolean
   conflict: string | null
+  merge?: QuestionPrefillMerge
   onChoose: (question: DiscoveryQuestion, value: string) => void
   onOther: (question: DiscoveryQuestion, text: string) => void
   onText: (question: DiscoveryQuestion, text: string) => void
@@ -143,6 +149,13 @@ interface QuestionCardProps {
   onSave: (question: DiscoveryQuestion) => void
   onLoadLatest: (question: DiscoveryQuestion) => void
   onSaveMine: (question: DiscoveryQuestion) => void
+  onSelectSuggestion: (question: DiscoveryQuestion, suggestion: MergedSuggestion) => void
+}
+
+function prefillSourceBadge(suggestion: MergedSuggestion, t: (key: AppKey, values?: Record<string, string | number>) => string): string {
+  if (suggestion.sourceType === 'brain') return t('prefillFromBrain')
+  if (suggestion.sourceType === 'deliverable') return t('prefillFromReport', { title: suggestion.sourceLabel })
+  return t('prefillFromRoadmap')
 }
 
 function QuestionCard({
@@ -153,6 +166,7 @@ function QuestionCard({
   showOther,
   editingReuse,
   conflict,
+  merge,
   onChoose,
   onOther,
   onText,
@@ -161,6 +175,7 @@ function QuestionCard({
   onSave,
   onLoadLatest,
   onSaveMine,
+  onSelectSuggestion,
 }: QuestionCardProps) {
   const { t } = useCopy()
   const { locale } = useI18n()
@@ -177,6 +192,10 @@ function QuestionCard({
   const selectedOther = showOther || answer.value?.choice === '__other__'
   const textValue = answer.value?.text ?? ''
   const selectedChoice = answer.value?.choice
+  const currentText = answerLabel(answer.value, schema).trim().toLowerCase()
+  const visibleSuggestions = (merge?.suggestions ?? []).filter(
+    (suggestion) => suggestion.suggestedAnswer.trim().toLowerCase() !== currentText,
+  )
 
   return (
     <article className={`card p-5 transition sm:p-6 ${index === 0 ? 'border-primary-200' : ''}`}>
@@ -255,6 +274,37 @@ function QuestionCard({
               </button>
             )
           })}
+        </div>
+      )}
+
+      {!blocked && !reused && merge && !merge.ownerLocked && visibleSuggestions.length > 0 && (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+          {merge.conflict && (
+            <p role="alert" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-900">
+              {t('prefillConflictNote')}
+            </p>
+          )}
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-sky-800">{t('prefillSuggestionsTitle')}</p>
+          <div className="space-y-2">
+            {visibleSuggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.sourceType}-${suggestion.sourceId ?? suggestion.sourceLabel}`}
+                type="button"
+                onClick={() => onSelectSuggestion(question, suggestion)}
+                className="flex w-full items-start gap-3 rounded-xl border border-sky-200 bg-white p-3 text-start transition hover:border-sky-400"
+              >
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-300 bg-white" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-900">
+                    {suggestion.suggestedAnswer}
+                    <span className="badge bg-sky-50 text-sky-700">{prefillSourceBadge(suggestion, t)}</span>
+                    {suggestion.isStale && <span className="badge bg-amber-50 text-amber-800">{t('prefillStaleBadge')}</span>}
+                  </span>
+                  {suggestion.rationale && <span className="mt-0.5 block text-xs leading-5 text-ink-600">{suggestion.rationale}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -376,6 +426,12 @@ export default function DiscoveryWizard() {
   const [showEarlier, setShowEarlier] = useState(false)
   const [preliminary, setPreliminary] = useState(false)
   const [planning, setPlanning] = useState(false)
+  const [prefillSuggestions, setPrefillSuggestions] = useState<PrefillSuggestion[]>([])
+  const [prefillLoading, setPrefillLoading] = useState(false)
+  const [prefillNotice, setPrefillNotice] = useState('')
+  const [secondaryGoals, setSecondaryGoals] = useState<DiscoveryGoal[]>([])
+  const [somethingElseNote, setSomethingElseNote] = useState('')
+  const [contextBusy, setContextBusy] = useState(false)
 
   const questionsRef = useRef<DiscoveryQuestion[]>([])
   const draftRef = useRef<DiscoveryDraft | null>(null)
@@ -452,6 +508,11 @@ export default function DiscoveryWizard() {
       setPreliminary(nextDraft.status === 'planned')
       setGoalPicker(false)
       applyLocal({})
+      const ctx = parseDiscoveryContext(nextDraft.context_refs ?? [])
+      setSecondaryGoals(ctx.secondaryGoals)
+      setSomethingElseNote(ctx.somethingElseNote)
+      setPrefillSuggestions([])
+      setPrefillNotice('')
     } catch (error) {
       setLoadError(rpcCode(error) === 'STALE_VERSION'
         ? 'This Discovery changed while it was loading. Reload to use the latest saved version.'
@@ -464,6 +525,27 @@ export default function DiscoveryWizard() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadPrefill = async () => {
+    const current = draftRef.current
+    if (!current || prefillLoading) return
+    const requestedGoal = current.goal
+    setPrefillLoading(true)
+    setPrefillNotice('')
+    setSaveError('')
+    try {
+      const keys = questionsRef.current.filter((question) => question.active).map((question) => question.question_key)
+      const suggestions = await requestPrefill(requestedGoal, keys, locale)
+      // Discard a stale response that belongs to a previously selected goal.
+      if (draftRef.current?.goal !== requestedGoal) return
+      setPrefillSuggestions(suggestions)
+      setPrefillNotice(suggestions.length > 0 ? t('prefillLoaded', { count: suggestions.length }) : t('prefillEmpty'))
+    } catch {
+      if (draftRef.current?.goal === requestedGoal) setPrefillNotice(t('prefillEmpty'))
+    } finally {
+      setPrefillLoading(false)
+    }
+  }
 
   const selectGoal = async (goal: DiscoveryGoal) => {
     if (busy) return
@@ -490,9 +572,17 @@ export default function DiscoveryWizard() {
       setSaveState('idle')
       setPreliminary(false)
       setGoalPicker(false)
+      const ctx = parseDiscoveryContext(synced.draft.context_refs ?? [])
+      setSecondaryGoals(ctx.secondaryGoals.filter((value) => value !== goal))
+      setSomethingElseNote(ctx.somethingElseNote)
+      setPrefillSuggestions([])
+      setPrefillNotice('')
       setNotice(changedGoal
         ? `Goal updated.${preserved ? ` ${preserved} earlier answer${preserved === 1 ? ' is' : 's are'} kept under Saved earlier answers.` : ''} Questions now match the new goal.`
         : 'Discovery started. Answers save as you go.')
+      // Section 2.3: selecting a challenge card sends a single structured prefill
+      // request automatically. The manual Refresh Prefill button stays available.
+      void loadPrefill()
     } catch (error) {
       if (rpcCode(error) === 'STALE_VERSION') {
         setDraftConflict('This Discovery changed in another tab. Reload the saved draft before changing the goal.')
@@ -679,6 +769,69 @@ export default function DiscoveryWizard() {
     }
   }
 
+  const selectSuggestion = (question: DiscoveryQuestion, suggestion: MergedSuggestion) => {
+    const schema = localizeQuestionSchema(question.question_key, question.schema, locale)
+    const isPredefined = (schema.options ?? []).some(
+      (option) => option.value !== '__other__' && option.value === suggestion.suggestedAnswer,
+    )
+    setEditingReuse((previous) => ({ ...previous, [question.id]: false }))
+    setOtherMode((previous) => ({ ...previous, [question.id]: !isPredefined }))
+    const provenance = {
+      kind: suggestion.sourceType,
+      sourceId: suggestion.sourceId,
+      sourceLabel: suggestion.sourceLabel,
+      stale: suggestion.isStale,
+    }
+    if (isPredefined) {
+      queueAnswer(question, { status: 'answered', value: { choice: suggestion.suggestedAnswer }, provenance })
+    } else {
+      queueAnswer(question, { status: 'answered', value: { choice: '__other__', text: suggestion.suggestedAnswer }, provenance })
+    }
+  }
+
+  const persistContext = async (nextSecondary: DiscoveryGoal[], nextNote: string) => {
+    const current = draftRef.current
+    if (!current || contextBusy) return
+    setContextBusy(true)
+    setSaveError('')
+    setDraftConflict('')
+    try {
+      const contextRefs = withDiscoveryContext(current.context_refs ?? [], {
+        secondaryGoals: nextSecondary,
+        somethingElseNote: nextNote,
+      })
+      const saved = await saveDiscoveryDraft(current.goal, current.version, contextRefs)
+      draftRef.current = saved
+      setDraft(saved)
+      setSaveState('saved')
+    } catch (error) {
+      if (rpcCode(error) === 'STALE_VERSION') {
+        setDraftConflict('This Discovery changed in another tab. Reload the saved draft before editing challenges.')
+      } else {
+        setSaveError('The challenges could not be saved. Your answers are unchanged; retry.')
+      }
+    } finally {
+      setContextBusy(false)
+    }
+  }
+
+  const toggleSecondary = (goal: DiscoveryGoal) => {
+    if (!draftRef.current || goal === draftRef.current.goal) return
+    const next = secondaryGoals.includes(goal)
+      ? secondaryGoals.filter((value) => value !== goal)
+      : [...secondaryGoals, goal]
+    setSecondaryGoals(next)
+    void persistContext(next, somethingElseNote)
+  }
+
+  const changeSomethingElseNote = (note: string) => {
+    setSomethingElseNote(note)
+  }
+
+  const saveSomethingElseNote = () => {
+    void persistContext(secondaryGoals, somethingElseNote)
+  }
+
   const continuePreliminary = async () => {
     if (!draftRef.current || planning) return
     setPlanning(true)
@@ -732,6 +885,22 @@ export default function DiscoveryWizard() {
     () => questions.filter((question) => question.active).sort((a, b) => a.position - b.position),
     [questions]
   )
+  const prefillMerge = useMemo(
+    () =>
+      mergePrefillSuggestions({
+        questions: activeQuestions.map((question) => {
+          const answer = answerFor(question, local)
+          return {
+            questionKey: question.question_key,
+            status: answer.status,
+            value: answer.value,
+            provenance: answer.provenance,
+          }
+        }),
+        suggestions: prefillSuggestions,
+      }),
+    [activeQuestions, local, prefillSuggestions]
+  )
   const earlierQuestions = useMemo(
     () => questions.filter((question) => !question.active && (isPositiveStatus(question.status) || ['unknown', 'skipped', 'not_applicable', 'researching'].includes(question.status))),
     [questions]
@@ -777,7 +946,8 @@ export default function DiscoveryWizard() {
         </header>
 
         {loadError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{loadError}</p>}
-        {notice && <p role="status" className="mb-4 rounded-xl bg-primary-50 p-3 text-sm text-primary-800">{notice}</p>}
+      {notice && <p role="status" className="mb-4 rounded-xl bg-primary-50 p-3 text-sm text-primary-800">{notice}</p>}
+      {prefillNotice && <p role="status" className="mb-4 rounded-xl bg-sky-50 p-3 text-sm text-sky-800">{prefillNotice}</p>}
         {draftConflict && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             <p>{draftConflict}</p>
@@ -834,6 +1004,9 @@ export default function DiscoveryWizard() {
             {t('discoveryGoalPrefix')} <span className="font-medium text-ink-900">{goal?.label ?? draft.goal}</span> · {t('discoveryDraftPrefix')} {draft.version}
           </p>
         </div>
+        <button type="button" onClick={() => void loadPrefill()} disabled={prefillLoading} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
+          {prefillLoading ? <Spinner size={13} /> : <Sparkles size={13} />} {t('prefillButton')}
+        </button>
         <button type="button" onClick={() => setGoalPicker(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">{t('changeGoal')}</button>
       </header>
 
@@ -892,6 +1065,7 @@ export default function DiscoveryWizard() {
                 showOther={Boolean(otherMode[question.id])}
                 editingReuse={Boolean(editingReuse[question.id])}
                 conflict={questionConflict}
+                merge={prefillMerge[question.question_key]}
                 onChoose={choose}
                 onOther={changeOther}
                 onText={changeText}
@@ -900,6 +1074,7 @@ export default function DiscoveryWizard() {
                 onSave={saveQuestion}
                 onLoadLatest={(item) => void loadLatest(item)}
                 onSaveMine={(item) => void saveMine(item)}
+                onSelectSuggestion={selectSuggestion}
               />
             )
           })}
@@ -941,6 +1116,56 @@ export default function DiscoveryWizard() {
         </div>
 
         <aside className="space-y-4">
+          <section className="card p-4">
+            <h2 className="text-sm font-semibold">{t('secondaryChallengesLabel')}</h2>
+            <p className="mt-1 text-xs leading-5 text-ink-600">{t('secondaryChallengesHelp')}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {getDiscoveryGoals(locale)
+                .filter((item) => item.value !== draft.goal)
+                .map((item) => {
+                  const active = secondaryGoals.includes(item.value)
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={contextBusy}
+                      onClick={() => toggleSecondary(item.value)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:opacity-60 ${
+                        active
+                          ? 'border-primary-400 bg-primary-50 text-primary-800'
+                          : 'border-ink-200 text-ink-600 hover:border-primary-300'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
+            </div>
+            {(draft.goal === 'something_else' || secondaryGoals.includes('something_else')) && (
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-ink-700">
+                  {t('somethingElseNoteLabel')}
+                  <textarea
+                    value={somethingElseNote}
+                    maxLength={2000}
+                    onChange={(event) => changeSomethingElseNote(event.target.value)}
+                    placeholder={t('somethingElseNotePlaceholder')}
+                    className="input-field mt-1 min-h-20 resize-y"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={saveSomethingElseNote}
+                  disabled={contextBusy}
+                  className="btn-secondary mt-2 min-h-8 px-3 py-1 text-xs"
+                >
+                  {contextBusy ? <><Spinner size={12} /> {t('saving')}</> : t('saveNote')}
+                </button>
+              </div>
+            )}
+          </section>
+
           <section className="card p-4">
             <h2 className="text-sm font-semibold">{t('progressLabel')}</h2>
             <p className="mt-2 text-3xl font-semibold text-ink-900">{positiveCount}<span className="text-base font-normal text-ink-500"> / {activeQuestions.length}</span></p>

@@ -23,50 +23,50 @@ export interface DiscoveryGoalDefinition {
 export const DISCOVERY_GOALS: DiscoveryGoalDefinition[] = [
   {
     value: 'validate_idea',
-    label: 'Validate my business idea',
+    label: 'Validate My Business Idea',
     description: 'I have a business idea and want to know whether there is a real market for it before investing more time or money.',
     icon: 'lightbulb',
   },
   {
     value: 'win_first_customers',
-    label: 'Get my first customers',
+    label: 'Get My First Customers',
     description: 'I have launched my business, but I am struggling to acquire my first customers.',
     icon: 'user-plus',
   },
   {
     value: 'grow_customers',
-    label: 'Grow my customer base',
+    label: 'Grow My Customer Base',
     description: 'I already have customers, but growth is slow or inconsistent.',
     icon: 'trending-up',
   },
   {
     value: 'convert_inquiries',
-    label: 'Convert more leads into customers',
+    label: 'Convert More Leads into Customers',
     description: 'People are interested in my product or service, but not enough of them actually buy.',
     icon: 'target',
   },
   {
     value: 'unprofitable_marketing',
-    label: 'Make my marketing profitable',
+    label: 'Make My Marketing Profitable',
     description: 'I spend money or effort on marketing, but the results are not producing the profit I expected.',
     icon: 'coins',
   },
   {
     value: 'launch_offer',
-    label: 'Launch a new product or offer',
+    label: 'Launch a New Product or Offer',
     description: 'I want to launch a new product, service, or offer and need a strategy to make it successful.',
     icon: 'rocket',
   },
   {
     value: 'increase_repeat_referral',
-    label: 'Increase repeat purchases and referrals',
+    label: 'Increase Repeat Purchases and Referrals',
     description: 'I have customers, but I struggle to get them to return or recommend my business.',
     icon: 'repeat',
   },
   {
     value: 'something_else',
-    label: 'I am not sure what is wrong',
-    description: 'I know my business could perform better, but I do not know where the problem is.',
+    label: 'I Am Not Sure What Is Wrong',
+    description: "I know my business could perform better, but I don't know where the problem is.",
     icon: 'help-circle',
   },
 ]
@@ -197,12 +197,206 @@ function prefillFromNode(node: BrainNode): DiscoveryPrefill {
   }
 }
 
+/** The permanent free-text choice appended to every fixed question. */
+export const OTHER_OPTION_VALUE = '__other__'
+export const OTHER_OPTION_LABEL = 'Other / Write your own answer'
+
+const DEFAULT_QUESTION_WHY =
+  'This helps tailor your plan to your real situation instead of a generic template.'
+
+export interface DiscoveryQuestionOptionDef {
+  value: string
+  label: string
+}
+
+export interface DiscoveryQuestionDef {
+  key: string
+  label: string
+  options: DiscoveryQuestionOptionDef[]
+  /** Whether the Director may ground later agent work on this answer. */
+  askDirectorEligible: boolean
+  why?: string
+}
+
+function opts(...values: string[]): DiscoveryQuestionOptionDef[] {
+  return values.map((value) => ({ value, label: value }))
+}
+
 /**
- * Deterministic question planner. It only reuses eligible, current, approved
- * Brain facts. Missing information becomes a question or an explicit unknown;
- * it is never filled with invented content.
+ * Fixed, configuration-driven question sets. These are NEVER AI-generated: the
+ * same challenge always yields the same questions, options and director
+ * eligibility. The `value` of each option is its English label so saved answers
+ * and Arabic localization stay stable.
+ */
+export const DISCOVERY_QUESTIONS: Record<DiscoveryGoal, DiscoveryQuestionDef[]> = {
+  validate_idea: [
+    { key: 'vi_problem', label: 'What core problem does your idea solve?', options: opts('Saves time/effort', 'Reduces cost', 'Solves a quality/scarcity gap', 'Improves an existing experience'), askDirectorEligible: true },
+    { key: 'vi_customer', label: 'Who is the highest-priority target customer for this idea?', options: opts('People who already know us', 'A specific local segment', 'A brand-new customer segment', 'Businesses / B2B'), askDirectorEligible: true },
+    { key: 'vi_alternatives', label: 'What alternatives are people currently using to solve this problem?', options: opts('Direct competitors in the market', 'Manual or traditional workarounds', 'No clear alternative exists'), askDirectorEligible: true },
+    { key: 'vi_spoken', label: 'Have you spoken to potential customers about this idea?', options: opts('Yes, they showed strong interest', 'Yes, but responses were hesitant', 'Not yet'), askDirectorEligible: false },
+    { key: 'vi_pay', label: 'Has anyone shown real willingness to pay?', options: opts('Yes, paid or pre-ordered', 'Verbally promised to buy only', "Haven't tested pricing yet"), askDirectorEligible: false },
+    { key: 'vi_geo', label: 'What geographic market are you targeting first?', options: opts('Specific neighborhood/district', 'One city', 'All of Egypt', 'Online / International'), askDirectorEligible: true },
+  ],
+  win_first_customers: [
+    { key: 'wfc_selling', label: 'What exactly are you selling right now?', options: opts('Physical product', 'Local service', 'Online service / consulting', 'Digital / software product'), askDirectorEligible: true },
+    { key: 'wfc_ready', label: 'Who is most ready to buy from you right now?', options: opts('Personal network & referrals', 'Nearby local audience', 'Specialized online niche', 'B2B companies'), askDirectorEligible: true },
+    { key: 'wfc_hear', label: 'How do people currently hear about you?', options: opts('Organic social media', 'Paid ads', 'Referrals & word of mouth', 'No active channel yet'), askDirectorEligible: true },
+    { key: 'wfc_inquiries', label: 'Have you received any inquiries from potential customers so far?', options: opts('Yes, but no sales yet', 'Very few inquiries', 'No inquiries at all'), askDirectorEligible: false },
+    { key: 'wfc_blocker', label: 'What is the biggest blocker stopping you from getting your first customers?', options: opts('Nobody knows we exist', 'Hard to explain the value', 'Price or trust concerns', 'Limited time/budget'), askDirectorEligible: true },
+    { key: 'wfc_channels', label: 'Which channels can you realistically start using immediately?', options: opts('Facebook / Instagram', 'WhatsApp & direct sales', 'TikTok / Reels', 'Website / Google'), askDirectorEligible: true },
+  ],
+  grow_customers: [
+    { key: 'gc_count', label: 'Roughly how many active customers do you have right now?', options: opts('Fewer than 20', '20–100', '100–500', 'More than 500'), askDirectorEligible: false },
+    { key: 'gc_source', label: 'Where do most of your current customers come from?', options: opts('Paid ads', 'Organic social content', 'Customer referrals', 'Direct sales / website'), askDirectorEligible: false },
+    { key: 'gc_growth', label: 'How would you describe your growth over the last 3 months?', options: opts('Flat / stagnant', 'Inconsistent (up and down)', 'Declining', 'Very slow growth'), askDirectorEligible: false },
+    { key: 'gc_best', label: 'Which channel is performing best for you right now?', options: opts('Facebook / Instagram', 'TikTok', 'WhatsApp / direct outreach', 'Search / Website'), askDirectorEligible: true },
+    { key: 'gc_prevent', label: 'What is preventing you from serving more customers right now?', options: opts('Not enough leads/inquiries', 'Limited marketing budget', 'Operational/delivery capacity', 'Audience saturation'), askDirectorEligible: true },
+    { key: 'gc_goal', label: 'What is your primary growth goal for the next 90 days?', options: opts('Acquire more new customers', 'Increase average order value', 'Open a new sales channel'), askDirectorEligible: true },
+  ],
+  convert_inquiries: [
+    { key: 'ci_where', label: 'Where do most inquiries come from?', options: opts('Facebook / Instagram DMs', 'WhatsApp', 'Phone calls', 'Website / store form'), askDirectorEligible: false },
+    { key: 'ci_volume', label: 'Roughly how many inquiries do you receive per week?', options: opts('Fewer than 15', '15–50', '50–150', 'More than 150'), askDirectorEligible: false },
+    { key: 'ci_response', label: 'What is your average response time to an inquiry?', options: opts('Within minutes', 'Within a few hours (same day)', 'Next day or later', 'Inconsistent'), askDirectorEligible: false },
+    { key: 'ci_percent', label: 'Roughly what percentage of inquiries become paying customers?', options: opts('Under 5%', '5%–15%', '15%–30%', 'Over 30%'), askDirectorEligible: false },
+    { key: 'ci_objection', label: 'What is the most common objection before people drop off?', options: opts('Price is too high', "\"I'll think about it\" / ghosts after price", 'Lack of trust or guarantees', 'Shipping cost or delivery time'), askDirectorEligible: true },
+    { key: 'ci_followup', label: "What happens after someone shows interest but doesn't buy immediately?", options: opts('We follow up once or more', 'We wait for them to reach back out', 'No follow-up process'), askDirectorEligible: false },
+  ],
+  unprofitable_marketing: [
+    { key: 'um_channels', label: 'Which marketing channels are you currently paying for?', options: opts('Facebook / Instagram ads', 'TikTok ads', 'Google ads', 'Influencers / paid content'), askDirectorEligible: false },
+    { key: 'um_spend', label: 'What is your approximate monthly marketing spend?', options: opts('Under 5,000 EGP', '5,000–20,000 EGP', '20,000–50,000 EGP', 'Over 50,000 EGP'), askDirectorEligible: false },
+    { key: 'um_margin', label: 'What is your approximate gross profit margin before ad spend?', options: opts('Under 20%', '20%–40%', '40%–60%', 'Over 60%'), askDirectorEligible: false },
+    { key: 'um_aov', label: 'What is your average order value (AOV)?', options: opts('Under 300 EGP', '300–1,000 EGP', '1,000–3,000 EGP', 'Over 3,000 EGP'), askDirectorEligible: false },
+    { key: 'um_measure', label: 'How do you currently measure campaign success?', options: opts('Messages / engagement volume', 'Recorded actual sales', 'Platform-reported ROAS', 'No accurate tracking'), askDirectorEligible: false },
+    { key: 'um_repeat', label: 'Do customers buy from you more than once?', options: opts('Yes, regularly', 'Sometimes', 'Mostly one-time buyers'), askDirectorEligible: false },
+    { key: 'um_leak', label: 'Where do you feel the biggest leak is happening in your campaigns?', options: opts('High cost per message/click', 'Unqualified leads', 'High returns/cancellations', 'Not sure'), askDirectorEligible: true },
+  ],
+  launch_offer: [
+    { key: 'lo_what', label: 'What new product or offer are you preparing to launch?', options: opts('Brand-new product/service', 'Seasonal bundle or discount', 'Upgraded version of an existing offer'), askDirectorEligible: true },
+    { key: 'lo_audience', label: 'Who is the specific target audience for this offer?', options: opts('Existing customers', "Followers who haven't bought yet", 'Brand-new audience'), askDirectorEligible: true },
+    { key: 'lo_standout', label: "What makes this offer stand out from what's already in the market?", options: opts('Better price/value', 'Unique feature or higher quality', 'Faster/easier experience', 'Risk-free guarantee or trial'), askDirectorEligible: true },
+    { key: 'lo_when', label: 'When do you plan to launch?', options: opts('Within 2 weeks', 'Within 1 month', 'In 2–3 months', 'Not decided yet'), askDirectorEligible: false },
+    { key: 'lo_channels', label: 'Which channels are ready to promote this launch?', options: opts('Active social media pages', 'Customer list / WhatsApp', 'Paid ads budget', 'Email list / website'), askDirectorEligible: true },
+    { key: 'lo_goal', label: 'What is your primary goal for this launch?', options: opts('Generate fast sales', 'Test market demand', 'Attract new customers to the brand'), askDirectorEligible: true },
+  ],
+  increase_repeat_referral: [
+    { key: 'irr_frequency', label: 'How often does an average customer buy from you per year?', options: opts('Once only', '2–3 times', 'Monthly or more'), askDirectorEligible: false },
+    { key: 'irr_why_return', label: 'Why do returning customers come back?', options: opts('Product/service quality', 'Good pricing', 'Great service & speed', 'Recurring natural need'), askDirectorEligible: true },
+    { key: 'irr_why_not', label: "What is the most likely reason other customers don't return?", options: opts('They forget about us after first purchase', "Product isn't bought frequently", 'No offers for past customers', 'Post-purchase experience issue'), askDirectorEligible: true },
+    { key: 'irr_list', label: 'Do you have a list of past customers you can contact?', options: opts('Yes, organized in WhatsApp/CRM/Sheet', 'Scattered across messages', "We don't save customer data"), askDirectorEligible: false },
+    { key: 'irr_feedback', label: 'Do you have a system for collecting feedback or asking for referrals?', options: opts('Yes, consistently', 'Occasionally / ad-hoc', 'None currently'), askDirectorEligible: false },
+    { key: 'irr_easiest', label: 'What would be easiest to implement with your customers right now?', options: opts('Comeback discounts/offers', 'Follow-up & check-in messages', 'Rewarded referral program'), askDirectorEligible: true },
+  ],
+  something_else: [
+    { key: 'se_stage', label: 'What stage is your business currently in?', options: opts('Pre-launch idea', 'New with limited sales', 'Operating with steady sales', 'Operating with declining sales'), askDirectorEligible: false },
+    { key: 'se_symptom', label: 'What symptom frustrates you most right now?', options: opts('Not enough people asking', "People ask but don't buy", 'Spending on marketing without profit', 'Customers buy once and disappear'), askDirectorEligible: false },
+    { key: 'se_channel', label: 'What is your primary channel for getting customers right now?', options: opts('Organic social media', 'Paid ads', 'Referrals & word of mouth', 'Physical store / website'), askDirectorEligible: false },
+    { key: 'se_numbers', label: 'Do you know your core numbers (ad cost, profit margin, conversion rate)?', options: opts('Yes, accurately', 'Roughly', 'Not tracking them currently'), askDirectorEligible: false },
+    { key: 'se_satisfied', label: 'Are your customers satisfied after buying?', options: opts('Yes, very satisfied', 'Average with some complaints', "Don't know because we don't ask"), askDirectorEligible: false },
+    { key: 'se_improve', label: 'What single improvement in the next 60 days would make the biggest difference?', options: opts('More inquiries', 'Higher closing rate', 'Lower marketing cost', 'A clear, structured plan'), askDirectorEligible: true },
+  ],
+}
+
+export function fixedQuestionsForGoal(goal: string): DiscoveryQuestionDef[] {
+  return DISCOVERY_QUESTIONS[normalizeGoal(goal)] ?? DISCOVERY_QUESTIONS.something_else
+}
+
+/**
+ * Active question planner. Returns the fixed, predefined question set for the
+ * selected challenge. Every question is multiple-choice with a permanent
+ * free-text "Other" option and the standard answer-state actions handled by the
+ * wizard. Nothing here is AI-generated.
  */
 export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuestion[] {
+  const goal = normalizeGoal(context.goal)
+  const defs = fixedQuestionsForGoal(goal)
+  const plan: PlannedQuestion[] = defs.map((def, index) => ({
+    question_key: def.key,
+    position: index,
+    branch: goal,
+    schema: {
+      label: def.label,
+      why: def.why ?? DEFAULT_QUESTION_WHY,
+      type: 'choice',
+      allowOther: true,
+      askDirectorEligible: def.askDirectorEligible,
+      options: [
+        ...def.options.map((option) => ({ value: option.value, label: option.label, source: 'standard' as const })),
+        { value: OTHER_OPTION_VALUE, label: OTHER_OPTION_LABEL, source: 'standard' as const },
+      ],
+    },
+  }))
+
+  if (context.locale === 'ar') {
+    return plan.map((item) => ({
+      ...item,
+      schema: localizeQuestionSchema(item.question_key, item.schema, 'ar'),
+    }))
+  }
+
+  return plan
+}
+
+const SECONDARY_GOALS_REF = 'secondaryGoals'
+const SOMETHING_ELSE_NOTE_REF = 'somethingElseNote'
+
+export interface DiscoveryContextPatch {
+  secondaryGoals?: DiscoveryGoal[]
+  somethingElseNote?: string
+}
+
+/** Read the optional secondary challenges and free-text note from context_refs. */
+export function parseDiscoveryContext(contextRefs: unknown[]): {
+  secondaryGoals: DiscoveryGoal[]
+  somethingElseNote: string
+} {
+  const secondaryGoals: DiscoveryGoal[] = []
+  let somethingElseNote = ''
+  for (const ref of contextRefs) {
+    if (!ref || typeof ref !== 'object') continue
+    const record = ref as Record<string, unknown>
+    if (record.kind === SECONDARY_GOALS_REF && Array.isArray(record.goals)) {
+      for (const value of record.goals) {
+        if (typeof value === 'string') secondaryGoals.push(normalizeGoal(value))
+      }
+    }
+    if (record.kind === SOMETHING_ELSE_NOTE_REF && typeof record.note === 'string') {
+      somethingElseNote = record.note
+    }
+  }
+  return { secondaryGoals: [...new Set(secondaryGoals)], somethingElseNote }
+}
+
+/**
+ * Return a new context_refs array with the secondary challenges and note
+ * persisted as additive, backward-compatible entries. Existing refs (e.g.
+ * preliminary_plan) are preserved; only the entries this function owns are
+ * replaced. `save_discovery_draft` already accepts an arbitrary jsonb array.
+ */
+export function withDiscoveryContext(contextRefs: unknown[], patch: DiscoveryContextPatch): unknown[] {
+  const kept = contextRefs.filter((ref) => {
+    if (!ref || typeof ref !== 'object') return true
+    const kind = (ref as Record<string, unknown>).kind
+    return kind !== SECONDARY_GOALS_REF && kind !== SOMETHING_ELSE_NOTE_REF
+  })
+  if (patch.secondaryGoals && patch.secondaryGoals.length > 0) {
+    kept.push({ kind: SECONDARY_GOALS_REF, goals: patch.secondaryGoals })
+  }
+  if (patch.somethingElseNote && patch.somethingElseNote.trim()) {
+    kept.push({ kind: SOMETHING_ELSE_NOTE_REF, note: patch.somethingElseNote.trim() })
+  }
+  return kept
+}
+
+/**
+ * Deterministic question planner (legacy, pre-fixed-set).
+ *
+ * Kept for reference and for localizing any historical saved questions. The
+ * active planner is {@link buildDiscoveryPlan}, which returns the fixed,
+ * configuration-driven question sets. It only reuses eligible, current,
+ * approved Brain facts. Missing information becomes a question or an explicit
+ * unknown; it is never filled with invented content.
+ */
+function buildDiscoveryPlanLegacy(context: DiscoveryPlanContext): PlannedQuestion[] {
   const goal = normalizeGoal(context.goal)
   const facts = eligibleBrainFacts(context.facts)
   const audience = facts.find((fact) => fact.category === 'audience')
@@ -547,7 +741,7 @@ export function buildDiscoveryPlan(context: DiscoveryPlanContext): PlannedQuesti
 
 interface QuestionLocalization {
   label: string
-  why: string
+  why?: string
   placeholder?: string
   options?: Record<string, { label: string; detail?: string }>
 }
@@ -796,6 +990,431 @@ export const QUESTION_TRANSLATIONS_AR: Record<string, QuestionLocalization> = {
       'Not sure yet': { label: 'غير متأكد بعد', detail: 'سيبقى هذا كأمر غير محدد.' },
     },
   },
+  vi_problem: {
+    label: 'ما المشكلة الأساسية التي تحلها فكرتك؟',
+    options: {
+      'Saves time/effort': { label: 'توفير الوقت/الجهد' },
+      'Reduces cost': { label: 'خفض التكلفة' },
+      'Solves a quality/scarcity gap': { label: 'معالجة فجوة في الجودة/التوفر' },
+      'Improves an existing experience': { label: 'تحسين تجربة قائمة' },
+    },
+  },
+  vi_customer: {
+    label: 'من هو العميل المستهدف الأعلى أولوية لهذه الفكرة؟',
+    options: {
+      'People who already know us': { label: 'أشخاص يعرفوننا بالفعل' },
+      'A specific local segment': { label: 'شريحة محلية محددة' },
+      'A brand-new customer segment': { label: 'شريحة عملاء جديدة تماماً' },
+      'Businesses / B2B': { label: 'شركات / قطاع B2B' },
+    },
+  },
+  vi_alternatives: {
+    label: 'ما البدائل التي يستخدمها الناس حالياً لحل هذه المشكلة؟',
+    options: {
+      'Direct competitors in the market': { label: 'منافسون مباشرون في السوق' },
+      'Manual or traditional workarounds': { label: 'حلول يدوية أو تقليدية مؤقتة' },
+      'No clear alternative exists': { label: 'لا يوجد بديل واضح' },
+    },
+  },
+  vi_spoken: {
+    label: 'هل تحدثت مع عملاء محتملين حول هذه الفكرة؟',
+    options: {
+      'Yes, they showed strong interest': { label: 'نعم، أبدوا اهتماماً قوياً' },
+      'Yes, but responses were hesitant': { label: 'نعم، لكن الردود كانت مترددة' },
+      'Not yet': { label: 'ليس بعد' },
+    },
+  },
+  vi_pay: {
+    label: 'هل أظهر أحد استعداداً حقيقياً للدفع؟',
+    options: {
+      'Yes, paid or pre-ordered': { label: 'نعم، دفعوا أو طلبوا مسبقاً' },
+      'Verbally promised to buy only': { label: 'وعدوا شفهياً بالشراء فقط' },
+      "Haven't tested pricing yet": { label: 'لم أختبر التسعير بعد' },
+    },
+  },
+  vi_geo: {
+    label: 'ما السوق الجغرافي الذي تستهدفه أولاً؟',
+    options: {
+      'Specific neighborhood/district': { label: 'حي/منطقة محددة' },
+      'One city': { label: 'مدينة واحدة' },
+      'All of Egypt': { label: 'كل مصر' },
+      'Online / International': { label: 'عبر الإنترنت / دولي' },
+    },
+  },
+  wfc_selling: {
+    label: 'ماذا تبيع بالضبط الآن؟',
+    options: {
+      'Physical product': { label: 'منتج مادي' },
+      'Local service': { label: 'خدمة محلية' },
+      'Online service / consulting': { label: 'خدمة عبر الإنترنت / استشارات' },
+      'Digital / software product': { label: 'منتج رقمي / برمجي' },
+    },
+  },
+  wfc_ready: {
+    label: 'من هو الأكثر استعداداً للشراء منك الآن؟',
+    options: {
+      'Personal network & referrals': { label: 'شبكتي الشخصية والإحالات' },
+      'Nearby local audience': { label: 'جمهور محلي قريب' },
+      'Specialized online niche': { label: 'مجال متخصص عبر الإنترنت' },
+      'B2B companies': { label: 'شركات B2B' },
+    },
+  },
+  wfc_hear: {
+    label: 'كيف يسمع الناس عنك حالياً؟',
+    options: {
+      'Organic social media': { label: 'وسائل تواصل عضوية' },
+      'Paid ads': { label: 'إعلانات مدفوعة' },
+      'Referrals & word of mouth': { label: 'إحالات وتوصيات شفهية' },
+      'No active channel yet': { label: 'لا توجد قناة نشطة بعد' },
+    },
+  },
+  wfc_inquiries: {
+    label: 'هل استقبلت أي استفسارات من عملاء محتملين حتى الآن؟',
+    options: {
+      'Yes, but no sales yet': { label: 'نعم، لكن لا مبيعات بعد' },
+      'Very few inquiries': { label: 'استفسارات قليلة جداً' },
+      'No inquiries at all': { label: 'لا استفسارات على الإطلاق' },
+    },
+  },
+  wfc_blocker: {
+    label: 'ما أكبر عائق يمنعك من الحصول على أول عملائك؟',
+    options: {
+      'Nobody knows we exist': { label: 'لا أحد يعرف بوجودنا' },
+      'Hard to explain the value': { label: 'صعوبة شرح القيمة' },
+      'Price or trust concerns': { label: 'مخاوف السعر أو الثقة' },
+      'Limited time/budget': { label: 'وقت/ميزانية محدودة' },
+    },
+  },
+  wfc_channels: {
+    label: 'ما القنوات التي يمكنك البدء في استخدامها فوراً؟',
+    options: {
+      'Facebook / Instagram': { label: 'فيسبوك / إنستغرام' },
+      'WhatsApp & direct sales': { label: 'واتساب والبيع المباشر' },
+      'TikTok / Reels': { label: 'تيك توك / ريلز' },
+      'Website / Google': { label: 'الموقع / جوجل' },
+    },
+  },
+  gc_count: {
+    label: 'كم عدد العملاء النشطين لديك حالياً تقريباً؟',
+    options: {
+      'Fewer than 20': { label: 'أقل من 20' },
+      '20–100': { label: '20–100' },
+      '100–500': { label: '100–500' },
+      'More than 500': { label: 'أكثر من 500' },
+    },
+  },
+  gc_source: {
+    label: 'من أين يأتي معظم عملائك الحاليين؟',
+    options: {
+      'Paid ads': { label: 'إعلانات مدفوعة' },
+      'Organic social content': { label: 'محتوى اجتماعي عضوي' },
+      'Customer referrals': { label: 'إحالات العملاء' },
+      'Direct sales / website': { label: 'بيع مباشر / الموقع' },
+    },
+  },
+  gc_growth: {
+    label: 'كيف تصف نموك خلال آخر 3 أشهر؟',
+    options: {
+      'Flat / stagnant': { label: 'ثابت / راكد' },
+      'Inconsistent (up and down)': { label: 'غير مستقر (صعود وهبوط)' },
+      'Declining': { label: 'متناقص' },
+      'Very slow growth': { label: 'نمو بطيء جداً' },
+    },
+  },
+  gc_best: {
+    label: 'أي قناة تحقق أفضل أداء لك الآن؟',
+    options: {
+      'Facebook / Instagram': { label: 'فيسبوك / إنستغرام' },
+      'TikTok': { label: 'تيك توك' },
+      'WhatsApp / direct outreach': { label: 'واتساب / تواصل مباشر' },
+      'Search / Website': { label: 'البحث / الموقع' },
+    },
+  },
+  gc_prevent: {
+    label: 'ما الذي يمنعك من خدمة المزيد من العملاء الآن؟',
+    options: {
+      'Not enough leads/inquiries': { label: 'لا توجد طلبات/استفسارات كافية' },
+      'Limited marketing budget': { label: 'ميزانية تسويق محدودة' },
+      'Operational/delivery capacity': { label: 'طاقة تشغيلية/تسليم' },
+      'Audience saturation': { label: 'تشبع الجمهور' },
+    },
+  },
+  gc_goal: {
+    label: 'ما هدفك الأساسي للنمو خلال الـ 90 يوماً القادمة؟',
+    options: {
+      'Acquire more new customers': { label: 'اكتساب المزيد من العملاء الجدد' },
+      'Increase average order value': { label: 'زيادة متوسط قيمة الطلب' },
+      'Open a new sales channel': { label: 'فتح قناة بيع جديدة' },
+    },
+  },
+  ci_where: {
+    label: 'من أين تأتي معظم الاستفسارات؟',
+    options: {
+      'Facebook / Instagram DMs': { label: 'رسائل فيسبوك / إنستغرام' },
+      'WhatsApp': { label: 'واتساب' },
+      'Phone calls': { label: 'مكالمات هاتفية' },
+      'Website / store form': { label: 'الموقع / نموذج المتجر' },
+    },
+  },
+  ci_volume: {
+    label: 'كم عدد الاستفسارات التي تصلك أسبوعياً تقريباً؟',
+    options: {
+      'Fewer than 15': { label: 'أقل من 15' },
+      '15–50': { label: '15–50' },
+      '50–150': { label: '50–150' },
+      'More than 150': { label: 'أكثر من 150' },
+    },
+  },
+  ci_response: {
+    label: 'ما متوسط وقت استجابتك للاستفسار؟',
+    options: {
+      'Within minutes': { label: 'خلال دقائق' },
+      'Within a few hours (same day)': { label: 'خلال ساعات قليلة (نفس اليوم)' },
+      'Next day or later': { label: 'اليوم التالي أو لاحقاً' },
+      'Inconsistent': { label: 'غير ثابت' },
+    },
+  },
+  ci_percent: {
+    label: 'ما النسبة التقريبية للاستفسارات التي تتحول إلى عملاء يدفعون؟',
+    options: {
+      'Under 5%': { label: 'أقل من 5%' },
+      '5%–15%': { label: '5%–15%' },
+      '15%–30%': { label: '15%–30%' },
+      'Over 30%': { label: 'أكثر من 30%' },
+    },
+  },
+  ci_objection: {
+    label: 'ما الاعتراض الأكثر شيوعاً قبل انصراف الناس؟',
+    options: {
+      'Price is too high': { label: 'السعر مرتفع جداً' },
+      "\"I'll think about it\" / ghosts after price": { label: '"سأفكر في الأمر" / يختفي بعد ذكر السعر' },
+      'Lack of trust or guarantees': { label: 'نقص الثقة أو الضمانات' },
+      'Shipping cost or delivery time': { label: 'تكلفة الشحن أو وقت التسليم' },
+    },
+  },
+  ci_followup: {
+    label: 'ماذا يحدث بعد أن يُظهر شخص اهتماماً لكنه لا يشتري فوراً؟',
+    options: {
+      'We follow up once or more': { label: 'نتابع مرة أو أكثر' },
+      'We wait for them to reach back out': { label: 'ننتظر حتى يعودوا للتواصل' },
+      'No follow-up process': { label: 'لا توجد عملية متابعة' },
+    },
+  },
+  um_channels: {
+    label: 'ما قنوات التسويق التي تدفع مقابلها حالياً؟',
+    options: {
+      'Facebook / Instagram ads': { label: 'إعلانات فيسبوك / إنستغرام' },
+      'TikTok ads': { label: 'إعلانات تيك توك' },
+      'Google ads': { label: 'إعلانات جوجل' },
+      'Influencers / paid content': { label: 'مؤثرون / محتوى مدفوع' },
+    },
+  },
+  um_spend: {
+    label: 'ما إنفاقك التسويقي الشهري التقريبي؟',
+    options: {
+      'Under 5,000 EGP': { label: 'أقل من 5,000 جنيه' },
+      '5,000–20,000 EGP': { label: '5,000–20,000 جنيه' },
+      '20,000–50,000 EGP': { label: '20,000–50,000 جنيه' },
+      'Over 50,000 EGP': { label: 'أكثر من 50,000 جنيه' },
+    },
+  },
+  um_margin: {
+    label: 'ما هامش ربحك الإجمالي التقريبي قبل الإنفاق الإعلاني؟',
+    options: {
+      'Under 20%': { label: 'أقل من 20%' },
+      '20%–40%': { label: '20%–40%' },
+      '40%–60%': { label: '40%–60%' },
+      'Over 60%': { label: 'أكثر من 60%' },
+    },
+  },
+  um_aov: {
+    label: 'ما متوسط قيمة طلبك (AOV)؟',
+    options: {
+      'Under 300 EGP': { label: 'أقل من 300 جنيه' },
+      '300–1,000 EGP': { label: '300–1,000 جنيه' },
+      '1,000–3,000 EGP': { label: '1,000–3,000 جنيه' },
+      'Over 3,000 EGP': { label: 'أكثر من 3,000 جنيه' },
+    },
+  },
+  um_measure: {
+    label: 'كيف تقيس نجاح حملاتك حالياً؟',
+    options: {
+      'Messages / engagement volume': { label: 'حجم الرسائل / التفاعل' },
+      'Recorded actual sales': { label: 'المبيعات الفعلية المسجلة' },
+      'Platform-reported ROAS': { label: 'العائد المُبلّغ عنه من المنصة' },
+      'No accurate tracking': { label: 'لا يوجد تتبع دقيق' },
+    },
+  },
+  um_repeat: {
+    label: 'هل يشتري منك العملاء أكثر من مرة؟',
+    options: {
+      'Yes, regularly': { label: 'نعم، بانتظام' },
+      'Sometimes': { label: 'أحياناً' },
+      'Mostly one-time buyers': { label: 'غالباً مشترون لمرة واحدة' },
+    },
+  },
+  um_leak: {
+    label: 'أين تشعر أن التسريب الأكبر يحدث في حملاتك؟',
+    options: {
+      'High cost per message/click': { label: 'تكلفة عالية لكل رسالة/نقرة' },
+      'Unqualified leads': { label: 'عملاء محتملون غير مؤهلين' },
+      'High returns/cancellations': { label: 'مرتجعات/إلغاءات كثيرة' },
+      'Not sure': { label: 'غير متأكد' },
+    },
+  },
+  lo_what: {
+    label: 'ما المنتج أو العرض الجديد الذي تستعد لإطلاقه؟',
+    options: {
+      'Brand-new product/service': { label: 'منتج/خدمة جديد تماماً' },
+      'Seasonal bundle or discount': { label: 'حزمة موسمية أو خصم' },
+      'Upgraded version of an existing offer': { label: 'نسخة مطوّرة من عرض قائم' },
+    },
+  },
+  lo_audience: {
+    label: 'من هو الجمهور المستهدف المحدد لهذا العرض؟',
+    options: {
+      'Existing customers': { label: 'العملاء الحاليون' },
+      "Followers who haven't bought yet": { label: 'متابعون لم يشتروا بعد' },
+      'Brand-new audience': { label: 'جمهور جديد تماماً' },
+    },
+  },
+  lo_standout: {
+    label: 'ما الذي يميز هذا العرض عمّا هو موجود في السوق؟',
+    options: {
+      'Better price/value': { label: 'سعر/قيمة أفضل' },
+      'Unique feature or higher quality': { label: 'ميزة فريدة أو جودة أعلى' },
+      'Faster/easier experience': { label: 'تجربة أسرع/أسهل' },
+      'Risk-free guarantee or trial': { label: 'ضمان بلا مخاطر أو تجربة' },
+    },
+  },
+  lo_when: {
+    label: 'متى تخطط للإطلاق؟',
+    options: {
+      'Within 2 weeks': { label: 'خلال أسبوعين' },
+      'Within 1 month': { label: 'خلال شهر' },
+      'In 2–3 months': { label: 'خلال 2–3 أشهر' },
+      'Not decided yet': { label: 'لم يُحدد بعد' },
+    },
+  },
+  lo_channels: {
+    label: 'ما القنوات الجاهزة للترويج لهذا الإطلاق؟',
+    options: {
+      'Active social media pages': { label: 'صفحات تواصل اجتماعي نشطة' },
+      'Customer list / WhatsApp': { label: 'قائمة عملاء / واتساب' },
+      'Paid ads budget': { label: 'ميزانية إعلانات مدفوعة' },
+      'Email list / website': { label: 'قائمة بريد / الموقع' },
+    },
+  },
+  lo_goal: {
+    label: 'ما هدفك الأساسي من هذا الإطلاق؟',
+    options: {
+      'Generate fast sales': { label: 'تحقيق مبيعات سريعة' },
+      'Test market demand': { label: 'اختبار طلب السوق' },
+      'Attract new customers to the brand': { label: 'جذب عملاء جدد للعلامة التجارية' },
+    },
+  },
+  irr_frequency: {
+    label: 'كم مرة يشتري منك العميل المتوسط سنوياً؟',
+    options: {
+      'Once only': { label: 'مرة واحدة فقط' },
+      '2–3 times': { label: '2–3 مرات' },
+      'Monthly or more': { label: 'شهرياً أو أكثر' },
+    },
+  },
+  irr_why_return: {
+    label: 'لماذا يعود العملاء المتكررون؟',
+    options: {
+      'Product/service quality': { label: 'جودة المنتج/الخدمة' },
+      'Good pricing': { label: 'تسعير جيد' },
+      'Great service & speed': { label: 'خدمة وسرعة ممتازتان' },
+      'Recurring natural need': { label: 'حاجة متكررة طبيعية' },
+    },
+  },
+  irr_why_not: {
+    label: 'ما السبب الأكثر ترجيحاً لعدم عودة العملاء الآخرين؟',
+    options: {
+      'They forget about us after first purchase': { label: 'ينسوننا بعد الشراء الأول' },
+      "Product isn't bought frequently": { label: 'المنتج لا يُشترى بتكرار' },
+      'No offers for past customers': { label: 'لا توجد عروض للعملاء السابقين' },
+      'Post-purchase experience issue': { label: 'مشكلة في تجربة ما بعد الشراء' },
+    },
+  },
+  irr_list: {
+    label: 'هل لديك قائمة بعملاء سابقين يمكنك التواصل معهم؟',
+    options: {
+      'Yes, organized in WhatsApp/CRM/Sheet': { label: 'نعم، منظمة في واتساب/CRM/جدول' },
+      'Scattered across messages': { label: 'مبعثرة بين الرسائل' },
+      "We don't save customer data": { label: 'لا نحفظ بيانات العملاء' },
+    },
+  },
+  irr_feedback: {
+    label: 'هل لديك نظام لجمع الملاحظات أو طلب الترشيحات؟',
+    options: {
+      'Yes, consistently': { label: 'نعم، باستمرار' },
+      'Occasionally / ad-hoc': { label: 'أحياناً / بشكل عشوائي' },
+      'None currently': { label: 'لا يوجد حالياً' },
+    },
+  },
+  irr_easiest: {
+    label: 'ما أسهل شيء يمكن تنفيذه مع عملائك الآن؟',
+    options: {
+      'Comeback discounts/offers': { label: 'خصومات/عروض للعودة' },
+      'Follow-up & check-in messages': { label: 'رسائل متابعة وتواصل' },
+      'Rewarded referral program': { label: 'برنامج إحالات بمكافأة' },
+    },
+  },
+  se_stage: {
+    label: 'ما المرحلة التي يمر بها مشروعك حالياً؟',
+    options: {
+      'Pre-launch idea': { label: 'فكرة ما قبل الإطلاق' },
+      'New with limited sales': { label: 'جديد بمبيعات محدودة' },
+      'Operating with steady sales': { label: 'يعمل بمبيعات مستقرة' },
+      'Operating with declining sales': { label: 'يعمل بمبيعات متناقصة' },
+    },
+  },
+  se_symptom: {
+    label: 'ما العرض الذي يزعجك أكثر الآن؟',
+    options: {
+      'Not enough people asking': { label: 'لا يوجد عدد كافٍ من السائلين' },
+      "People ask but don't buy": { label: 'الناس يسألون لكنهم لا يشترون' },
+      'Spending on marketing without profit': { label: 'الإنفاق على التسويق دون ربح' },
+      'Customers buy once and disappear': { label: 'العملاء يشترون مرة ويختفون' },
+    },
+  },
+  se_channel: {
+    label: 'ما قناتك الأساسية للحصول على العملاء الآن؟',
+    options: {
+      'Organic social media': { label: 'وسائل تواصل عضوية' },
+      'Paid ads': { label: 'إعلانات مدفوعة' },
+      'Referrals & word of mouth': { label: 'إحالات وتوصيات شفهية' },
+      'Physical store / website': { label: 'متجر فعلي / الموقع' },
+    },
+  },
+  se_numbers: {
+    label: 'هل تعرف أرقامك الأساسية (تكلفة الإعلان، هامش الربح، معدل التحويل)؟',
+    options: {
+      'Yes, accurately': { label: 'نعم، بدقة' },
+      'Roughly': { label: 'تقريباً' },
+      'Not tracking them currently': { label: 'لا أتابعها حالياً' },
+    },
+  },
+  se_satisfied: {
+    label: 'هل عملاؤك راضون بعد الشراء؟',
+    options: {
+      'Yes, very satisfied': { label: 'نعم، راضون جداً' },
+      'Average with some complaints': { label: 'متوسط مع بعض الشكاوى' },
+      "Don't know because we don't ask": { label: 'لا أعرف لأننا لا نسأل' },
+    },
+  },
+  se_improve: {
+    label: 'ما التحسين الوحيد خلال الـ 60 يوماً القادمة الذي سيحدث أكبر فرق؟',
+    options: {
+      'More inquiries': { label: 'المزيد من الاستفسارات' },
+      'Higher closing rate': { label: 'معدل إغلاق أعلى' },
+      'Lower marketing cost': { label: 'تكلفة تسويق أقل' },
+      'A clear, structured plan': { label: 'خطة واضحة ومنظمة' },
+    },
+  },
 }
 
 export function localizeQuestionSchema(questionKey: string, schema: DiscoveryQuestionSchema, locale: string): DiscoveryQuestionSchema {
@@ -806,10 +1425,13 @@ export function localizeQuestionSchema(questionKey: string, schema: DiscoveryQue
   return {
     ...schema,
     label: tr.label,
-    why: tr.why,
+    why: tr.why ?? schema.why,
     placeholder: tr.placeholder ?? schema.placeholder,
     options: schema.options?.map((opt) => {
       if (opt.source === 'brain') return opt
+      if (opt.value === OTHER_OPTION_VALUE) {
+        return { ...opt, label: 'أخرى / اكتب إجابتك الخاصة' }
+      }
       const optTr = tr.options?.[opt.value]
       if (!optTr) return opt
       return {

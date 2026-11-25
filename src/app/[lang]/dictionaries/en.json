@@ -828,7 +828,21 @@
     "linkOrContactDetails": "Link or contact details",
     "brandDetailsOptional": "Brand details (optional)",
     "toneOfVoice": "Tone of voice",
-    "brandColor": "Brand color"
+    "brandColor": "Brand color",
+    "prefillFromBrain": "From your Brain",
+    "prefillFromReport": "From report: {title}",
+    "prefillFromRoadmap": "From a previous roadmap",
+    "prefillConflictNote": "Two sources disagree. Review both suggestions and choose the one that fits your situation.",
+    "prefillSuggestionsTitle": "Suggested answers",
+    "prefillStaleBadge": "Stale",
+    "prefillLoaded": "{count} suggestion(s) ready to review.",
+    "prefillEmpty": "No suggestions to prefill right now. You can answer each question yourself.",
+    "prefillButton": "Refresh prefill",
+    "secondaryChallengesLabel": "Also working on (optional)",
+    "secondaryChallengesHelp": "Add any other challenges you want the plan to keep in mind. They stay secondary to your main goal.",
+    "somethingElseNoteLabel": "Describe your situation (optional)",
+    "somethingElseNotePlaceholder": "In a sentence or two, what is happening in your business?",
+    "saveNote": "Save note"
   },
   "Marketing": {
     "processflow": {

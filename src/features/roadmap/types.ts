@@ -27,6 +27,10 @@ export interface DiscoveryDraft {
   context_refs: unknown[]
   created_at: string
   updated_at: string
+  /** Optional secondary challenge keys, persisted inside context_refs. */
+  secondaryGoals?: DiscoveryGoal[]
+  /** Optional free-text note for the "something_else" challenge. */
+  somethingElseNote?: string
 }
 
 export interface DiscoveryAnswerValue {
@@ -49,12 +53,35 @@ export interface DiscoveryQuestionSchema {
   options?: DiscoveryQuestionOption[]
   allowOther?: boolean
   placeholder?: string
+  /**
+   * Whether the Director may use this question's answer as grounding for later
+   * agent work. Fixed per question in configuration; never AI-generated.
+   */
+  askDirectorEligible?: boolean
   reuse?: {
     nodeId: string
     title: string
     version: number
     verificationState?: string
   }
+}
+
+/** Where a prefilled answer suggestion came from. */
+export type PrefillSourceType = 'brain' | 'deliverable' | 'previous_roadmap'
+
+/**
+ * One AI-suggested answer for a fixed Discovery question. Suggestions are always
+ * proposals: the owner must confirm them, and a confirmed answer is never
+ * silently overwritten.
+ */
+export interface PrefillSuggestion {
+  questionKey: string
+  suggestedAnswer: string
+  sourceType: PrefillSourceType
+  sourceLabel: string
+  isStale: boolean
+  sourceId?: string
+  rationale?: string
 }
 
 export interface DiscoveryQuestion {

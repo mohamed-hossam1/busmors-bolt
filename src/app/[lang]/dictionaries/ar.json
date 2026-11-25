@@ -828,7 +828,21 @@
     "linkOrContactDetails": "الرابط أو بيانات التواصل",
     "brandDetailsOptional": "تفاصيل الهوية (اختياري)",
     "toneOfVoice": "نبرة الصوت وأسلوب الحديث",
-    "brandColor": "لون الهوية الأساسي"
+    "brandColor": "لون الهوية الأساسي",
+    "prefillFromBrain": "من ذاكرة مشروعك",
+    "prefillFromReport": "من تقرير: {title}",
+    "prefillFromRoadmap": "من خطة طريق سابقة",
+    "prefillConflictNote": "مصدران مختلفان. راجع الاقتراحين واختر ما يناسب وضعك الحالي.",
+    "prefillSuggestionsTitle": "إجابات مقترحة",
+    "prefillStaleBadge": "قديم",
+    "prefillLoaded": "{count} اقتراح جاهز للمراجعة.",
+    "prefillEmpty": "لا توجد اقتراحات لتعبئتها الآن. يمكنك الإجابة على كل سؤال بنفسك.",
+    "prefillButton": "تحديث التعبئة",
+    "secondaryChallengesLabel": "تعمل أيضاً على (اختياري)",
+    "secondaryChallengesHelp": "أضف أي تحديات أخرى تريد أن تضعها الخطة في الاعتبار. تبقى ثانوية مقارنة بهدفك الأساسي.",
+    "somethingElseNoteLabel": "صف وضعك (اختياري)",
+    "somethingElseNotePlaceholder": "في جملة أو جملتين، ما الذي يحدث في مشروعك؟",
+    "saveNote": "حفظ الملاحظة"
   }
 ,
   

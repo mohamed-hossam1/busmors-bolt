@@ -6,6 +6,7 @@ import type {
   DiscoveryLoad,
   DiscoveryQuestion,
   PlannedQuestion,
+  PrefillSuggestion,
 } from './types'
 
 export async function loadDiscovery(): Promise<DiscoveryLoad> {
@@ -96,4 +97,29 @@ export async function loadDiscoveryQuestion(questionId: string): Promise<Discove
     .single()
   if (error) throw error
   return data as DiscoveryQuestion
+}
+
+/**
+ * Ask the server for AI prefill suggestions for the given challenge. Suggestions
+ * are proposals only; the caller decides whether to surface them and the owner
+ * always confirms. Returns an empty list on any failure so the wizard can fall
+ * back to manual answering without blocking.
+ */
+export async function requestPrefill(
+  goal: string,
+  questionKeys?: string[],
+  locale?: string,
+): Promise<PrefillSuggestion[]> {
+  try {
+    const response = await fetch('/api/roadmap/prefill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ goal, questionKeys, locale }),
+    })
+    if (!response.ok) return []
+    const data = (await response.json()) as { suggestions?: PrefillSuggestion[] }
+    return Array.isArray(data.suggestions) ? data.suggestions : []
+  } catch {
+    return []
+  }
 }
