@@ -69,7 +69,8 @@ export class ToolWorkspaceError extends Error {
  * never grant a role a tool it is not explicitly allowed to use.
  */
 export const ROLE_TOOL_ALLOWLIST: Record<AgentRole, readonly string[]> = {
-  orchestrator: [],
+  // Orchestrator: 0 skills, 0 external tools, exactly 3 internal tools (spec 2.4).
+  orchestrator: ['read_business_brain', 'propose_brain_change', 'delegate_to_director'],
   director: [],
   research: [],
   content: [],

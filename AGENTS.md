@@ -21,3 +21,11 @@ Default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 ### Domain docs
 
 Single-context layout: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+
+### Live AI Test Discipline (Strict)
+- NEVER run the full `tests/live/*` suite repeatedly while debugging.
+- Keep all logic/schema/permission tests in `tests/unit/*` using mocks (0 API calls).
+- When a live test fails, diagnose and fix it offline first, then re-run ONLY that single failing test case (using test name filtering like `--test-name-pattern` / `-t` or a dedicated single-case filter).
+- Once a live test case passes, DO NOT re-run it again unless you directly modified the code it tests.
+- Target at most 1 live pass per scenario. Report the exact number of live API calls made at the end.
