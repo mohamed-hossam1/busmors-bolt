@@ -1,14 +1,43 @@
 'use client'
 
-import { useState } from 'react'
-import { MessageSquare, Network, Send } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertCircle, MessageSquare, Network, PanelLeft, Send, X } from 'lucide-react'
 import { useCopy } from '../hooks/useCopy'
 import AgentCanvas from '../components/chat/AgentCanvas'
+import MarkdownContent from '../components/chat/MarkdownContent'
+import ThinkingIndicator from '../components/chat/ThinkingIndicator'
+import BrainApprovalCard from '../components/chat/BrainApprovalCard'
+import ClarificationCardView from '../components/chat/ClarificationCard'
+import ReferenceCards from '../components/chat/ReferenceCards'
+import ChatHistorySidebar from '../components/chat/ChatHistorySidebar'
+import type {
+  BrainProposalCardData,
+  ChatMessage,
+  ClarificationCard,
+  ConversationSummary,
+  DeliverableRefData,
+  DraftRefData,
+} from '../components/chat/employeeCards'
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
+interface ChatApiResponse {
+  reply?: string
+  error?: string
+  conversationId?: string
+  brainProposals?: BrainProposalCardData[]
+  clarification?: ClarificationCard | null
+  deliverables?: DeliverableRefData[]
+  drafts?: DraftRefData[]
+  traceId?: string
+  status?: string
+  stopReason?: string
 }
+
+const STARTERS = [
+  { key: 'starterBrain' as const },
+  { key: 'starterAdvice' as const },
+  { key: 'starterPost' as const },
+  { key: 'starterStrategy' as const },
+]
 
 export default function EmployeePage() {
   const { t } = useCopy()
@@ -16,25 +45,132 @@ export default function EmployeePage() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const send = async () => {
-    const text = input.trim()
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  const loadConversations = useCallback(async () => {
+    setHistoryLoading(true)
+    try {
+      const response = await fetch('/api/employee/conversations')
+      const data = (await response.json()) as { conversations?: ConversationSummary[]; error?: string }
+      if (!response.ok) throw new Error(data.error ?? 'Could not load chat history.')
+      setConversations(data.conversations ?? [])
+    } catch (err) {
+      // Non-fatal: the chat still works without the sidebar list.
+      setConversations((current) => current)
+      void err
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadConversations()
+  }, [loadConversations])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, sending])
+
+  const selectConversation = useCallback(async (id: string) => {
+    setActiveId(id)
+    setError(null)
+    setHistoryOpen(false)
+    try {
+      const response = await fetch(`/api/employee/conversations/${id}`)
+      const data = (await response.json()) as { messages?: Array<{ id: string; role: 'user' | 'assistant'; content: string; metadata?: ChatMessage['metadata'] }>; error?: string }
+      if (!response.ok) throw new Error(data.error ?? 'Could not load this conversation.')
+      setMessages(
+        (data.messages ?? []).map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          metadata: m.metadata,
+        })),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load this conversation.')
+    }
+  }, [])
+
+  const newChat = useCallback(() => {
+    setActiveId(null)
+    setMessages([])
+    setError(null)
+    setInput('')
+    setHistoryOpen(false)
+    setMobileTab('chat')
+  }, [])
+
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      try {
+        const response = await fetch(`/api/employee/conversations/${id}`, { method: 'DELETE' })
+        if (!response.ok) {
+          const data = (await response.json().catch(() => ({}))) as { error?: string }
+          throw new Error(data.error ?? 'Could not delete this conversation.')
+        }
+        if (id === activeId) newChat()
+        await loadConversations()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not delete this conversation.')
+      }
+    },
+    [activeId, loadConversations, newChat],
+  )
+
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim()
     if (!text || sending) return
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }]
+    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text }
+    const nextMessages: ChatMessage[] = [...messages, userMessage]
     setMessages(nextMessages)
     setInput('')
     setSending(true)
+    setError(null)
     try {
       const response = await fetch('/api/employee/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages }),
+        body: JSON.stringify({
+          conversationId: activeId,
+          messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+        }),
       })
-      const data = (await response.json()) as { reply?: string; error?: string }
-      const reply = response.ok && data.reply ? data.reply : data.error ?? 'Something went wrong. Please try again.'
-      setMessages((current) => [...current, { role: 'assistant', content: reply }])
-    } catch {
-      setMessages((current) => [...current, { role: 'assistant', content: 'Something went wrong. Please try again.' }])
+      const data = (await response.json()) as ChatApiResponse
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? 'Something went wrong. Please try again.')
+      }
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.reply && data.reply.trim() ? data.reply : t('emptyReplyFallback'),
+        metadata: {
+          brainProposals: data.brainProposals,
+          clarification: data.clarification,
+          deliverables: data.deliverables,
+          drafts: data.drafts,
+          traceId: data.traceId,
+          status: data.status,
+          stopReason: data.stopReason,
+        },
+      }
+      setMessages([...nextMessages, assistantMessage])
+      if (data.conversationId) setActiveId(data.conversationId)
+      void loadConversations()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      setError(message)
+      setMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: 'assistant', content: message, error: true },
+      ])
     } finally {
       setSending(false)
     }
@@ -49,9 +185,7 @@ export default function EmployeePage() {
             type="button"
             onClick={() => setMobileTab('chat')}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-1.5 text-xs font-semibold transition-all ${
-              mobileTab === 'chat'
-                ? 'bg-white text-ink-900 shadow-sm'
-                : 'text-ink-600 hover:text-ink-900'
+              mobileTab === 'chat' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-600 hover:text-ink-900'
             }`}
           >
             <MessageSquare size={14} />
@@ -61,9 +195,7 @@ export default function EmployeePage() {
             type="button"
             onClick={() => setMobileTab('canvas')}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-1.5 text-xs font-semibold transition-all ${
-              mobileTab === 'canvas'
-                ? 'bg-white text-ink-900 shadow-sm'
-                : 'text-ink-600 hover:text-ink-900'
+              mobileTab === 'canvas' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-600 hover:text-ink-900'
             }`}
           >
             <Network size={14} />
@@ -72,79 +204,155 @@ export default function EmployeePage() {
         </div>
       </div>
 
-      {/* Chat Column Shell */}
-      <div
-        className={`employee-chat ${
-          mobileTab === 'chat' ? 'flex' : 'hidden'
-        } w-full min-w-0 flex-1 flex-col border-ink-200 lg:flex lg:w-1/2 lg:border-e`}
-      >
-        <div className="employee-panel-header flex shrink-0 items-center justify-between gap-2 px-3.5 py-3 sm:px-5">
-          <span className="truncate text-xs font-medium text-ink-600">{t('chatTab')}</span>
-        </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {historyOpen && (
+          <ChatHistorySidebar
+            conversations={conversations}
+            activeId={activeId}
+            loading={historyLoading}
+            onSelect={(id) => void selectConversation(id)}
+            onNew={newChat}
+            onDelete={(id) => void deleteConversation(id)}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
-          {messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-center text-sm text-ink-500">
-              {t('greetingProactive')}
-            </div>
-          ) : (
-            messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        {/* Chat Column Shell */}
+        <div
+          className={`employee-chat ${
+            mobileTab === 'chat' ? 'flex' : 'hidden'
+          } w-full min-w-0 flex-1 flex-col border-ink-200 lg:flex lg:border-e`}
+        >
+          <div className="employee-panel-header flex shrink-0 items-center justify-between gap-2 px-3.5 py-3 sm:px-5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((open) => !open)}
+                aria-label={t('chatHistory')}
+                className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900"
               >
-                <div
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-ink-100 text-ink-900'
-                  }`}
-                >
-                  {message.content}
+                <PanelLeft size={16} />
+              </button>
+              <span className="truncate text-xs font-medium text-ink-600">{t('chatTab')}</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="mx-3.5 mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 sm:mx-5">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span className="flex-1">{error}</span>
+              <button type="button" onClick={() => setError(null)} aria-label={t('dismiss')} className="rounded p-0.5 hover:bg-red-100">
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {messages.length === 0 && !sending ? (
+              <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-white text-primary-500">
+                  <MessageSquare size={24} strokeWidth={1.5} />
+                </span>
+                <p className="max-w-md text-sm leading-relaxed text-ink-600">{t('greetingProactive')}</p>
+                <div className="flex max-w-md flex-wrap items-center justify-center gap-2">
+                  {STARTERS.map((starter) => (
+                    <button
+                      key={starter.key}
+                      type="button"
+                      onClick={() => void send(t(starter.key))}
+                      className="rounded-full border border-ink-200 bg-white px-3.5 py-1.5 text-xs font-medium text-ink-700 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800"
+                    >
+                      {t(starter.key)}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              messages.map((message) =>
+                message.role === 'user' ? (
+                  <div key={message.id} className="flex justify-end">
+                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-se-md bg-primary-500 px-4 py-2 text-sm text-white">
+                      {message.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={message.id} className="flex justify-start">
+                    <div
+                      className={`max-w-[88%] rounded-2xl rounded-ss-md px-4 py-2.5 text-sm ${
+                        message.error ? 'border border-red-200 bg-red-50 text-red-700' : 'bg-ink-100 text-ink-900'
+                      }`}
+                    >
+                      {message.error ? (
+                        <p className="flex items-start gap-1.5">
+                          <AlertCircle size={14} className="mt-0.5 shrink-0" /> {message.content}
+                        </p>
+                      ) : (
+                        <>
+                          <MarkdownContent content={message.content} className="text-sm leading-relaxed" />
+                          {message.metadata?.clarification && (
+                            <ClarificationCardView
+                              card={message.metadata.clarification}
+                              disabled={sending}
+                              onSubmit={(answer) => void send(answer)}
+                            />
+                          )}
+                          {message.metadata?.brainProposals?.map((proposal) => (
+                            <BrainApprovalCard key={proposal.proposalId} proposal={proposal} />
+                          ))}
+                          <ReferenceCards
+                            deliverables={message.metadata?.deliverables}
+                            drafts={message.metadata?.drafts}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ),
+              )
+            )}
+            {sending && <ThinkingIndicator />}
+            <div ref={bottomRef} />
+          </div>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            void send()
-          }}
-          className="employee-composer flex gap-2 p-3 sm:p-4"
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            aria-label={t('messageDirectorAriaLabel')}
-            placeholder={t('chatPlaceholder')}
-            className="input-field flex-1"
-            disabled={sending}
-          />
-          <button
-            type="submit"
-            aria-label={t('sendMessageAriaLabel')}
-            disabled={sending || !input.trim()}
-            className="btn-primary flex h-10 shrink-0 items-center justify-center px-4 sm:h-11"
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void send()
+            }}
+            className="employee-composer flex gap-2 p-3 sm:p-4"
           >
-            <Send size={16} />
-          </button>
-        </form>
-      </div>
-
-      {/* Live Agent Canvas Column */}
-      <div
-        className={`employee-canvas ${
-          mobileTab === 'canvas' ? 'flex' : 'hidden'
-        } w-full flex-1 flex-col lg:flex lg:w-1/2`}
-      >
-        <div className="employee-panel-header hidden items-center gap-2 px-6 py-3 text-sm font-medium text-ink-900 lg:flex">
-          <Network size={16} className="text-primary-500" />
-          {t('canvasTitle')}
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              aria-label={t('messageDirectorAriaLabel')}
+              placeholder={t('chatPlaceholder')}
+              className="input-field flex-1"
+              disabled={sending}
+            />
+            <button
+              type="submit"
+              aria-label={t('sendMessageAriaLabel')}
+              disabled={sending || !input.trim()}
+              className="btn-primary flex h-10 shrink-0 items-center justify-center px-4 sm:h-11"
+            >
+              <Send size={16} />
+            </button>
+          </form>
         </div>
-        <div className="min-h-0 flex-1">
-          <AgentCanvas conversationId={null} events={[]} running={sending} />
+
+        {/* Live Agent Canvas Column */}
+        <div
+          className={`employee-canvas ${
+            mobileTab === 'canvas' ? 'flex' : 'hidden'
+          } w-full flex-1 flex-col lg:flex lg:w-2/5`}
+        >
+          <div className="employee-panel-header hidden items-center gap-2 px-6 py-3 text-sm font-medium text-ink-900 lg:flex">
+            <Network size={16} className="text-primary-500" />
+            {t('canvasTitle')}
+          </div>
+          <div className="min-h-0 flex-1">
+            <AgentCanvas conversationId={activeId} events={[]} running={sending} />
+          </div>
         </div>
       </div>
     </div>

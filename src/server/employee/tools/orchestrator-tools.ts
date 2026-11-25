@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { ToolDefinition } from '../tool-registry'
 import type { BrainCategory } from '../../../lib/types'
 import type { BrainStore, ProposeBrainChangeInput } from '../brain-store'
+import type { DirectorOutput } from '../agents/director'
 
 /**
  * Orchestrator internal tools (Phase 2).
@@ -98,6 +99,30 @@ export function validateDirectorHandoff(input: unknown): ValidateHandoffResult {
 
 export interface OrchestratorToolDeps {
   brain: BrainStore
+  /**
+   * Invokes the Director for an accepted handoff. Wired by the Orchestrator to
+   * runDirector() with the shared trace/tracker. When omitted (e.g. isolated
+   * unit tests), delegate_to_director reports the Director as unavailable.
+   */
+  runDirector?: (handoff: DirectorHandoff) => Promise<DirectorOutput>
+}
+
+/**
+ * Render a Director result into a compact, owner-safe summary the Orchestrator
+ * can surface through Chat under the same Busmora identity. It reports only
+ * persisted ids the runtime confirmed and never fabricates specialist output.
+ */
+export function summarizeDirectorResult(result: DirectorOutput): Record<string, unknown> {
+  return {
+    status: result.status,
+    reply: result.text,
+    clarification: result.clarification,
+    deliverables: result.deliverables,
+    drafts: result.drafts,
+    brainProposals: result.brainProposals,
+    loadedSkills: result.loadedSkills,
+    usedTools: result.usedTools,
+  }
 }
 
 export function createOrchestratorToolDefinitions(
@@ -142,7 +167,7 @@ export function createOrchestratorToolDefinitions(
     {
       name: 'delegate_to_director',
       description:
-        'Hand a substantive marketing task to the Director with a structured handoff (original request, intended outcome, context, constraints, output language, task references, and clearly labelled unapproved facts). The Director is not enabled yet, so this validates the handoff and reports temporary unavailability honestly.',
+        'Hand a substantive marketing task to the Director with a structured handoff (original request, intended outcome, context, constraints, output language, task references, and clearly labelled unapproved facts). Returns the Director real result, including any saved Deliverable/draft ids or a Clarification Card.',
       external: false,
       inputSchema: DIRECTOR_HANDOFF_SCHEMA,
       execute: async (args: DirectorHandoff) => {
@@ -150,7 +175,11 @@ export function createOrchestratorToolDefinitions(
         if (!validated.ok) {
           return { status: 'error', message: 'Invalid Director handoff.', error: validated.error }
         }
-        return { status: 'unavailable', message: 'Director is not enabled yet' }
+        if (!deps.runDirector) {
+          return { status: 'unavailable', message: 'Director is not enabled yet' }
+        }
+        const result = await deps.runDirector(validated.value)
+        return summarizeDirectorResult(result)
       },
     },
   ]

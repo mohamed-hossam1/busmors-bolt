@@ -71,7 +71,23 @@ export class ToolWorkspaceError extends Error {
 export const ROLE_TOOL_ALLOWLIST: Record<AgentRole, readonly string[]> = {
   // Orchestrator: 0 skills, 0 external tools, exactly 3 internal tools (spec 2.4).
   orchestrator: ['read_business_brain', 'propose_brain_change', 'delegate_to_director'],
-  director: [],
+  // Director: internal delivery/read tools + 3 external web tools (spec 3.5).
+  // No Composio, no publishing/scheduling, no filesystem/shell, no direct DB write.
+  director: [
+    'read_skill',
+    'read_business_brain',
+    'read_workspace_context',
+    'read_deliverables',
+    'read_calendar',
+    'ask_clarification',
+    'create_or_version_deliverable',
+    'create_or_update_post_draft',
+    'propose_brain_change',
+    'tavily_search',
+    'exa_search',
+    'firecrawl_scrape',
+    'delegate_agent',
+  ],
   research: [],
   content: [],
   'marketing-analyst': [],

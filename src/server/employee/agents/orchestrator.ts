@@ -6,8 +6,21 @@ import {
   type RunAgentResult,
 } from '../agent-runtime'
 import { createToolRegistry, getToolsForRole } from '../tool-registry'
-import { createOrchestratorToolDefinitions } from '../tools/orchestrator-tools'
-import type { BrainStore } from '../brain-store'
+import {
+  createOrchestratorToolDefinitions,
+  type DirectorHandoff,
+} from '../tools/orchestrator-tools'
+import { runDirector } from './director'
+import type { BrainStore, ProposeBrainChangeResult } from '../brain-store'
+import {
+  createEmployeeRunState,
+  type EmployeeRunState,
+} from '../run-state'
+import type {
+  CalendarStore,
+  DeliverableStore,
+  WorkspaceContextStore,
+} from '../director-store'
 import type { TraceCollector } from '../../observability'
 
 /**
@@ -35,6 +48,7 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `You are Busmora's Orchestrator, the c
 - Respect explicit language preferences.
 - Be concise, clear, calm, and professional.
 - Avoid exaggerated slang, flattery, unnecessary greetings, and emojis.
+- Always speak as Busmora itself in natural Egyptian Arabic for Arabic users. Never expose internal architecture to the owner: do not mention the Orchestrator, the Director, specialists, handoffs, tools, or skills by name.
 
 ## Responsibilities
 
@@ -110,9 +124,10 @@ export const ORCHESTRATOR_PRODUCT_KNOWLEDGE = `Busmora is an AI marketing platfo
 Currently enabled:
 - Conversational help, general questions, and answers grounded in the owner's approved Business Brain.
 - Proposing Business Brain additions, edits, and deletions as pending approval cards for the owner to approve or reject.
+- Delegating substantive marketing tasks to the Director, who executes directly or (later) via specialists and returns real results, saved Deliverables, Calendar drafts, or a Clarification Card.
 
 Not enabled yet (built in later phases):
-- The Director and specialist agents (research, content, marketing analysis). Substantive marketing execution is temporarily unavailable; report this honestly rather than promising delivery.`
+- The specialist agents (research, content, marketing analysis). When the Director needs specialist depth it will report that the specialist is not enabled yet rather than promising delivery.`
 
 export function buildOrchestratorSystemPrompt(): string {
   return `${ORCHESTRATOR_SYSTEM_PROMPT}\n\n## Product Reference (data)\n${ORCHESTRATOR_PRODUCT_KNOWLEDGE}`
@@ -132,7 +147,11 @@ export interface RunOrchestratorOptions {
   runTurn?: AgentTurnRunner
   /** Injectable workspace-scoped Brain store (tests); built from supabase otherwise. */
   brain?: BrainStore
-  /** Authenticated Supabase client used to build the Brain store. */
+  /** Injectable Director stores (tests); built from supabase otherwise. */
+  deliverables?: DeliverableStore
+  calendar?: CalendarStore
+  workspace?: WorkspaceContextStore
+  /** Authenticated Supabase client used to build the Brain/Director stores. */
   supabase?: unknown
   instanceId?: string
 }
@@ -143,29 +162,114 @@ function assertBrainSource(options: RunOrchestratorOptions): void {
   }
 }
 
-export async function runOrchestrator(options: RunOrchestratorOptions): Promise<RunAgentResult> {
+/**
+ * Render a validated handoff into the Director's task input. The Director prompt
+ * already carries the full operating contract; this only supplies the concrete
+ * task state (original request, outcome, language, context, constraints,
+ * references and clearly labelled unapproved facts) losslessly.
+ */
+export function renderDirectorInput(handoff: DirectorHandoff): string {
+  const lines: string[] = [
+    `Original request: ${handoff.originalRequest}`,
+    `Intended outcome: ${handoff.intendedOutcome}`,
+    `Output language: ${handoff.outputLanguage}`,
+  ]
+  if (handoff.context) lines.push(`Context: ${handoff.context}`)
+  if (handoff.constraints) lines.push(`Constraints: ${handoff.constraints}`)
+  if (handoff.taskReferences && handoff.taskReferences.length > 0) {
+    lines.push(`Task references: ${handoff.taskReferences.join(', ')}`)
+  }
+  if (handoff.unapprovedFacts && handoff.unapprovedFacts.length > 0) {
+    lines.push('Unapproved facts (use temporarily with explicit status, never as approved knowledge):')
+    for (const item of handoff.unapprovedFacts) lines.push(`- [unapproved] ${item.fact}`)
+  }
+  return lines.join('\n')
+}
+
+export interface OrchestratorResult extends RunAgentResult {
+  /** Structured artifacts produced during the turn (cards, saved ids). */
+  structured: EmployeeRunState
+}
+
+export async function runOrchestrator(options: RunOrchestratorOptions): Promise<OrchestratorResult> {
   assertBrainSource(options)
   const tracker = options.tracker ?? new TaskGuardrailTracker()
+  // A stable Orchestrator instance id so the Director nests under it in the trace.
+  const orchestratorInstanceId = options.instanceId ?? crypto.randomUUID()
+  const structured = createEmployeeRunState()
 
   // Lazy import so importing this module never pulls `server-only` into tests or
   // scripts; the Brain store is only built on the real request path.
-  const brain =
+  const baseBrain =
     options.brain ??
     (await import('../brain-store')).createBrainStore(
       options.supabase as never,
       options.workspaceId,
     )
 
-  const registry = createToolRegistry(createOrchestratorToolDefinitions({ brain }))
+  // Wrap proposeChange so EVERY proposal (Orchestrator's own or the Director's,
+  // which receives this same wrapped store) is captured with full card detail.
+  const brain: BrainStore = {
+    readApproved: (query, category, limit) => baseBrain.readApproved(query, category, limit),
+    proposeChange: async (input): Promise<ProposeBrainChangeResult> => {
+      const result = await baseBrain.proposeChange(input)
+      structured.brainProposals.push({
+        proposalId: result.proposalId,
+        action: input.action,
+        title: input.title,
+        summary: input.summary,
+        category: input.category,
+        oldValues: input.oldValues ?? null,
+        newValues: input.newValues ?? null,
+        properties: input.properties ?? null,
+        source: input.source,
+        rationale: input.rationale,
+        baseVersion: result.baseVersion ?? 0,
+        duplicate: result.duplicate,
+        conflict: result.conflict,
+      })
+      return result
+    },
+  }
+
+  const registry = createToolRegistry(
+    createOrchestratorToolDefinitions({
+      brain,
+      runDirector: (handoff) =>
+        runDirector({
+          workspaceId: options.workspaceId,
+          input: renderDirectorInput(handoff),
+          traceContext: {
+            traceId: options.traceContext.traceId,
+            parentEventId: orchestratorInstanceId,
+          },
+          tracker,
+          collector: options.collector,
+          abortSignal: options.abortSignal,
+          runTurn: options.runTurn,
+          supabase: options.supabase,
+          brain,
+          deliverables: options.deliverables,
+          calendar: options.calendar,
+          workspace: options.workspace,
+        }).then((directorResult) => {
+          // Merge the Director's structured outputs into the shared run state.
+          if (directorResult.clarification) structured.clarification = directorResult.clarification
+          structured.deliverables.push(...directorResult.deliverables)
+          structured.drafts.push(...directorResult.drafts)
+          return directorResult
+        }),
+    }),
+  )
   const tools = getToolsForRole('orchestrator', registry, {
     workspaceId: options.workspaceId,
     tracker,
     collector: options.collector,
     traceId: options.traceContext.traceId,
-    instanceId: options.instanceId,
+    instanceId: orchestratorInstanceId,
   })
 
-  return runAgent({
+  const result = await runAgent({
     role: 'orchestrator',
     systemPrompt: buildOrchestratorSystemPrompt(),
     messages: options.messages,
@@ -176,7 +280,9 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
     collector: options.collector,
     abortSignal: options.abortSignal,
     runTurn: options.runTurn,
-    instanceId: options.instanceId,
+    instanceId: orchestratorInstanceId,
     label: 'orchestrator',
   })
+
+  return { ...result, structured }
 }

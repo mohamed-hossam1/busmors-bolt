@@ -629,7 +629,7 @@ function BrainGraphView({
               <div className="max-w-md w-full mx-auto text-center p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-ink-200/80 shadow-lg">
                 {statusFilter === 'approved' && approvedCount === 0 && pendingCount > 0 ? (
                   <>
-                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                    <span className="mb-4 inline-flex mx-auto h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                       <AlertCircle size={28} />
                     </span>
                     <h3 className="text-base font-bold text-ink-900">{t('knowledgeMapStartsHere')}</h3>
@@ -666,7 +666,7 @@ function BrainGraphView({
                   </>
                 ) : (
                   <>
-                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
+                    <span className="mb-4 inline-flex mx-auto h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
                       {statusNodes.length ? <Search size={23} /> : <Network size={23} />}
                     </span>
                     <h3 className="text-base font-semibold text-ink-900">
