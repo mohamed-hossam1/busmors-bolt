@@ -60,6 +60,13 @@ describe('ensureNonEmptyReply', () => {
     assert.equal(isArabicText(reply), true)
   })
 
+  it('surfaces Director reply verbatim when orchestrator produces no prose', () => {
+    const state = createEmployeeRunState()
+    state.directorReply = 'دي خطة التسويق للشهر القادم...'
+    const reply = ensureNonEmptyReply('', state, true)
+    assert.equal(reply, 'دي خطة التسويق للشهر القادم...')
+  })
+
   it('falls back to a generic non-empty prompt when nothing was produced', () => {
     const state = createEmployeeRunState()
     const en = ensureNonEmptyReply('', state, false)

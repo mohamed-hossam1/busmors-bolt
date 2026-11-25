@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 export type AiEnvironmentMode = 'test' | 'production'
 export type AgentRole = 'orchestrator' | 'director' | 'research' | 'content' | 'marketing-analyst'
-export type AiProvider = 'groq' | 'dahl' | 'sovereigneg'
+export type AiProvider = 'groq' | 'dahl' | 'sovereigneg' | 'apinex'
 export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high'
 
 export interface ModelConfig {
@@ -82,6 +82,7 @@ export const IS_TEST_MODE = AI_MODE === 'test'
 export const TEST_ALLOWED_MODELS = [
   { provider: 'groq', model: 'openai/gpt-oss-120b' },
   { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+  { provider: 'apinex', model: 'free/gpt-6-luna' },
 ] as const satisfies readonly ModelTarget[]
 
 export function isModelAllowed(
@@ -108,7 +109,7 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.2,
       primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [{ provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' }],
+      fallbacks: [{ provider: 'apinex', model: 'free/gpt-6-luna' }],
     },
     production: {
       temperature: 0.2,
@@ -119,7 +120,7 @@ const ROLE_AI_MODELS = {
   director: {
     test: {
       temperature: 0.3,
-      primary: { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
       fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
     },
     production: {
@@ -134,7 +135,7 @@ const ROLE_AI_MODELS = {
   research: {
     test: {
       temperature: 0.3,
-      primary: { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
       fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
     },
     production: {
@@ -150,7 +151,7 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.7,
       primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [{ provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' }],
+      fallbacks: [{ provider: 'apinex', model: 'free/gpt-6-luna' }],
     },
     production: {
       temperature: 0.7,
@@ -164,7 +165,7 @@ const ROLE_AI_MODELS = {
   'marketing-analyst': {
     test: {
       temperature: 0.3,
-      primary: { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
       fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
     },
     production: {
@@ -276,6 +277,11 @@ export function getProviderCredentials(provider: AiProvider): {
         apiKey: requiredEnv(process.env, 'SOVEREIGNEG_API_KEY'),
         baseURL: process.env.SOVEREIGNEG_BASE_URL?.trim() || 'https://backend.sovereigneg.com/v1',
       }
+    case 'apinex':
+      return {
+        apiKey: requiredEnv(process.env, 'APINEX_API_KEY'),
+        baseURL: process.env.APINEX_BASE_URL?.trim() || 'https://api.apinex.bond/v1',
+      }
   }
 }
 
@@ -302,6 +308,13 @@ const sovereignEgProvider = () =>
     apiKey: process.env.SOVEREIGNEG_API_KEY?.trim() ?? '',
   })
 
+const apinexProvider = () =>
+  createOpenAICompatible({
+    name: 'apinex',
+    baseURL: process.env.APINEX_BASE_URL?.trim() || 'https://api.apinex.bond/v1',
+    apiKey: process.env.APINEX_API_KEY?.trim() ?? '',
+  })
+
 export function getLanguageModel(target: ModelTarget | ResolvedModelTarget): LanguageModel {
   switch (target.provider) {
     case 'groq':
@@ -310,5 +323,7 @@ export function getLanguageModel(target: ModelTarget | ResolvedModelTarget): Lan
       return dahlProvider().languageModel(target.model)
     case 'sovereigneg':
       return sovereignEgProvider().languageModel(target.model)
+    case 'apinex':
+      return apinexProvider().languageModel(target.model)
   }
 }

@@ -375,3 +375,95 @@ export function buildAgentGraph(input: {
     order,
   }
 }
+
+/** Role → fixed top-down row. Lower is higher on the canvas. */
+export const ROLE_DEPTH: Partial<Record<CanvasNodeKind, number>> = {
+  user: 0,
+  orchestrator: 1,
+  director: 2,
+}
+
+export const ROLE_ORDER: Partial<Record<CanvasNodeKind, number>> = {
+  user: 0,
+  orchestrator: 1,
+  director: 2,
+  subagent: 3,
+  auditor: 4,
+  synthesis: 5,
+}
+
+/**
+ * Strict, deterministic top-down layout.
+ *
+ * Every primary node is assigned a depth (row): User → Orchestrator → Director →
+ * specialists, derived from the real parent→child edges but clamped to the fixed
+ * role order so y strictly increases top-to-bottom. Nodes sharing a depth form a
+ * horizontal row (specialists branch downward). Tool/Skill chips are not laid out
+ * as graph nodes; they are attached to their parent's left/right side.
+ */
+export function buildTopDownLayout(
+  primaryNodes: CanvasNode[],
+  edges: CanvasEdge[],
+): Map<string, { x: number; y: number }> {
+  const pos = new Map<string, { x: number; y: number }>()
+  if (primaryNodes.length === 0) return pos
+
+  const TOP = 24
+  const ROW_GAP = 170
+  const COL_GAP = 260
+  const CENTER = 380
+
+  const ids = new Set(primaryNodes.map((node) => node.id))
+  const parent = new Map<string, string>()
+  for (const edge of edges) {
+    if (edge.kind !== 'delegation' && edge.kind !== 'flow') continue
+    if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) continue
+    if (!parent.has(edge.to)) parent.set(edge.to, edge.from)
+  }
+
+  const byId = new Map(primaryNodes.map((node) => [node.id, node]))
+  const depthMemo = new Map<string, number>()
+
+  const depthOf = (node: CanvasNode, seen: Set<string>): number => {
+    if (depthMemo.has(node.id)) return depthMemo.get(node.id)!
+    const fixed = ROLE_DEPTH[node.kind]
+    if (fixed !== undefined) {
+      depthMemo.set(node.id, fixed)
+      return fixed
+    }
+    if (seen.has(node.id)) return 3
+    seen.add(node.id)
+    const parentId = parent.get(node.id)
+    const parentNode = parentId ? byId.get(parentId) : undefined
+    const depth = parentNode ? Math.max(3, depthOf(parentNode, seen) + 1) : 3
+    seen.delete(node.id)
+    depthMemo.set(node.id, depth)
+    return depth
+  }
+
+  const rows = new Map<number, CanvasNode[]>()
+  for (const node of primaryNodes) {
+    const depth = depthOf(node, new Set())
+    const row = rows.get(depth) ?? []
+    row.push(node)
+    rows.set(depth, row)
+  }
+
+  const sortedDepths = [...rows.keys()].sort((a, b) => a - b)
+  for (const depth of sortedDepths) {
+    const row = rows.get(depth)!
+    row.sort((a, b) => {
+      const ra = ROLE_ORDER[a.kind] ?? 9
+      const rb = ROLE_ORDER[b.kind] ?? 9
+      if (ra !== rb) return ra - rb
+      return a.order - b.order
+    })
+    const rowWidth = (row.length - 1) * COL_GAP
+    const y = TOP + depth * ROW_GAP
+    row.forEach((node, index) => {
+      pos.set(node.id, { x: CENTER - rowWidth / 2 + index * COL_GAP, y })
+    })
+  }
+  return pos
+}
+

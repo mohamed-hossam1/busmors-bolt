@@ -13,6 +13,7 @@ import {
   type ConversationSupabase,
 } from '@/server/employee/conversation-store'
 import { ensureNonEmptyReply, isArabicText } from '@/server/employee/reply'
+import { projectTraceEvents } from '@/server/employee/trace-projection'
 
 export const maxDuration = 60
 
@@ -107,14 +108,18 @@ export async function POST(request: Request) {
       isNew = true
     }
 
-    // Persist the incoming user message, then load the authoritative history
-    // (prior turns + this one) from the database for the Orchestrator.
+    // The trace id links the user message, the assistant message and the
+    // persisted execution events to the same per-query Canvas.
+    const traceId = crypto.randomUUID()
+
+    // Persist the incoming user message (tagged with the trace id), then load the
+    // authoritative history (prior turns + this one) from the database.
     await appendMessage(db, {
       id: crypto.randomUUID(),
       conversation_id: conversationId,
       role: 'user',
       content: userText,
-      metadata: {},
+      metadata: { traceId },
     })
     if (isNew) {
       await renameConversation(db, conversationId, titleFromMessage(userText))
@@ -125,7 +130,6 @@ export async function POST(request: Request) {
       (m) => ({ role: m.role, content: m.content }) as ModelMessage,
     )
 
-    const traceId = crypto.randomUUID()
     const collector = createTraceCollector({
       traceId,
       workspaceId,
@@ -169,6 +173,7 @@ export async function POST(request: Request) {
       usedTools: result.usedTools,
       loadedSkills: result.loadedSkills,
       traceId,
+      events: projectTraceEvents(collector.getEvents()),
       brainProposals: result.structured.brainProposals,
       clarification: result.structured.clarification,
       deliverables: result.structured.deliverables,

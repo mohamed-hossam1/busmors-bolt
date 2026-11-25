@@ -28,6 +28,7 @@ const originalEnv = {
   AI_MODE: process.env.AI_MODE,
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   DAHL_API_KEY: process.env.DAHL_API_KEY,
+  APINEX_API_KEY: process.env.APINEX_API_KEY,
 }
 
 let gatewayModule: typeof import('../../src/server/ai-gateway')
@@ -49,6 +50,7 @@ before(async () => {
   process.env.AI_MODE = 'test'
   process.env.GROQ_API_KEY = 'test-groq-key'
   process.env.DAHL_API_KEY = 'test-dahl-key'
+  process.env.APINEX_API_KEY = 'test-apinex-key'
   const gatewayModulePath = '../../src/server/ai-gateway.ts?gateway-test=1'
   gatewayModule = await import(gatewayModulePath)
 })
@@ -60,6 +62,8 @@ after(() => {
   else process.env.GROQ_API_KEY = originalEnv.GROQ_API_KEY
   if (originalEnv.DAHL_API_KEY === undefined) delete process.env.DAHL_API_KEY
   else process.env.DAHL_API_KEY = originalEnv.DAHL_API_KEY
+  if (originalEnv.APINEX_API_KEY === undefined) delete process.env.APINEX_API_KEY
+  else process.env.APINEX_API_KEY = originalEnv.APINEX_API_KEY
 })
 
 describe('central model gateway', () => {
@@ -88,8 +92,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'dahl')
-    assert.equal(result.model, 'zai-org/GLM-5.3-Flash')
+    assert.equal(result.provider, 'apinex')
+    assert.equal(result.model, 'free/gpt-6-luna')
     assert.equal(result.fallback.used, true)
     assert.equal(result.fallback.reason, 'rate_limit')
     assert.equal(result.usage.inputTokens, 11)

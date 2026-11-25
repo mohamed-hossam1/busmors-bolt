@@ -11,6 +11,7 @@ import BrainApprovalCard from '../components/chat/BrainApprovalCard'
 import ClarificationCardView from '../components/chat/ClarificationCard'
 import ReferenceCards from '../components/chat/ReferenceCards'
 import ChatHistorySidebar from '../components/chat/ChatHistorySidebar'
+import type { CanvasEvent } from '../components/chat/AgentCanvas'
 import type {
   BrainProposalCardData,
   ChatMessage,
@@ -31,6 +32,7 @@ interface ChatApiResponse {
   traceId?: string
   status?: string
   stopReason?: string
+  events?: CanvasEvent[]
 }
 
 const STARTERS = [
@@ -53,6 +55,15 @@ export default function EmployeePage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Per-query Canvas binding: the selected trace drives the Canvas, and the
+  // matching chat message is highlighted. Events are cached per trace id so a
+  // click is instant after the first load.
+  const [canvasEvents, setCanvasEvents] = useState<CanvasEvent[]>([])
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  const [selectedUserMessage, setSelectedUserMessage] = useState<string | null>(null)
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null)
+  const traceCacheRef = useRef<Map<string, CanvasEvent[]>>(new Map())
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const autoRanRef = useRef(false)
@@ -78,13 +89,44 @@ export default function EmployeePage() {
   }, [loadConversations])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    if (messages.length > 0 || sending) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
   }, [messages, sending])
+
+  const selectTrace = useCallback(async (traceId: string, messageId: string, userText: string) => {
+    setSelectedTraceId(traceId)
+    setActiveMessageId(messageId)
+    setSelectedUserMessage(userText)
+    const cached = traceCacheRef.current.get(traceId)
+    if (cached) {
+      setCanvasEvents(cached)
+      return
+    }
+    try {
+      const response = await fetch(`/api/employee/trace/${traceId}`)
+      const data = (await response.json()) as { events?: CanvasEvent[]; error?: string }
+      if (!response.ok) throw new Error(data.error ?? 'Could not load trace.')
+      const events = data.events ?? []
+      traceCacheRef.current.set(traceId, events)
+      setCanvasEvents(events)
+    } catch {
+      setCanvasEvents([])
+    }
+  }, [])
+
+  const resetCanvas = useCallback(() => {
+    setSelectedTraceId(null)
+    setActiveMessageId(null)
+    setSelectedUserMessage(null)
+    setCanvasEvents([])
+  }, [])
 
   const selectConversation = useCallback(async (id: string): Promise<ChatMessage[]> => {
     setActiveId(id)
     setError(null)
     setHistoryOpen(false)
+    resetCanvas()
     try {
       const response = await fetch(`/api/employee/conversations/${id}`)
       const data = (await response.json()) as { messages?: Array<{ id: string; role: 'user' | 'assistant'; content: string; metadata?: ChatMessage['metadata'] }>; error?: string }
@@ -101,7 +143,7 @@ export default function EmployeePage() {
       setError(err instanceof Error ? err.message : 'Could not load this conversation.')
       return []
     }
-  }, [])
+  }, [resetCanvas])
 
   const newChat = useCallback(() => {
     setActiveId(null)
@@ -110,7 +152,8 @@ export default function EmployeePage() {
     setInput('')
     setHistoryOpen(false)
     setMobileTab('chat')
-  }, [])
+    resetCanvas()
+  }, [resetCanvas])
 
   const deleteConversation = useCallback(
     async (id: string) => {
@@ -167,8 +210,19 @@ export default function EmployeePage() {
           stopReason: data.stopReason,
         },
       }
-      setMessages([...nextMessages, assistantMessage])
+      const boundMessages = nextMessages.map((m) =>
+        m.id === userMessage.id && data.traceId ? { ...m, metadata: { ...m.metadata, traceId: data.traceId } } : m,
+      )
+      setMessages([...boundMessages, assistantMessage])
       if (data.conversationId) setActiveId(data.conversationId)
+      if (data.traceId) {
+        const events = data.events ?? []
+        traceCacheRef.current.set(data.traceId, events)
+        setSelectedTraceId(data.traceId)
+        setActiveMessageId(assistantMessage.id)
+        setSelectedUserMessage(text)
+        setCanvasEvents(events)
+      }
       void loadConversations()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
@@ -239,23 +293,22 @@ export default function EmployeePage() {
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {historyOpen && (
-          <ChatHistorySidebar
-            conversations={conversations}
-            activeId={activeId}
-            loading={historyLoading}
-            onSelect={(id) => void selectConversation(id)}
-            onNew={newChat}
-            onDelete={(id) => void deleteConversation(id)}
-            onClose={() => setHistoryOpen(false)}
-          />
-        )}
+        <ChatHistorySidebar
+          open={historyOpen}
+          conversations={conversations}
+          activeId={activeId}
+          loading={historyLoading}
+          onSelect={(id) => void selectConversation(id)}
+          onNew={newChat}
+          onDelete={(id) => void deleteConversation(id)}
+          onClose={() => setHistoryOpen(false)}
+        />
 
         {/* Chat Column Shell */}
         <div
           className={`employee-chat ${
             mobileTab === 'chat' ? 'flex' : 'hidden'
-          } w-full min-w-0 flex-1 flex-col border-ink-200 lg:flex lg:border-e`}
+          } w-full min-w-0 flex-1 flex-col lg:me-3 lg:flex xl:me-[18px]`}
         >
           <div className="employee-panel-header flex shrink-0 items-center justify-between gap-2 px-3.5 py-3 sm:px-5">
             <div className="flex items-center gap-2">
@@ -263,7 +316,12 @@ export default function EmployeePage() {
                 type="button"
                 onClick={() => setHistoryOpen((open) => !open)}
                 aria-label={t('chatHistory')}
-                className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+                aria-expanded={historyOpen}
+                className={`rounded-lg p-1.5 transition-colors ${
+                  historyOpen
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'text-ink-500 hover:bg-ink-100 hover:text-ink-900'
+                }`}
               >
                 <PanelLeft size={16} />
               </button>
@@ -281,14 +339,15 @@ export default function EmployeePage() {
             </div>
           )}
 
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="sleek-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
             {messages.length === 0 && !sending ? (
-              <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-white text-primary-500">
-                  <MessageSquare size={24} strokeWidth={1.5} />
-                </span>
-                <p className="max-w-md text-sm leading-relaxed text-ink-600">{t('greetingProactive')}</p>
-                <div className="flex max-w-md flex-wrap items-center justify-center gap-2">
+              <div className="flex flex-1 flex-col justify-between gap-4">
+                <div className="flex justify-start">
+                  <div className="max-w-[88%] rounded-2xl rounded-ss-md bg-ink-100 px-4 py-2.5 text-sm leading-relaxed text-ink-900">
+                    {t('greetingProactive')}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-start gap-2 pt-2">
                   {STARTERS.map((starter) => (
                     <button
                       key={starter.key}
@@ -302,50 +361,69 @@ export default function EmployeePage() {
                 </div>
               </div>
             ) : (
-              messages.map((message) =>
-                message.role === 'user' ? (
-                  <div key={message.id} className="flex justify-end">
-                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-se-md bg-primary-500 px-4 py-2 text-sm text-white">
-                      {message.content}
+              <>
+                {messages.map((message, index) => {
+                  const traceId = message.metadata?.traceId
+                  const isActive = message.id === activeMessageId
+                  const userText =
+                    message.role === 'user'
+                      ? message.content
+                      : [...messages.slice(0, index)].reverse().find((m) => m.role === 'user')?.content ?? ''
+                  const onSelect = () => {
+                    if (traceId) void selectTrace(traceId, message.id, userText)
+                  }
+                  return message.role === 'user' ? (
+                    <div key={message.id} className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={onSelect}
+                        disabled={!traceId}
+                        className={`max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-se-md px-4 py-2 text-left text-sm text-white transition-shadow ${
+                          isActive ? 'bg-primary-600 ring-2 ring-primary-300 ring-offset-1' : 'bg-primary-500'
+                        } ${traceId ? 'cursor-pointer' : 'cursor-default'}`}
+                      >
+                        {message.content}
+                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <div key={message.id} className="flex justify-start">
-                    <div
-                      className={`max-w-[88%] rounded-2xl rounded-ss-md px-4 py-2.5 text-sm ${
-                        message.error ? 'border border-red-200 bg-red-50 text-red-700' : 'bg-ink-100 text-ink-900'
-                      }`}
-                    >
-                      {message.error ? (
-                        <p className="flex items-start gap-1.5">
-                          <AlertCircle size={14} className="mt-0.5 shrink-0" /> {message.content}
-                        </p>
-                      ) : (
-                        <>
-                          <MarkdownContent content={message.content} className="text-sm leading-relaxed" />
-                          {message.metadata?.clarification && (
-                            <ClarificationCardView
-                              card={message.metadata.clarification}
-                              disabled={sending}
-                              onSubmit={(answer) => void send(answer)}
+                  ) : (
+                    <div key={message.id} className="flex justify-start">
+                      <div
+                        onClick={onSelect}
+                        className={`max-w-[88%] rounded-2xl rounded-ss-md px-4 py-2.5 text-sm transition-shadow ${
+                          message.error ? 'border border-red-200 bg-red-50 text-red-700' : 'bg-ink-100 text-ink-900'
+                        } ${isActive ? 'ring-2 ring-primary-300 ring-offset-1' : ''} ${traceId ? 'cursor-pointer' : ''}`}
+                      >
+                        {message.error ? (
+                          <p className="flex items-start gap-1.5">
+                            <AlertCircle size={14} className="mt-0.5 shrink-0" /> {message.content}
+                          </p>
+                        ) : (
+                          <>
+                            <MarkdownContent content={message.content} className="text-sm leading-relaxed" />
+                            {message.metadata?.clarification && (
+                              <ClarificationCardView
+                                card={message.metadata.clarification}
+                                disabled={sending}
+                                onSubmit={(answer) => void send(answer)}
+                              />
+                            )}
+                            {message.metadata?.brainProposals?.map((proposal) => (
+                              <BrainApprovalCard key={proposal.proposalId} proposal={proposal} />
+                            ))}
+                            <ReferenceCards
+                              deliverables={message.metadata?.deliverables}
+                              drafts={message.metadata?.drafts}
                             />
-                          )}
-                          {message.metadata?.brainProposals?.map((proposal) => (
-                            <BrainApprovalCard key={proposal.proposalId} proposal={proposal} />
-                          ))}
-                          <ReferenceCards
-                            deliverables={message.metadata?.deliverables}
-                            drafts={message.metadata?.drafts}
-                          />
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ),
-              )
+                  )
+                })}
+                {sending && <ThinkingIndicator />}
+                <div ref={bottomRef} className="h-px shrink-0" />
+              </>
             )}
-            {sending && <ThinkingIndicator />}
-            <div ref={bottomRef} />
           </div>
 
           <form
@@ -378,14 +456,20 @@ export default function EmployeePage() {
         <div
           className={`employee-canvas ${
             mobileTab === 'canvas' ? 'flex' : 'hidden'
-          } w-full flex-1 flex-col lg:flex lg:w-2/5`}
+          } w-full min-w-0 flex-1 flex-col lg:flex lg:w-2/5`}
         >
           <div className="employee-panel-header hidden items-center gap-2 px-6 py-3 text-sm font-medium text-ink-900 lg:flex">
             <Network size={16} className="text-primary-500" />
             {t('canvasTitle')}
           </div>
           <div className="min-h-0 flex-1">
-            <AgentCanvas conversationId={activeId} events={[]} running={sending} />
+            <AgentCanvas
+              key={selectedTraceId ?? 'empty'}
+              conversationId={activeId}
+              events={canvasEvents}
+              running={sending}
+              userMessage={selectedUserMessage}
+            />
           </div>
         </div>
       </div>

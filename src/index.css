@@ -46,6 +46,27 @@
   .section-kicker { @apply inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[.14em] text-primary-700; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+  .sleek-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #d4daeb transparent;
+  }
+  .sleek-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .sleek-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sleek-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: #d4daeb;
+  }
+  .sleek-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a6afd5;
+  }
+  .sleek-scrollbar::-webkit-scrollbar-button {
+    display: none;
+  }
   .workspace-page { @apply h-full overflow-y-auto p-4 sm:p-7 lg:p-8; }
   .workspace-heading { @apply text-2xl font-semibold tracking-tight text-ink-900; }
   .workspace-description { @apply mt-1.5 text-sm leading-relaxed text-ink-600; }
@@ -479,20 +500,25 @@
 
 .markdown-body ul {
   list-style-type: disc;
+  list-style-position: outside;
   margin-left: 1.25rem;
+  padding-left: 0;
   margin-top: 0.35rem;
   margin-bottom: 0.5rem;
 }
 
 .markdown-body ol {
   list-style-type: decimal;
+  list-style-position: outside;
   margin-left: 1.25rem;
+  padding-left: 0;
   margin-top: 0.35rem;
   margin-bottom: 0.5rem;
 }
 
 .markdown-body li {
   margin-bottom: 0.25rem;
+  padding-inline-start: 0.15rem;
 }
 
 /* RTL lists: mirror the marker/indent so bullets render on the right and are not
@@ -501,20 +527,22 @@
 .markdown-body[dir='rtl'] ul,
 .markdown-body [dir='rtl'] ul {
   list-style-type: disc;
+  list-style-position: outside;
   margin-left: 0;
   margin-right: 1.25rem;
   padding-left: 0;
-  padding-right: 1.25rem;
+  padding-right: 0;
 }
 
 [dir='rtl'] .markdown-body ol,
 .markdown-body[dir='rtl'] ol,
 .markdown-body [dir='rtl'] ol {
   list-style-type: decimal;
+  list-style-position: outside;
   margin-left: 0;
   margin-right: 1.25rem;
   padding-left: 0;
-  padding-right: 1.25rem;
+  padding-right: 0;
 }
 
 .markdown-body code {
@@ -554,6 +582,23 @@
 }
 
 .auth-brand-panel { background: radial-gradient(ellipse at 90% 80%, #37257c 0%, transparent 55%), radial-gradient(ellipse at 0% 0%, #212936 0%, transparent 50%), #121520; }
+
+/* Clarification wizard step transitions */
+@keyframes clarify-step-forward {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes clarify-step-back {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.clarify-step-forward { animation: clarify-step-forward 0.28s ease-out; }
+.clarify-step-back { animation: clarify-step-back 0.28s ease-out; }
+[dir='rtl'] .clarify-step-forward { animation-name: clarify-step-back; }
+[dir='rtl'] .clarify-step-back { animation-name: clarify-step-forward; }
+@media (prefers-reduced-motion: reduce) {
+  .clarify-step-forward, .clarify-step-back { animation: none; }
+}
 
 .product-phone { border: 5px solid #171926; border-radius: 22px; box-shadow: 0 15px 45px rgb(23 25 38 / .15); }
 

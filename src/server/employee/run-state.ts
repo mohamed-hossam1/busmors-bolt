@@ -45,10 +45,17 @@ export interface EmployeeRunState {
   clarification: ClarificationCard | null
   deliverables: DeliverableRef[]
   drafts: DraftRef[]
+  /**
+   * The Director's real prose for this turn, captured when the Orchestrator
+   * delegates. The chat reply falls back to this verbatim so a tool-only
+   * Orchestrator turn never swallows the Director's output behind a generic
+   * "all done" message. Null when no Director ran or it produced no text.
+   */
+  directorReply: string | null
 }
 
 export function createEmployeeRunState(): EmployeeRunState {
-  return { brainProposals: [], clarification: null, deliverables: [], drafts: [] }
+  return { brainProposals: [], clarification: null, deliverables: [], drafts: [], directorReply: null }
 }
 
 /** True when the turn produced at least one structured artifact. */

@@ -36,6 +36,12 @@ export function ensureNonEmptyReply(
   const trimmed = typeof output === 'string' ? output.trim() : ''
   if (trimmed) return trimmed
 
+  // A tool-only Orchestrator turn (e.g. it delegated to the Director and
+  // finished on the tool call) has no prose of its own. Never swallow the
+  // Director's real output behind a generic fallback: surface it verbatim.
+  const directorReply = typeof state.directorReply === 'string' ? state.directorReply.trim() : ''
+  if (directorReply) return directorReply
+
   if (state.clarification) {
     return isArabic
       ? 'محتاج أوضّح نقطة صغيرة قبل ما أكمل. جاوبني على اللي تحت وأنا هكمّل على طول.'

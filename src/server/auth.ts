@@ -44,5 +44,6 @@ export async function requireApiIdentity(request: Request) {
 }
 export function apiError(error: unknown) {
  if (error instanceof Response) return error
+ console.error('[apiError]', error)
  return Response.json({ error: 'The request could not be completed. Please retry.' }, { status: 500 })
 }

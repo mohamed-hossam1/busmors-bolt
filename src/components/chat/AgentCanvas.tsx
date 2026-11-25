@@ -13,6 +13,7 @@ import ReactFlow, {
   type Node,
   type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
   type Viewport,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -37,12 +38,14 @@ import { PostPreviewCard, type PostPreviewData } from './PostPreview'
 import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
 import {
   buildAgentGraph,
+  buildTopDownLayout,
+  type CanvasEdge,
   type CanvasEvent,
-  type CanvasGraph,
   type CanvasNode,
   type CanvasNodeKind,
 } from './agentCanvasGraph'
 
+export { buildTopDownLayout } from './agentCanvasGraph'
 export type { CanvasEvent, CanvasGraph, CanvasNode, CanvasNodeKind } from './agentCanvasGraph'
 export type CanvasPreviewPost = PostPreviewData
 const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
@@ -60,6 +63,8 @@ function PreviewNode({ data }: { data: { posts: CanvasPreviewPost[] } }) {
 interface AgentNodeData extends CanvasNode {
   selected: boolean
   onSelect: (id: string) => void
+  tools: string[]
+  skills: string[]
 }
 
 const NODE_ICON: Record<CanvasNodeKind, typeof Bot> = {
@@ -125,6 +130,34 @@ function CanvasAgentNode({ data }: NodeProps<AgentNodeData>) {
       onClick={() => onSelect(data.id)}
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !rounded-full !border-2 !border-white !bg-primary-500" />
+      {data.skills.length > 0 && (
+        <div className="absolute right-full top-1/2 z-10 mr-1 flex -translate-y-1/2 flex-col items-end gap-1">
+          {data.skills.map((skill) => (
+            <span
+              key={skill}
+              title={skill}
+              className="inline-flex max-w-[120px] items-center gap-1 truncate rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 shadow-sm"
+            >
+              <BookOpen size={9} className="shrink-0" />
+              <span className="truncate">{skill}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {data.tools.length > 0 && (
+        <div className="absolute left-full top-1/2 z-10 ml-1 flex -translate-y-1/2 flex-col items-start gap-1">
+          {data.tools.map((tool) => (
+            <span
+              key={tool}
+              title={tool}
+              className="inline-flex max-w-[120px] items-center gap-1 truncate rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 shadow-sm"
+            >
+              <Wrench size={9} className="shrink-0" />
+              <span className="truncate">{tool}</span>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${data.color}1a`, color: data.color }}>
           <Icon size={14} />
@@ -148,72 +181,10 @@ const nodeTypes = {
   postPreview: PreviewNode,
 }
 
-function stableJitter(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return Math.abs(h) % 3
-}
+const CHIP_KINDS: ReadonlySet<CanvasNodeKind> = new Set<CanvasNodeKind>(['tool', 'skill'])
 
-/**
- * Hierarchical layout derived from the real parent→child edges. Each generation
- * (nodes whose parent is already placed) becomes one horizontal row, so the tree
- * reads top-down instead of a repeating three-column grid.
- */
-function buildHierarchicalLayout(graph: CanvasGraph): Map<string, { x: number; y: number }> {
-  const pos = new Map<string, { x: number; y: number }>()
-  const { nodes, edges } = graph
-  if (nodes.length === 0) return pos
-  const ids = new Set(nodes.map(node => node.id))
-  const parent = new Map<string, string>()
-  for (const edge of edges) {
-    if (!ids.has(edge.from) || !ids.has(edge.to) || edge.from === edge.to) continue
-    if (!parent.has(edge.to)) parent.set(edge.to, edge.from)
-  }
-
-  const TOP = 20
-  const ROW_GAP = 150
-  const COL_GAP = 240
-  const CENTER = 320
-  const placed = new Set<string>()
-  let rowY = TOP
-
-  const placeRow = (row: CanvasNode[]) => {
-    const rowWidth = (row.length - 1) * COL_GAP
-    row.forEach((node, index) => {
-      pos.set(node.id, { x: CENTER - rowWidth / 2 + index * COL_GAP + stableJitter(node.id) * 4, y: rowY })
-      placed.add(node.id)
-    })
-    rowY += ROW_GAP
-  }
-
-  const roots = nodes.filter(node => !parent.has(node.id))
-  const user = roots.find(node => node.kind === 'user')
-  if (user) {
-    placeRow([user])
-    rowY += 40
-  }
-  const otherRoots = roots.filter(node => node.kind !== 'user')
-  if (otherRoots.length) placeRow(otherRoots)
-
-  let pending = nodes.filter(node => !placed.has(node.id))
-  let guard = 0
-  while (pending.length > 0 && guard++ < 200) {
-    const row = pending.filter(node => {
-      const parentId = parent.get(node.id)
-      return !parentId || placed.has(parentId)
-    })
-    if (row.length === 0) break
-    placeRow(row)
-    const placedIds = new Set(row.map(node => node.id))
-    pending = pending.filter(node => !placedIds.has(node.id))
-  }
-  if (pending.length > 0) {
-    const cols = Math.max(1, Math.ceil(Math.sqrt(pending.length)))
-    pending.forEach((node, index) => {
-      pos.set(node.id, { x: CENTER + (index % cols - (cols - 1) / 2) * COL_GAP, y: rowY + Math.floor(index / cols) * ROW_GAP })
-    })
-  }
-  return pos
+function isChipNode(node: CanvasNode): boolean {
+  return CHIP_KINDS.has(node.kind)
 }
 
 export default function AgentCanvas({
@@ -255,15 +226,51 @@ export default function AgentCanvas({
     activeRootId,
   }), [events, running, userMessage, activeRootId])
 
+  // Split primary agent nodes from tool/skill chips, and attach each chip to the
+  // agent that invoked it (chips render on the agent's left/right, not as nodes).
+  const { primaryNodes, chipsByParent } = useMemo(() => {
+    const primary = graph.nodes.filter((node) => !isChipNode(node))
+    const chips = new Map<string, { tools: string[]; skills: string[] }>()
+    const chipKind = new Map(graph.nodes.map((node) => [node.id, node.kind]))
+    for (const edge of graph.edges) {
+      if (edge.kind !== 'tool_call' && edge.kind !== 'skill_read') continue
+      const kind = chipKind.get(edge.to)
+      if (kind !== 'tool' && kind !== 'skill') continue
+      const target = graph.nodes.find((node) => node.id === edge.to)
+      const name = target?.label ?? edge.to
+      const entry = chips.get(edge.from) ?? { tools: [], skills: [] }
+      const bucket = kind === 'tool' ? entry.tools : entry.skills
+      if (!bucket.includes(name)) bucket.push(name)
+      chips.set(edge.from, entry)
+    }
+    return { primaryNodes: primary, chipsByParent: chips }
+  }, [graph])
+
+  const layout = useMemo(() => buildTopDownLayout(primaryNodes, graph.edges), [primaryNodes, graph.edges])
+
+  const structureSignature = useMemo(
+    () => primaryNodes.map((node) => `${node.id}@${layout.get(node.id)?.y ?? 0}`).join('|'),
+    [primaryNodes, layout],
+  )
+
+  const instanceRef = useRef<ReactFlowInstance | null>(null)
+  const prevSignatureRef = useRef<string>('')
+
   useEffect(() => {
-    const layout = buildHierarchicalLayout(graph)
-    const newNodes: Node[] = graph.nodes.map((node) => {
+    const newNodes: Node[] = primaryNodes.map((node) => {
       const position = userPositionsRef.current[node.id] ?? layout.get(node.id) ?? { x: 300, y: 20 }
+      const chips = chipsByParent.get(node.id)
       return {
         id: node.id,
         type: 'agentNode',
         position,
-        data: { ...node, selected: node.id === selectedId, onSelect } as AgentNodeData,
+        data: {
+          ...node,
+          selected: node.id === selectedId,
+          onSelect,
+          tools: chips?.tools ?? [],
+          skills: node.kind === 'orchestrator' ? [] : chips?.skills ?? [],
+        } as AgentNodeData,
       }
     })
     if (previewPosts.length > 0) {
@@ -278,7 +285,19 @@ export default function AgentCanvas({
       const measured = new Map(previous.map(node => [node.id, node]))
       return newNodes.map(node => ({ ...measured.get(node.id), ...node }))
     })
-  }, [graph, previewPosts, selectedId, onSelect])
+  }, [primaryNodes, chipsByParent, layout, previewPosts, selectedId, onSelect])
+
+  // Auto-fit and center the viewport whenever the graph structure changes.
+  useEffect(() => {
+    if (structureSignature === prevSignatureRef.current) return
+    prevSignatureRef.current = structureSignature
+    const instance = instanceRef.current
+    if (!instance) return
+    const handle = requestAnimationFrame(() => {
+      instance.fitView({ padding: 0.2, maxZoom: 1, duration: 200 })
+    })
+    return () => cancelAnimationFrame(handle)
+  }, [structureSignature])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     for (const change of changes) {
@@ -289,7 +308,17 @@ export default function AgentCanvas({
 
   const edges: Edge[] = useMemo(() => {
     const seen = new Set<string>()
-    return graph.edges.flatMap(edge => {
+    const primaryIds = new Set(primaryNodes.map((node) => node.id))
+    const parentOf = new Map<string, string>()
+    for (const edge of graph.edges) {
+      if (edge.kind !== 'delegation' && edge.kind !== 'flow') continue
+      if (!primaryIds.has(edge.from) || !primaryIds.has(edge.to)) continue
+      if (!parentOf.has(edge.to)) parentOf.set(edge.to, edge.from)
+    }
+
+    const forward: Edge[] = graph.edges.flatMap(edge => {
+      if (edge.kind === 'tool_call' || edge.kind === 'skill_read') return []
+      if (!primaryIds.has(edge.from) || !primaryIds.has(edge.to)) return []
       const key = `${edge.from}->${edge.to}:${edge.kind}`
       if (seen.has(key)) return []
       seen.add(key)
@@ -306,7 +335,26 @@ export default function AgentCanvas({
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
       }]
     })
-  }, [graph])
+
+    // Subtle dashed return edges: specialists hand results back up to their parent.
+    const returnEdges: Edge[] = primaryNodes
+      .filter((node) => node.kind === 'subagent' || node.kind === 'auditor' || node.kind === 'synthesis')
+      .flatMap((node) => {
+        const parentId = parentOf.get(node.id)
+        if (!parentId || parentId === node.id) return []
+        return [{
+          id: `return:${node.id}:${parentId}`,
+          source: node.id,
+          target: parentId,
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#94a3b8', strokeWidth: 1.2, strokeDasharray: '4 6' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 12, height: 12 },
+        }]
+      })
+
+    return [...forward, ...returnEdges]
+  }, [graph, primaryNodes])
 
   const selected = graph.nodes.find(node => node.id === selectedId) ?? null
 
@@ -320,6 +368,7 @@ export default function AgentCanvas({
         fitView={!savedLayout.viewport}
         fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
         defaultViewport={savedLayout.viewport}
+        onInit={(instance) => { instanceRef.current = instance }}
         onNodeDragStop={persistLayout}
         onMove={(_, viewport) => { viewportRef.current = viewport }}
         onMoveEnd={(_, viewport) => { viewportRef.current = viewport; persistLayout() }}

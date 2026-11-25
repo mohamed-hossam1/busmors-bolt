@@ -261,6 +261,16 @@ export class TraceCollector {
     return this.bytes
   }
 
+  /**
+   * Return a shallow copy of the buffered, already-sanitized events. Used to feed
+   * the customer-facing Canvas for the turn that just completed without waiting
+   * on the off-response-path flush. Callers must still project to a Canvas-safe
+   * shape before sending to the client (never raw admin payloads).
+   */
+  getEvents(): AdminTraceEvent[] {
+    return this.events.map((event) => ({ ...event }))
+  }
+
   recordModel(record: ModelRecord): void {
     if (!this.enabled) return
     const inputTokens = Math.max(0, num(record.usage?.inputTokens))

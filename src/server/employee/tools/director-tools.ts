@@ -10,6 +10,7 @@ import type {
   WorkspaceContextStore,
 } from '../director-store'
 import type { LoadedSkill } from '../skill-loader'
+import type { ResearchResult } from '../agents/research'
 
 /**
  * Director tools (Phase 3, spec 3.5).
@@ -90,6 +91,37 @@ export function createDirectorRunState(): DirectorRunState {
   return { clarification: null, deliverables: [], drafts: [], brainProposals: [] }
 }
 
+/** A bounded specialist subtask the Director delegates. */
+export interface DelegateSpecialistRequest {
+  role: 'research' | 'content' | 'marketing-analyst'
+  goal: string
+  scope?: string
+  context?: string
+  outputLanguage?: string
+  /** Director's concrete defect + desired correction for a targeted revision. */
+  revisionFeedback?: string
+  /** Prior structured result (as a JSON string) to reuse on a revision. */
+  priorResult?: string
+}
+
+/** A compact, source-linked research summary handed back to the Director model. */
+export interface CompactResearchResult {
+  status: ResearchResult['status']
+  findings: Array<{ claim: string; label: string; sourceUrls: string[]; excerpt?: string }>
+  limitations: string[]
+  stopReason: string
+  sourceCount: number
+  topSources: Array<{ title: string; url: string }>
+}
+
+/** What a specialist returns to the Director. */
+export interface DelegateSpecialistResult {
+  status: 'completed' | 'partial' | 'failed' | 'awaiting_input' | 'cancelled' | 'unavailable'
+  role: DelegateSpecialistRequest['role']
+  message?: string
+  result?: CompactResearchResult
+}
+
 export interface DirectorToolDeps {
   brain: BrainStore
   deliverables: DeliverableStore
@@ -98,6 +130,12 @@ export interface DirectorToolDeps {
   /** Loads a registered Director skill (bound to the run's skill-load tracker). */
   loadSkill: (skillId: string) => Promise<LoadedSkill>
   runState: DirectorRunState
+  /**
+   * Runs a specialist subtask. When omitted (isolated tool tests) delegate_agent
+   * reports unavailability honestly. The Director implementation invokes the
+   * Research Agent for role "research" and reports the others unavailable.
+   */
+  delegate?: (request: DelegateSpecialistRequest) => Promise<DelegateSpecialistResult>
 }
 
 const readBusinessBrainInput = z.object({
@@ -173,6 +211,8 @@ const delegateAgentInput = z.object({
   scope: z.string().max(4000).optional(),
   context: z.string().max(12000).optional(),
   outputLanguage: z.string().min(1).max(32).optional(),
+  revisionFeedback: z.string().max(4000).optional(),
+  priorResult: z.string().max(20000).optional(),
 })
 
 export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefinition<any, any>[] {
@@ -241,7 +281,7 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'ask_clarification',
       description:
-        'Ask the owner one to three essential questions when meaningful progress requires an answer. Each question is single or multiple choice with a custom free-text option and a not-sure option. Returns an awaiting_input result; the task resumes from this checkpoint after the answer.',
+        'Ask the owner 1–3 essential questions (never more) when meaningful progress requires an answer. ALWAYS use this card instead of writing questions as plain chat text. Keep each question short and specific, with 2–4 concise single/multiple-choice options (plus the automatic custom free-text and "not sure" options). Do not dump a long list of open questions. Returns an awaiting_input result; the task resumes from this checkpoint after the owner answers.',
       external: false,
       inputSchema: askClarificationInput,
       execute: async (args: z.infer<typeof askClarificationInput>) => {
@@ -256,7 +296,7 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'create_or_version_deliverable',
       description:
-        'Persist a substantial strategy, report, research or plan to Deliverables. Creates a new document, or appends a new immutable version when revising an existing deliverable (pass deliverableId + expectedVersion). Idempotent. Confirmed saved ids are returned.',
+        'Persist a substantial strategy, report, research, plan or analysis to Deliverables. You MUST call this for any substantial plan/report before finishing — do not deliver substantial work only as chat text. Creates a new document, or appends a new immutable version when revising an existing deliverable (pass deliverableId + expectedVersion). Idempotent. Returns the confirmed saved deliverableId/version; reference the saved document in your reply so a clickable Deliverable card is shown.',
       external: false,
       inputSchema: createDeliverableInput,
       execute: async (args: z.infer<typeof createDeliverableInput>) => {
@@ -364,10 +404,21 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'delegate_agent',
       description:
-        'Delegate a well-scoped subtask to a specialist (research, content, marketing-analyst). Provide goal, scope, context references and desired output. Specialists are built in later phases; until then this validates the request and reports unavailability honestly.',
+        'Delegate a well-scoped subtask to a specialist. Provide goal, scope, context references and desired output. Research Agent is available and returns structured, source-linked findings; content and marketing-analyst report unavailability honestly until enabled. To revise returned research, delegate again to research with revisionFeedback (the concrete gap) and the prior result.',
       external: false,
       inputSchema: delegateAgentInput,
       execute: async (args: z.infer<typeof delegateAgentInput>) => {
+        if (deps.delegate) {
+          return deps.delegate({
+            role: args.role,
+            goal: args.goal,
+            scope: args.scope,
+            context: args.context,
+            outputLanguage: args.outputLanguage,
+            revisionFeedback: args.revisionFeedback,
+            priorResult: args.priorResult,
+          })
+        }
         return {
           status: 'unavailable',
           role: args.role,

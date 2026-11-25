@@ -257,6 +257,11 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
           if (directorResult.clarification) structured.clarification = directorResult.clarification
           structured.deliverables.push(...directorResult.deliverables)
           structured.drafts.push(...directorResult.drafts)
+          // Preserve the Director's real prose so a tool-only Orchestrator turn
+          // never replaces it with a generic fallback reply.
+          if (!structured.directorReply && directorResult.text && directorResult.text.trim()) {
+            structured.directorReply = directorResult.text
+          }
           return directorResult
         }),
     }),

@@ -27,7 +27,7 @@ describe('AI model configuration', () => {
     await assert.rejects(() => loadConfig('staging'), /AI_MODE must be exactly/)
   })
 
-  it('allows only the two approved provider/model pairs in test mode', async () => {
+  it('allows only the approved provider/model pairs in test mode', async () => {
     const config = await loadConfig('test')
     const roles = ['orchestrator', 'director', 'research', 'content', 'marketing-analyst'] as const
 
@@ -40,8 +40,10 @@ describe('AI model configuration', () => {
       }
     }
 
-    assert.equal(config.getRoleModelChain('research')[0].provider, 'dahl')
+    assert.equal(config.getRoleModelChain('research')[0].provider, 'apinex')
+    assert.equal(config.getRoleModelChain('research')[0].model, 'free/gpt-6-luna')
     assert.equal(config.getRoleModelChain('content')[0].provider, 'groq')
+    assert.equal(config.isModelAllowed('apinex', 'free/gpt-6-luna'), true)
     assert.throws(
       () => config.assertModelAllowed('sovereigneg', 'gpt-6-luna'),
       config.ModelNotAllowedError,

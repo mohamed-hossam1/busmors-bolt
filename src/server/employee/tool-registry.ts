@@ -88,7 +88,19 @@ export const ROLE_TOOL_ALLOWLIST: Record<AgentRole, readonly string[]> = {
     'firecrawl_scrape',
     'delegate_agent',
   ],
-  research: [],
+  // Research Agent: strictly read-only evidence specialist (spec 4.4).
+  // No Calendar, no Deliverable/Brain writes, no publishing/outreach, no
+  // specialist-to-specialist calls, no filesystem/shell. Web tools are the only
+  // external calls and reuse the shared web-providers adapters.
+  research: [
+    'read_skill',
+    'read_business_brain',
+    'read_deliverables',
+    'get_task_context',
+    'tavily_search',
+    'exa_search',
+    'firecrawl_scrape',
+  ],
   content: [],
   'marketing-analyst': [],
 }
