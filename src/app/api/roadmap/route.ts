@@ -20,6 +20,9 @@ export async function GET(request: Request) {
       activeVersion: loaded.activeVersion ?? null,
       steps: Array.isArray(loaded.steps) ? loaded.steps : [],
       staleDependencies: Array.isArray(loaded.staleDependencies) ? loaded.staleDependencies : [],
+      stepActions: Array.isArray(loaded.stepActions) ? loaded.stepActions : [],
+      linkedDeliverables: Array.isArray(loaded.linkedDeliverables) ? loaded.linkedDeliverables : [],
+      linkedPosts: Array.isArray(loaded.linkedPosts) ? loaded.linkedPosts : [],
     })
   } catch (error) {
     return apiError(error)

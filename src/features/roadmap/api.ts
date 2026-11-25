@@ -182,6 +182,49 @@ export async function loadActiveRoadmap(): Promise<RoadmapLoad> {
     activeVersion: data.activeVersion ?? null,
     steps: Array.isArray(data.steps) ? data.steps : [],
     staleDependencies: Array.isArray(data.staleDependencies) ? data.staleDependencies : [],
+    stepActions: Array.isArray(data.stepActions) ? data.stepActions : [],
+    linkedDeliverables: Array.isArray(data.linkedDeliverables) ? data.linkedDeliverables : [],
+    linkedPosts: Array.isArray(data.linkedPosts) ? data.linkedPosts : [],
+  }
+}
+
+export type RoadmapStepAction =
+  | 'run'
+  | 'start'
+  | 'complete'
+  | 'attest'
+  | 'block'
+  | 'skip'
+  | 'revisit'
+  | 'link_output'
+  | 'waiting_owner'
+
+export interface RoadmapStepActionResult {
+  step: RoadmapLoad['steps'][number] | null
+  conversationId?: string
+  employeeHref?: string
+}
+
+/** Perform a single roadmap step lifecycle action (Phase 4). */
+export async function performRoadmapStepAction(
+  stepId: string,
+  action: RoadmapStepAction,
+  idempotencyKey: string,
+  payload: Record<string, unknown> = {},
+): Promise<RoadmapStepActionResult> {
+  const response = await fetch(`/api/roadmap/steps/${stepId}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, idempotencyKey, payload }),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapStepActionResult> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The action could not be completed. Please retry.')
+  }
+  return {
+    step: data.step ?? null,
+    conversationId: typeof data.conversationId === 'string' ? data.conversationId : undefined,
+    employeeHref: typeof data.employeeHref === 'string' ? data.employeeHref : undefined,
   }
 }
 

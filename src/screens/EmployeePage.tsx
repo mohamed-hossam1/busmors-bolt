@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { AlertCircle, MessageSquare, Network, PanelLeft, Send, X } from 'lucide-react'
 import { useCopy } from '../hooks/useCopy'
 import AgentCanvas from '../components/chat/AgentCanvas'
@@ -41,6 +42,7 @@ const STARTERS = [
 
 export default function EmployeePage() {
   const { t } = useCopy()
+  const searchParams = useSearchParams()
   const [mobileTab, setMobileTab] = useState<'chat' | 'canvas'>('chat')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -53,6 +55,7 @@ export default function EmployeePage() {
   const [historyLoading, setHistoryLoading] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const autoRanRef = useRef(false)
 
   const loadConversations = useCallback(async () => {
     setHistoryLoading(true)
@@ -78,7 +81,7 @@ export default function EmployeePage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, sending])
 
-  const selectConversation = useCallback(async (id: string) => {
+  const selectConversation = useCallback(async (id: string): Promise<ChatMessage[]> => {
     setActiveId(id)
     setError(null)
     setHistoryOpen(false)
@@ -86,16 +89,17 @@ export default function EmployeePage() {
       const response = await fetch(`/api/employee/conversations/${id}`)
       const data = (await response.json()) as { messages?: Array<{ id: string; role: 'user' | 'assistant'; content: string; metadata?: ChatMessage['metadata'] }>; error?: string }
       if (!response.ok) throw new Error(data.error ?? 'Could not load this conversation.')
-      setMessages(
-        (data.messages ?? []).map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          metadata: m.metadata,
-        })),
-      )
+      const loaded: ChatMessage[] = (data.messages ?? []).map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        metadata: m.metadata,
+      }))
+      setMessages(loaded)
+      return loaded
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load this conversation.')
+      return []
     }
   }, [])
 
@@ -125,11 +129,13 @@ export default function EmployeePage() {
     [activeId, loadConversations, newChat],
   )
 
-  const send = async (override?: string) => {
+  const send = async (override?: string, context?: { conversationId: string; baseMessages: ChatMessage[] }) => {
     const text = (override ?? input).trim()
     if (!text || sending) return
+    const baseMessages = context?.baseMessages ?? messages
+    const conversationId = context?.conversationId ?? activeId
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text }
-    const nextMessages: ChatMessage[] = [...messages, userMessage]
+    const nextMessages: ChatMessage[] = [...baseMessages, userMessage]
     setMessages(nextMessages)
     setInput('')
     setSending(true)
@@ -139,7 +145,7 @@ export default function EmployeePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversationId: activeId,
+          conversationId,
           messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
         }),
       })
@@ -175,6 +181,34 @@ export default function EmployeePage() {
       setSending(false)
     }
   }
+
+  // Phase 4: deep-link from a roadmap step. Open the thread directly when a
+  // conversationId is supplied, prefill the composer with the prompt, and
+  // optionally auto-send once (guarded so it can never double-send).
+  useEffect(() => {
+    const conversationId = searchParams.get('conversationId')
+    const prompt = searchParams.get('prompt')
+    const autorun = searchParams.get('autorun') === '1'
+    if (!conversationId && !prompt) return
+    let cancelled = false
+    void (async () => {
+      let baseMessages: ChatMessage[] = []
+      if (conversationId) baseMessages = await selectConversation(conversationId)
+      if (cancelled) return
+      if (prompt) {
+        setInput(prompt)
+        if (autorun && !autoRanRef.current && baseMessages.length === 0) {
+          autoRanRef.current = true
+          await send(prompt, { conversationId: conversationId ?? '', baseMessages })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Run once on mount; searchParams is stable for the lifetime of the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="employee-workspace flex h-full min-h-0 flex-col overflow-hidden lg:flex-row">

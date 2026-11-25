@@ -55,7 +55,7 @@ import {
   generateRoadmap,
   loadActiveRoadmap,
 } from './api'
-import RoadmapGeneratedView from './RoadmapGeneratedView'
+import RoadmapExecutionDashboard from './RoadmapExecutionDashboard'
 import { mergePrefillSuggestions, type MergedSuggestion, type QuestionPrefillMerge } from './prefill-merge'
 import type {
   DirectorProposal,
@@ -1185,7 +1185,7 @@ export default function DiscoveryWizard() {
 
   if (generated) {
     return (
-      <RoadmapGeneratedView
+      <RoadmapExecutionDashboard
         data={generated}
         locale={locale}
         regenerating={generating}

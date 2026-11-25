@@ -243,6 +243,15 @@ export interface RoadmapVersionRecord {
   created_at: string
 }
 
+export type ExecutionState =
+  | 'not_started'
+  | 'in_progress'
+  | 'waiting_for_owner'
+  | 'waiting_for_director'
+  | 'blocked'
+  | 'completed'
+  | 'skipped'
+
 export interface RoadmapStepRecord {
   id: string
   roadmap_id: string
@@ -258,6 +267,39 @@ export interface RoadmapStepRecord {
   action_kind: GeneratedActionKind
   success_criteria: string
   linked_metric: string | null
+  /** Phase 4 execution columns (present after the execution migration). */
+  execution_state?: ExecutionState | string | null
+  conversation_id?: string | null
+  linked_deliverable_id?: string | null
+  linked_post_id?: string | null
+  result_note?: string | null
+  completed_at?: string | null
+  attestation?: Record<string, unknown> | null
+  dependencies?: string[] | null
+}
+
+export interface RoadmapStepActionRecord {
+  id: string
+  step_id: string
+  action: string
+  idempotency_key: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface LinkedDeliverableSummary {
+  id: string
+  title: string
+  version: number
+  type: string
+}
+
+export interface LinkedPostSummary {
+  id: string
+  platform: string
+  status: string
+  approvalState: string
+  version: number
 }
 
 export interface StaleDependency {
@@ -275,4 +317,8 @@ export interface RoadmapLoad {
   activeVersion: RoadmapVersionRecord | null
   steps: RoadmapStepRecord[]
   staleDependencies: StaleDependency[]
+  /** Phase 4 execution data (optional until the execution migration is applied). */
+  stepActions?: RoadmapStepActionRecord[]
+  linkedDeliverables?: LinkedDeliverableSummary[]
+  linkedPosts?: LinkedPostSummary[]
 }
