@@ -330,7 +330,7 @@ export default function AgentCanvas({
         source: edge.from,
         target: edge.to,
         type: 'smoothstep',
-        animated: edge.animated,
+        animated: edge.animated || from?.state === 'running' || to?.state === 'running',
         style: { stroke, strokeWidth: edge.kind === 'delegation' ? 2.4 : 1.6 },
         markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
       }]

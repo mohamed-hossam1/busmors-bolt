@@ -49,6 +49,7 @@ export default function EmployeePage() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
+  const [liveStatus, setLiveStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
@@ -182,43 +183,112 @@ export default function EmployeePage() {
     setMessages(nextMessages)
     setInput('')
     setSending(true)
+    setLiveStatus(null)
     setError(null)
+    // Start a live Canvas session right away so streamed events appear step-by-step.
+    // Keep prior Canvas events visible on continuation turns until the new turn's trace arrives.
+    setSelectedTraceId('live')
+    setActiveMessageId(null)
+    setSelectedUserMessage(text)
+    if (baseMessages.length === 0) {
+      setCanvasEvents([])
+    }
     try {
       const response = await fetch('/api/employee/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
         body: JSON.stringify({
           conversationId,
+          stream: true,
           messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
         }),
       })
-      const data = (await response.json()) as ChatApiResponse
-      if (!response.ok || data.error) {
-        throw new Error(data.error ?? 'Something went wrong. Please try again.')
+
+      let data: ChatApiResponse | null = null
+      const contentType = response.headers.get('content-type') ?? ''
+      if (contentType.includes('text/event-stream') && response.body) {
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        const handleSseBlock = (block: string) => {
+          let eventName = 'message'
+          const dataLines: string[] = []
+          for (const rawLine of block.split(/\r?\n/)) {
+            if (rawLine.startsWith('event:')) eventName = rawLine.slice(6).trim()
+            else if (rawLine.startsWith('data:')) dataLines.push(rawLine.slice(5).trim())
+          }
+          if (dataLines.length === 0) return
+          const payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>
+          if (eventName === 'init') {
+            if (typeof payload.conversationId === 'string') setActiveId(payload.conversationId)
+            if (typeof payload.traceId === 'string') setSelectedTraceId(payload.traceId)
+          } else if (eventName === 'status') {
+            if (typeof payload.label === 'string') setLiveStatus(payload.label)
+          } else if (eventName === 'trace') {
+            if (Array.isArray(payload.events)) {
+              setCanvasEvents(payload.events as CanvasEvent[])
+            }
+          } else if (eventName === 'done') {
+            data = payload as unknown as ChatApiResponse
+          } else if (eventName === 'error') {
+            throw new Error(
+              typeof payload.error === 'string' ? payload.error : 'Something went wrong. Please try again.',
+            )
+          }
+        }
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          let boundary = buffer.indexOf('\n\n')
+          while (boundary !== -1) {
+            const block = buffer.slice(0, boundary)
+            buffer = buffer.slice(boundary + 2)
+            if (block.trim()) handleSseBlock(block)
+            boundary = buffer.indexOf('\n\n')
+          }
+        }
+        if (buffer.trim()) handleSseBlock(buffer)
+        if (!data) throw new Error('The stream closed before finishing. Please try again.')
+      } else {
+        const json = (await response.json()) as ChatApiResponse
+        if (!response.ok || json.error) {
+          throw new Error(json.error ?? 'Something went wrong. Please try again.')
+        }
+        data = json
       }
+
+      const finalData = data as ChatApiResponse
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: data.reply && data.reply.trim() ? data.reply : t('emptyReplyFallback'),
+        content: finalData.reply && finalData.reply.trim() ? finalData.reply : t('emptyReplyFallback'),
         metadata: {
-          brainProposals: data.brainProposals,
-          clarification: data.clarification,
-          deliverables: data.deliverables,
-          drafts: data.drafts,
-          traceId: data.traceId,
-          status: data.status,
-          stopReason: data.stopReason,
+          brainProposals: finalData.brainProposals,
+          clarification: finalData.clarification,
+          deliverables: finalData.deliverables,
+          drafts: finalData.drafts,
+          traceId: finalData.traceId,
+          status: finalData.status,
+          stopReason: finalData.stopReason,
         },
       }
       const boundMessages = nextMessages.map((m) =>
-        m.id === userMessage.id && data.traceId ? { ...m, metadata: { ...m.metadata, traceId: data.traceId } } : m,
+        m.id === userMessage.id && finalData.traceId
+          ? { ...m, metadata: { ...m.metadata, traceId: finalData.traceId } }
+          : m,
       )
       setMessages([...boundMessages, assistantMessage])
-      if (data.conversationId) setActiveId(data.conversationId)
-      if (data.traceId) {
-        const events = data.events ?? []
-        traceCacheRef.current.set(data.traceId, events)
-        setSelectedTraceId(data.traceId)
+      if (finalData.conversationId) setActiveId(finalData.conversationId)
+      if (finalData.traceId) {
+        const events = finalData.events ?? []
+        traceCacheRef.current.set(finalData.traceId, events)
+        setSelectedTraceId(finalData.traceId)
         setActiveMessageId(assistantMessage.id)
         setSelectedUserMessage(text)
         setCanvasEvents(events)
@@ -232,6 +302,7 @@ export default function EmployeePage() {
         { id: crypto.randomUUID(), role: 'assistant', content: message, error: true },
       ])
     } finally {
+      setLiveStatus(null)
       setSending(false)
     }
   }
@@ -420,7 +491,7 @@ export default function EmployeePage() {
                     </div>
                   )
                 })}
-                {sending && <ThinkingIndicator />}
+                {sending && <ThinkingIndicator liveLabel={liveStatus} />}
                 <div ref={bottomRef} className="h-px shrink-0" />
               </>
             )}

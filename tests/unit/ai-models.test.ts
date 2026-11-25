@@ -54,26 +54,33 @@ describe('AI model configuration', () => {
     )
   })
 
-  it('uses the specified production chains and keeps the unverified Director fallback disabled', async () => {
+  it('uses only SovereignEG models across all production role chains and fallback template', async () => {
     const config = await loadConfig('production')
+    const roles = ['orchestrator', 'director', 'research', 'content', 'marketing-analyst'] as const
 
-    const research = config.getRoleModelChain('research')
-    assert.equal(research[0].provider, 'sovereigneg')
-    assert.equal(research[0].model, 'SovereignEG/Qwen3.8-27B-FP8')
-    assert.equal(research[1].provider, 'dahl')
-    assert.equal(research[2].provider, 'groq')
+    for (const role of roles) {
+      const chain = config.getRoleModelChain(role) as Array<{ provider: string; model: string }>
+      assert.ok(chain.length > 0)
+      for (const target of chain) {
+        assert.equal(target.provider, 'sovereigneg')
+        assert.equal(config.isModelAllowed(target.provider, target.model), true)
+      }
+    }
 
-    const content = config.getRoleModelChain('content')
-    assert.equal(content[0].provider, 'sovereigneg')
-    assert.equal(content[0].model, 'claude-haiku-5.5')
+    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'gpt-oss-120b')
+    assert.equal(config.getRoleModelChain('director')[0].model, 'glm-5.3-flash')
+    assert.equal(config.getRoleModelChain('research')[0].model, 'SovereignEG/Qwen3.8-27B-FP8')
+    assert.equal(config.getRoleModelChain('content')[0].model, 'claude-haiku-5.5')
+    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'gpt-6-luna')
 
-    const analyst = config.getRoleModelChain('marketing-analyst')
-    assert.equal(analyst[0].provider, 'sovereigneg')
-    assert.equal(analyst[0].model, 'gpt-6-luna')
+    for (const fb of config.PROD_AI_FALLBACK_TEMPLATE as Array<{ provider: string; model: string }>) {
+      assert.equal(fb.provider, 'sovereigneg')
+    }
 
-    const director = config.getRoleModelChain('director')
-    assert.equal(director[0].provider, 'dahl')
-    assert.equal(director[1].provider, 'groq')
-    assert.equal(director.some((target: { model: string }) => target.model === 'gpt-6-luna'), false)
+    assert.equal(config.isModelAllowed('groq', 'openai/gpt-oss-120b'), false)
+    assert.throws(
+      () => config.assertModelAllowed('dahl', 'zai-org/GLM-5.3-Flash'),
+      config.ModelNotAllowedError,
+    )
   })
 })

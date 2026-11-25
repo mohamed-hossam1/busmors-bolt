@@ -103,25 +103,11 @@ export interface ResearchToolDeps {
   taskContext: ResearchTaskContext
   /** Optional sink for real web results (used to build the source list). */
   captureSource?: WebSourceCapture
+  /** Optional per-assignment cap on external search/scrape calls. */
+  maxWebCalls?: number
 }
 
-const categorySchema = z.enum([
-  'company_profile',
-  'offering',
-  'audience',
-  'brand_rule',
-  'positioning',
-  'strategic_goal',
-  'channel',
-  'competitor',
-  'company_fact',
-] as const satisfies readonly BrainCategory[])
-
-const readBusinessBrainInput = z.object({
-  query: z.string().max(200).optional(),
-  category: categorySchema.optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-})
+const readBusinessBrainInput = z.object({})
 
 const readSkillInput = z.object({
   skillId: z.string().min(1).max(128),
@@ -141,7 +127,7 @@ const firecrawlInput = z.object({
 })
 
 /** Truncate an excerpt for the model context (never a raw page dump). */
-function boundExcerpt(text: string, max = 800): string {
+function boundExcerpt(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
 }
 
@@ -154,13 +140,24 @@ function boundedSearch(provider: 'tavily' | 'exa', results: ResearchSource[]): {
   return {
     status: 'ok',
     provider,
-    results: results.slice(0, 8).map((r) => ({ title: r.title, url: r.url, excerpt: boundExcerpt(r.excerpt) })),
+    results: results.slice(0, 6).map((r) => ({ title: r.title, url: r.url, excerpt: boundExcerpt(r.excerpt) })),
   }
 }
 
 export function createResearchToolDefinitions(deps: ResearchToolDeps): ToolDefinition<any, any>[] {
   // Keep context clean (spec 3.7): capture only bounded excerpts, never full
   // pages, so a tool-heavy research loop does not bloat the next model request.
+  let webCalls = 0
+  const consumeWebBudget = (): { status: 'limit_reached'; message: string } | null => {
+    if (deps.maxWebCalls !== undefined && webCalls >= deps.maxWebCalls) {
+      return {
+        status: 'limit_reached',
+        message: 'Search budget reached for this research assignment. Synthesize your final JSON findings using the retrieved sources now.',
+      }
+    }
+    webCalls += 1
+    return null
+  }
   const capture = (source: ResearchSource): void => {
     deps.captureSource?.({ ...source, excerpt: boundExcerpt(source.excerpt) })
   }
@@ -185,11 +182,11 @@ export function createResearchToolDefinitions(deps: ResearchToolDeps): ToolDefin
     {
       name: 'read_business_brain',
       description:
-        'Read approved, current Business Brain facts for this workspace (read-only). Use approved facts as authoritative business knowledge; never invent facts.',
+        'Read ALL approved, current Business Brain facts for this workspace (returns the complete Business Brain with no category/query filter, read-only). Use approved facts as authoritative business knowledge; never invent facts.',
       external: false,
       inputSchema: readBusinessBrainInput,
-      execute: async (args: z.infer<typeof readBusinessBrainInput>) => {
-        const facts = await deps.brain.readApproved(args.query, args.category, args.limit)
+      execute: async () => {
+        const facts = await deps.brain.readApproved()
         return { facts }
       },
     },
@@ -219,6 +216,8 @@ export function createResearchToolDefinitions(deps: ResearchToolDeps): ToolDefin
       external: true,
       inputSchema: webSearchInput,
       execute: async (args: z.infer<typeof webSearchInput>) => {
+        const limited = consumeWebBudget()
+        if (limited) return limited
         const { webSearch } = await import('../../integrations/web-providers')
         const result = await webSearch('tavily', args.query, args.maxResults ?? 5)
         if (result.status === 'ok') {
@@ -239,6 +238,8 @@ export function createResearchToolDefinitions(deps: ResearchToolDeps): ToolDefin
       external: true,
       inputSchema: webSearchInput,
       execute: async (args: z.infer<typeof webSearchInput>) => {
+        const limited = consumeWebBudget()
+        if (limited) return limited
         const { webSearch } = await import('../../integrations/web-providers')
         const result = await webSearch('exa', args.query, args.maxResults ?? 5)
         if (result.status === 'ok') {
@@ -257,6 +258,8 @@ export function createResearchToolDefinitions(deps: ResearchToolDeps): ToolDefin
       external: true,
       inputSchema: firecrawlInput,
       execute: async (args: z.infer<typeof firecrawlInput>) => {
+        const limited = consumeWebBudget()
+        if (limited) return limited
         const { firecrawlScrape } = await import('../../integrations/web-providers')
         const result = await firecrawlScrape(args.url)
         if (result.status === 'ok') {

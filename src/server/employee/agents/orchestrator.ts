@@ -11,7 +11,7 @@ import {
   type DirectorHandoff,
 } from '../tools/orchestrator-tools'
 import { runDirector } from './director'
-import type { BrainStore, ProposeBrainChangeResult } from '../brain-store'
+import type { BrainFact, BrainStore, ProposeBrainChangeResult } from '../brain-store'
 import {
   createEmployeeRunState,
   type EmployeeRunState,
@@ -124,13 +124,18 @@ export const ORCHESTRATOR_PRODUCT_KNOWLEDGE = `Busmora is an AI marketing platfo
 Currently enabled:
 - Conversational help, general questions, and answers grounded in the owner's approved Business Brain.
 - Proposing Business Brain additions, edits, and deletions as pending approval cards for the owner to approve or reject.
-- Delegating substantive marketing tasks to the Director, who executes directly or (later) via specialists and returns real results, saved Deliverables, Calendar drafts, or a Clarification Card.
-
-Not enabled yet (built in later phases):
-- The specialist agents (research, content, marketing analysis). When the Director needs specialist depth it will report that the specialist is not enabled yet rather than promising delivery.`
+- Delegating substantive marketing tasks to the Director (which executes directly or delegates to specialists) and returns real results, saved Deliverables, Calendar drafts, or interactive Clarification Cards.`
 
 export function buildOrchestratorSystemPrompt(): string {
-  return `${ORCHESTRATOR_SYSTEM_PROMPT}\n\n## Product Reference (data)\n${ORCHESTRATOR_PRODUCT_KNOWLEDGE}`
+  return `${ORCHESTRATOR_SYSTEM_PROMPT}
+
+## Product Reference (data)
+${ORCHESTRATOR_PRODUCT_KNOWLEDGE}
+
+## Clarification and Delegation Rules
+- Whenever the owner asks for any marketing plan, ad campaign, strategy, content, calendar, market research, or performance diagnosis — even if the request is brief or missing details (goal, budget, target audience, duration, channels) — ALWAYS call delegate_to_director immediately.
+- NEVER ask campaign discovery questions or numbered lists of clarifying questions directly in chat text; only the Director can call ask_clarification to display interactive Clarification Cards.
+- On a follow-up or clarification reply inside an active conversation, DO NOT re-call read_business_brain unless the user just supplied new facts or explicitly asked to check/update Brain data; immediately call delegate_to_director with the user's reply and existing conversation context.`
 }
 
 export interface RunOrchestratorOptions {
@@ -207,10 +212,17 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
       options.workspaceId,
     )
 
-  // Wrap proposeChange so EVERY proposal (Orchestrator's own or the Director's,
-  // which receives this same wrapped store) is captured with full card detail.
+  // Wrap readApproved & proposeChange: memoize full-Brain reads within one turn
+  // so Orchestrator, Director and Research never hit brain_nodes repeatedly.
+  let cachedFullBrain: Promise<BrainFact[]> | null = null
   const brain: BrainStore = {
-    readApproved: (query, category, limit) => baseBrain.readApproved(query, category, limit),
+    readApproved: (query, category, limit) => {
+      if (!query && !category && !limit) {
+        if (!cachedFullBrain) cachedFullBrain = baseBrain.readApproved()
+        return cachedFullBrain
+      }
+      return baseBrain.readApproved(query, category, limit)
+    },
     proposeChange: async (input): Promise<ProposeBrainChangeResult> => {
       const result = await baseBrain.proposeChange(input)
       structured.brainProposals.push({
@@ -232,13 +244,90 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
     },
   }
 
+  const isContinuation = options.messages.length > 1
+  const baseWorkspace =
+    options.workspace ??
+    (isContinuation && options.supabase
+      ? (await import('../director-store')).createWorkspaceContextStore(
+          options.supabase as never,
+          options.workspaceId,
+        )
+      : undefined)
+  let cachedWorkspace: ReturnType<WorkspaceContextStore['read']> | null = null
+  const workspaceStore: WorkspaceContextStore | undefined = baseWorkspace
+    ? {
+        read: () => {
+          if (!cachedWorkspace) cachedWorkspace = baseWorkspace.read()
+          return cachedWorkspace
+        },
+      }
+    : undefined
+
+  let directorAttempts = 0
+  let lastDirectorStatus: string | null = null
+
+  const buildContinuationAppendix = async (): Promise<string> => {
+    if (!isContinuation) return ''
+    const prior = options.messages.slice(0, -1).slice(-6)
+    const lines: string[] = [
+      '',
+      '## Continuation Context (active conversation — resume from the user reply)',
+      'Prior conversation turns before the latest message:',
+    ]
+    for (const m of prior) {
+      const raw = typeof m.content === 'string' ? m.content.trim() : ''
+      if (!raw) continue
+      const compact = raw.length > 500 ? `${raw.slice(0, 500).trimEnd()}…` : raw
+      lines.push(`- ${m.role}: ${compact}`)
+    }
+    const [facts, ws] = await Promise.all([
+      brain.readApproved().catch(() => [] as BrainFact[]),
+      workspaceStore ? workspaceStore.read().catch(() => null) : Promise.resolve(null),
+    ])
+    if (ws) {
+      lines.push(
+        `Preloaded Workspace Context: companyName=${ws.companyName ?? 'unknown'}, settings=${ws.settings ? JSON.stringify(ws.settings) : 'none'}`,
+      )
+    }
+    if (facts.length > 0) {
+      lines.push(`Preloaded Business Brain (${facts.length} approved facts):`)
+      for (const f of facts.slice(0, 30)) {
+        lines.push(`- [${f.category}] ${f.title}: ${f.summary}`)
+      }
+    }
+    lines.push(
+      'IMPORTANT: Continue directly from after the user reply. Do NOT re-call read_business_brain or read_workspace_context unless the user just added/edited business info or explicitly asked to inspect Brain/workspace settings again.',
+    )
+    return lines.join('\n')
+  }
+
   const registry = createToolRegistry(
     createOrchestratorToolDefinitions({
       brain,
-      runDirector: (handoff) =>
-        runDirector({
+      runDirector: async (handoff) => {
+        // Never cascade a second full Director loop from scratch inside the same
+        // turn after an error/timeout/rate-limit failure; that doubles tokens and
+        // triggers TPM rate limits.
+        if (directorAttempts >= 1 && lastDirectorStatus !== 'completed') {
+          structured.directorFailed = true
+          return {
+            text: '',
+            status: 'partial',
+            stopReason: 'error',
+            loadedSkills: tracker.listLoadedSkills(),
+            usedTools: tracker.listUsedTools(),
+            clarification: null,
+            deliverables: [],
+            drafts: [],
+            brainProposals: [],
+            research: [],
+          }
+        }
+        directorAttempts += 1
+        const continuationAppendix = await buildContinuationAppendix()
+        const directorResult = await runDirector({
           workspaceId: options.workspaceId,
-          input: renderDirectorInput(handoff),
+          input: `${renderDirectorInput(handoff)}${continuationAppendix}`,
           traceContext: {
             traceId: options.traceContext.traceId,
             parentEventId: orchestratorInstanceId,
@@ -251,19 +340,22 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
           brain,
           deliverables: options.deliverables,
           calendar: options.calendar,
-          workspace: options.workspace,
-        }).then((directorResult) => {
-          // Merge the Director's structured outputs into the shared run state.
-          if (directorResult.clarification) structured.clarification = directorResult.clarification
-          structured.deliverables.push(...directorResult.deliverables)
-          structured.drafts.push(...directorResult.drafts)
-          // Preserve the Director's real prose so a tool-only Orchestrator turn
-          // never replaces it with a generic fallback reply.
-          if (!structured.directorReply && directorResult.text && directorResult.text.trim()) {
-            structured.directorReply = directorResult.text
-          }
-          return directorResult
-        }),
+          workspace: workspaceStore ?? options.workspace,
+        })
+        lastDirectorStatus = directorResult.status
+        // Merge the Director's structured outputs into the shared run state.
+        if (directorResult.clarification) structured.clarification = directorResult.clarification
+        structured.deliverables.push(...directorResult.deliverables)
+        structured.drafts.push(...directorResult.drafts)
+        // Preserve the Director's real prose so a tool-only Orchestrator turn
+        // never replaces it with a generic fallback reply.
+        if (!structured.directorReply && directorResult.text && directorResult.text.trim()) {
+          structured.directorReply = directorResult.text
+        } else if (directorResult.status !== 'completed' && !directorResult.text?.trim()) {
+          structured.directorFailed = true
+        }
+        return directorResult
+      },
     }),
   )
   const tools = getToolsForRole('orchestrator', registry, {
@@ -287,6 +379,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
     runTurn: options.runTurn,
     instanceId: orchestratorInstanceId,
     label: 'orchestrator',
+    hasIncompleteWork: () => structured.directorFailed === true,
   })
 
   return { ...result, structured }

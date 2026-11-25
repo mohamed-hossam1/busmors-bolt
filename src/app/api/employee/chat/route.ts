@@ -13,9 +13,10 @@ import {
   type ConversationSupabase,
 } from '@/server/employee/conversation-store'
 import { ensureNonEmptyReply, isArabicText } from '@/server/employee/reply'
+import { describeLiveTraceStep } from '@/server/employee/live-status'
 import { projectTraceEvents } from '@/server/employee/trace-projection'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 /**
  * Employee chat entry point (Phase 3.5).
@@ -139,45 +140,161 @@ export async function POST(request: Request) {
       route: '/api/employee/chat',
     })
 
-    const result = await runOrchestrator({
-      workspaceId,
-      userId: user.id,
-      conversationId,
-      messages: modelMessages,
-      traceContext: { traceId },
-      collector,
-      supabase,
-    })
+    const arabic = isArabicText(userText)
+    const wantsStream =
+      body.stream === true ||
+      (request.headers.get('accept') ?? '').includes('text/event-stream')
 
-    // Guarantee a visible, non-empty reply even for tool-only turns.
-    const reply = ensureNonEmptyReply(result.output, result.structured, isArabicText(userText))
+    if (!wantsStream) {
+      const result = await runOrchestrator({
+        workspaceId,
+        userId: user.id,
+        conversationId,
+        messages: modelMessages,
+        traceContext: { traceId },
+        collector,
+        supabase,
+      })
 
-    await appendMessage(db, {
-      id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      role: 'assistant',
-      content: reply,
-      metadata: {
-        ...result.structured,
+      // Guarantee a visible, non-empty reply even for tool-only turns.
+      const reply = ensureNonEmptyReply(result.output, result.structured, arabic, {
         status: result.status,
         stopReason: result.stopReason,
+      })
+
+      await appendMessage(db, {
+        id: crypto.randomUUID(),
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: reply,
+        metadata: {
+          ...result.structured,
+          usedTools: result.usedTools,
+          loadedSkills: result.loadedSkills,
+          status: result.status,
+          stopReason: result.stopReason,
+          traceId,
+        },
+      })
+
+      return Response.json({
+        reply,
+        conversationId,
+        status: result.status,
+        stopReason: result.stopReason,
+        usedTools: result.usedTools,
+        loadedSkills: result.loadedSkills,
         traceId,
+        events: projectTraceEvents(collector.getEvents()),
+        brainProposals: result.structured.brainProposals,
+        clarification: result.structured.clarification,
+        deliverables: result.structured.deliverables,
+        drafts: result.structured.drafts,
+      })
+    }
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let closed = false
+        const emit = (eventName: string, payload: unknown) => {
+          if (closed) return
+          try {
+            controller.enqueue(encoder.encode(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`))
+          } catch {
+            closed = true
+          }
+        }
+
+        let lastStatus = arabic ? 'فهم طلبك ومراجعة السياق...' : 'Understanding your request...'
+        emit('init', { traceId, conversationId })
+        emit('status', { label: lastStatus })
+
+        const unsubscribe = collector.subscribe((traceEvent) => {
+          const nextLabel = describeLiveTraceStep(traceEvent, arabic)
+          if (nextLabel && nextLabel !== lastStatus) {
+            lastStatus = nextLabel
+            emit('status', { label: nextLabel })
+          }
+          if (
+            traceEvent.event_type === 'agent' ||
+            traceEvent.event_type === 'tool' ||
+            traceEvent.event_type === 'skill'
+          ) {
+            emit('trace', { events: projectTraceEvents(collector.getEvents()) })
+          }
+        })
+
+        try {
+          const result = await runOrchestrator({
+            workspaceId,
+            userId: user.id,
+            conversationId,
+            messages: modelMessages,
+            traceContext: { traceId },
+            collector,
+            abortSignal: request.signal,
+            supabase,
+          })
+
+          const reply = ensureNonEmptyReply(result.output, result.structured, arabic, {
+            status: result.status,
+            stopReason: result.stopReason,
+          })
+
+          await appendMessage(db, {
+            id: crypto.randomUUID(),
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: reply,
+            metadata: {
+              ...result.structured,
+              usedTools: result.usedTools,
+              loadedSkills: result.loadedSkills,
+              status: result.status,
+              stopReason: result.stopReason,
+              traceId,
+            },
+          })
+
+          emit('done', {
+            reply,
+            conversationId,
+            status: result.status,
+            stopReason: result.stopReason,
+            usedTools: result.usedTools,
+            loadedSkills: result.loadedSkills,
+            traceId,
+            events: projectTraceEvents(collector.getEvents()),
+            brainProposals: result.structured.brainProposals,
+            clarification: result.structured.clarification,
+            deliverables: result.structured.deliverables,
+            drafts: result.structured.drafts,
+          })
+        } catch (err) {
+          emit('error', {
+            error: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+          })
+        } finally {
+          unsubscribe()
+          if (!closed) {
+            closed = true
+            try {
+              controller.close()
+            } catch {
+              // ignore already closed
+            }
+          }
+        }
       },
     })
 
-    return Response.json({
-      reply,
-      conversationId,
-      status: result.status,
-      stopReason: result.stopReason,
-      usedTools: result.usedTools,
-      loadedSkills: result.loadedSkills,
-      traceId,
-      events: projectTraceEvents(collector.getEvents()),
-      brainProposals: result.structured.brainProposals,
-      clarification: result.structured.clarification,
-      deliverables: result.structured.deliverables,
-      drafts: result.structured.drafts,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
     })
   } catch (error) {
     return apiError(error)

@@ -170,6 +170,8 @@ export interface RunAgentOptions {
   runTurn?: AgentTurnRunner
   /** Optional label stored on the agent trace event. */
   label?: string
+  /** Optional hook indicating a finished tool-only turn still failed/is incomplete. */
+  hasIncompleteWork?: () => boolean
 }
 
 export interface RunAgentResult {
@@ -201,7 +203,7 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     collector?.recordAgent({
       agentId: instanceId,
       agentRole: options.role,
-      parentAgentId: null,
+      parentAgentId: options.traceContext.parentEventId ?? null,
       label: options.label ?? options.role,
       status: 'running',
       startedAt,
@@ -222,6 +224,7 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     collector?.recordAgent({
       agentId: instanceId,
       agentRole: options.role,
+      parentAgentId: options.traceContext.parentEventId ?? null,
       label: options.label ?? options.role,
       status,
       startedAt,
@@ -339,6 +342,11 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     stopReason = 'budget_llm'
   }
 
-  const completed = stopReason === 'finished' && output.trim().length > 0
+  const usedToolsInTurn =
+    tracker.listUsedTools().length > 0 ||
+    turn.steps.some((step) => Array.isArray(step.toolCalls) && step.toolCalls.length > 0)
+  const hasOutputOrTools =
+    output.trim().length > 0 || (usedToolsInTurn && !options.hasIncompleteWork?.())
+  const completed = stopReason === 'finished' && hasOutputOrTools
   return finish(completed ? 'completed' : 'partial', output, turn.usage, stopReason)
 }

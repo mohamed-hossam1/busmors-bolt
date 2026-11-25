@@ -36,18 +36,21 @@ export const BRAIN_CATEGORIES = [
 const categorySchema = z.enum(BRAIN_CATEGORIES)
 const propertiesSchema = z.record(z.string(), z.unknown())
 
-const readBusinessBrainInput = z.object({
-  query: z.string().max(200).optional(),
-  category: categorySchema.optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-})
+const readBusinessBrainInput = z.object({})
 
 const proposeBrainChangeInput = z.object({
   action: z.enum(['add', 'edit', 'delete']),
   nodeId: z.string().min(1).max(64).optional(),
-  title: z.string().min(1).max(150),
-  summary: z.string().max(6000),
-  category: categorySchema,
+  title: z.string().min(1).max(150).describe('Concise, specific title of the business fact (in the owner language).'),
+  summary: z
+    .string()
+    .max(6000)
+    .describe(
+      'Concrete factual statement containing all actual details (locations, numbers, prices, trial duration, rules). NEVER write a meta-description like "Add details about..." or "إضافة تفاصيل...".',
+    ),
+  category: categorySchema.describe(
+    'Use company_fact for operating regions/facts/metrics, offering for products/plans/free trials/pricing, audience for customers, brand_rule for voice/rules, channel for channels, positioning for differentiation, strategic_goal for goals, competitor for competitors. Use company_profile ONLY when editing the existing primary company profile node.',
+  ),
   properties: propertiesSchema.optional(),
   oldValues: propertiesSchema.optional(),
   newValues: propertiesSchema.optional(),
@@ -132,28 +135,34 @@ export function createOrchestratorToolDefinitions(
     {
       name: 'read_business_brain',
       description:
-        'Read approved, current Business Brain facts for this workspace. Read-only. Use it to answer business-specific questions accurately; never invent facts.',
+        'Read ALL approved, current Business Brain facts for this workspace (returns the full Business Brain with no category/query filter, read-only). Use it to answer business-specific questions accurately; never invent facts.',
       external: false,
       inputSchema: readBusinessBrainInput,
-      execute: async (args: z.infer<typeof readBusinessBrainInput>) => {
-        const facts = await deps.brain.readApproved(args.query, args.category, args.limit)
+      execute: async () => {
+        const facts = await deps.brain.readApproved()
         return { facts }
       },
     },
     {
       name: 'propose_brain_change',
       description:
-        'Propose a durable Business Brain addition, edit, or deletion for owner approval. Creates a pending approval card only; it never applies or approves the change. Include old/new values for edits, the source, and a rationale. Check for duplicates/conflicts first.',
+        'Propose a durable Business Brain addition, edit, or deletion for owner approval. Creates a pending approval card only; it never applies or approves the change. Write the actual concrete facts (exact regions, numbers, prices, trial days) inside `summary` and `properties`—never a meta-description like "Add details about...". Reserve `company_profile` for editing the primary company node (`action="edit"` with its `nodeId`); use `company_fact` for operational facts/locations and `offering` for offers/trials/pricing. Include old/new values for edits, the source, and a rationale. Check for duplicates/conflicts first.',
       external: false,
       inputSchema: proposeBrainChangeInput,
       execute: async (args: z.infer<typeof proposeBrainChangeInput>) => {
+        const effectiveProperties =
+          args.properties && Object.keys(args.properties).length > 0
+            ? args.properties
+            : args.newValues && Object.keys(args.newValues).length > 0
+              ? args.newValues
+              : null
         const input: ProposeBrainChangeInput = {
           action: args.action,
           nodeId: args.nodeId ?? null,
           title: args.title,
           summary: args.summary,
           category: args.category,
-          properties: args.properties ?? null,
+          properties: effectiveProperties,
           oldValues: args.oldValues ?? null,
           newValues: args.newValues ?? null,
           source: args.source,
@@ -167,7 +176,7 @@ export function createOrchestratorToolDefinitions(
     {
       name: 'delegate_to_director',
       description:
-        'Hand a substantive marketing task to the Director with a structured handoff (original request, intended outcome, context, constraints, output language, task references, and clearly labelled unapproved facts). Returns the Director real result, including any saved Deliverable/draft ids or a Clarification Card.',
+        'Hand ANY substantive marketing task (campaigns, ads, strategy, content, calendar, research, analysis — even if brief or missing details) to the Director with a structured handoff (original request, intended outcome, context, constraints, output language, task references, and clearly labelled unapproved facts). Never ask campaign discovery questions in chat text yourself; the Director inspects the full Business Brain and handles interactive Clarification Cards, Deliverables, or Calendar drafts.',
       external: false,
       inputSchema: DIRECTOR_HANDOFF_SCHEMA,
       execute: async (args: DirectorHandoff) => {

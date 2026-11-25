@@ -177,13 +177,11 @@ export async function executeWithFallback(options: {
     logPrefix = '[ai-fallback]',
   } = options
 
-  // In test mode, SovereignEG is strictly excluded so no tokens are consumed.
+  // Enforce environment model policy (test allowlist or production SovereignEG-only).
   const isTestMode = CURRENT_AI_MODE === 'test'
-  if (isTestMode) {
-    assertModelAllowed(primary.provider, primary.model)
-    for (const fallback of fallbacks) {
-      assertModelAllowed(fallback.provider, fallback.model)
-    }
+  assertModelAllowed(primary.provider, primary.model)
+  for (const fallback of fallbacks) {
+    assertModelAllowed(fallback.provider, fallback.model)
   }
   const effectivePrimary = isTestMode && primary.provider === 'sovereigneg' ? null : primary
   const targets: ExecutionTarget[] = effectivePrimary ? [effectivePrimary] : []

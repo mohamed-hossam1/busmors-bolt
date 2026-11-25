@@ -52,10 +52,19 @@ export interface EmployeeRunState {
    * "all done" message. Null when no Director ran or it produced no text.
    */
   directorReply: string | null
+  /** True when the Director failed/stopped partially in this turn without prose. */
+  directorFailed?: boolean
 }
 
 export function createEmployeeRunState(): EmployeeRunState {
-  return { brainProposals: [], clarification: null, deliverables: [], drafts: [], directorReply: null }
+  return {
+    brainProposals: [],
+    clarification: null,
+    deliverables: [],
+    drafts: [],
+    directorReply: null,
+    directorFailed: false,
+  }
 }
 
 /** True when the turn produced at least one structured artifact. */

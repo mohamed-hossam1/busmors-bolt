@@ -166,4 +166,38 @@ describe('central model gateway', () => {
     )
     assert.equal(calls.length, 1)
   })
+
+  it('repairs malformed JSON tool call inputs deterministically', () => {
+    const fenced = gatewayModule.repairMalformedToolCallJson('```json\n{"a": "hello\nworld", "b": 1,}\n```')
+    assert.ok(fenced)
+    assert.deepEqual(JSON.parse(fenced), { a: 'hello\nworld', b: 1 })
+
+    assert.equal(gatewayModule.repairMalformedToolCallJson('{not valid at all'), null)
+  })
+
+  it('falls back to the next provider when step 0 fails on malformed tool call JSON', async () => {
+    const jsonParseFailure = Object.assign(new Error('Failed to parse tool call arguments as JSON'), {
+      name: 'AI_JSONParseError',
+    })
+    const { calls, generate } = mockSequence([
+      jsonParseFailure,
+      {
+        text: 'recovered response',
+        usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+        finishReason: 'stop',
+      },
+    ])
+    const runTurn = gatewayModule.createAgentTurnRunner({ generateText: generate as never })
+
+    const result = await runTurn({
+      role: 'director',
+      system: 'system',
+      prompt: 'prompt',
+    })
+
+    assert.equal(calls.length, 2)
+    assert.equal(result.provider, 'dahl')
+    assert.equal(result.text, 'recovered response')
+    assert.equal(result.fallback.used, true)
+  })
 })

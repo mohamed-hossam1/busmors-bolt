@@ -75,4 +75,16 @@ describe('ensureNonEmptyReply', () => {
     assert.ok(ar.trim().length > 0)
     assert.notEqual(en, ar)
   })
+
+  it('surfaces an honest partial/timeout notice instead of All done when run failed with no output', () => {
+    const state = createEmployeeRunState()
+    const ar = ensureNonEmptyReply('', state, true, { status: 'partial', stopReason: 'error' })
+    const en = ensureNonEmptyReply('', state, false, { status: 'partial', stopReason: 'budget_time' })
+    assert.equal(ar.includes('تمام، خلصت'), false)
+    assert.equal(en.includes('All done'), false)
+
+    const failedState = { ...createEmployeeRunState(), directorFailed: true }
+    const arFailed = ensureNonEmptyReply('', failedState, true, { status: 'completed', stopReason: 'finished' })
+    assert.equal(arFailed.includes('تمام، خلصت'), false)
+  })
 })

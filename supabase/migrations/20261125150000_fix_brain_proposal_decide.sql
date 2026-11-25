@@ -62,10 +62,10 @@ BEGIN
       SELECT * INTO n FROM brain_nodes WHERE id=proposal.node_id AND workspace_id=w FOR UPDATE;
       IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
       IF n.version IS DISTINCT FROM p_expected_version THEN RAISE EXCEPTION 'STALE_VERSION'; END IF;
-      n:=update_brain_item(n.id,n.version,d->>'title',d->>'summary',d->>'category',d->'properties','approved');
+      n:=update_brain_item(n.id,n.version,d->>'title',d->>'summary',d->>'category',coalesce(NULLIF(d->'properties','{}'::jsonb),d->'new_values','{}'::jsonb),'approved');
     ELSE
       INSERT INTO brain_nodes(workspace_id,category,title,summary,properties,status,source,source_detail,confidence,epistemic_kind,approval_state,verification_state,provenance)
-        VALUES(w,d->>'category',btrim(d->>'title'),coalesce(d->>'summary',''),coalesce(d->'properties','{}'),'approved',
+        VALUES(w,d->>'category',btrim(d->>'title'),coalesce(d->>'summary',''),coalesce(NULLIF(d->'properties','{}'::jsonb),d->'new_values','{}'::jsonb),'approved',
           CASE WHEN p_edit IS NULL THEN 'crawler' ELSE 'manual' END,d->>'source_detail',1,
           CASE WHEN d->>'epistemic_kind'='inference' THEN 'inference' ELSE 'claim' END,
           'approved',CASE WHEN p_edit IS NULL THEN 'unverified' ELSE 'owner_reported' END,
@@ -96,7 +96,7 @@ BEGIN
     SELECT * INTO n FROM brain_nodes WHERE id=proposal.node_id AND workspace_id=w FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
     IF n.version IS DISTINCT FROM p_expected_version THEN RAISE EXCEPTION 'STALE_VERSION'; END IF;
-    n:=update_brain_item(n.id,n.version,d->>'title',d->>'summary',d->>'category',d->'properties','approved');
+    n:=update_brain_item(n.id,n.version,d->>'title',d->>'summary',d->>'category',coalesce(NULLIF(d->'properties','{}'::jsonb),NULLIF(d->'new_values','{}'::jsonb),n.properties),'approved');
     UPDATE brain_nodes SET source=CASE WHEN p_edit IS NULL THEN 'crawler' ELSE 'manual' END,source_detail=d->>'source_detail',
       epistemic_kind=CASE WHEN d->>'epistemic_kind'='inference' THEN 'inference' ELSE 'claim' END,
       verification_state=CASE WHEN p_edit IS NULL THEN 'unverified' ELSE 'owner_reported' END,

@@ -82,7 +82,11 @@ export function buildDirectorSystemPrompt(catalog: SkillSummary[]): string {
   return `${DIRECTOR_SYSTEM_PROMPT}
 
 ## Registered Skills (compact catalog — read one with read_skill only when needed)
-${formatCatalog(catalog)}`
+${formatCatalog(catalog)}
+
+## Execution Budget & Continuation (runtime)
+- If Continuation Context and Preloaded Business Brain/Workspace Context are already provided in your task input, do NOT re-call read_business_brain or read_workspace_context; resume directly from the user's reply.
+- Keep external research tight: delegate deep research once via delegate_agent(role: "research") (at most 1 revision only if a critical gap blocks the deliverable), do NOT stack multiple sequential research runs or run redundant direct tavily_search/firecrawl_scrape loops afterward. As soon as findings return, synthesize and persist via create_or_version_deliverable right away.`
 }
 
 export interface DirectorOutput {
@@ -243,11 +247,22 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
   // revision reuses the last research result when the model omits priorResult.
   const researchResults: ResearchResult[] = []
   let lastResearch: ResearchResult | null = null
+  let researchDelegationCount = 0
+  const maxResearchDelegations = 2
   const limiter = createConcurrencyLimiter(AGENT_BUDGETS.maxConcurrentSpecialistSubtasks)
   const delegate = async (request: DelegateSpecialistRequest): Promise<DelegateSpecialistResult> => {
     if (request.role !== 'research') {
       return { status: 'unavailable', role: request.role, message: `Specialist ${request.role} is not enabled yet` }
     }
+    if (researchDelegationCount >= maxResearchDelegations && lastResearch) {
+      return {
+        status: 'completed',
+        role: 'research',
+        message: 'Research run limit reached for this turn. Synthesize the existing findings and save the deliverable now.',
+        result: compactResearchResult(lastResearch),
+      }
+    }
+    researchDelegationCount += 1
     const prior = parsePriorResult(request.priorResult) ?? (request.revisionFeedback ? lastResearch : null)
     return limiter.run(async () => {
       const researchResult = await runResearchAgent({
@@ -283,6 +298,7 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
       workspace: stores.workspace,
       runState,
       delegate,
+      maxDirectWebCalls: 4,
       loadSkill: async (skillId) => {
         const skill = await loadSkill('director', skillId, tracker)
         collector?.recordSkill({
@@ -320,11 +336,26 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
     abortSignal: options.abortSignal,
     runTurn: options.runTurn,
     instanceId,
+    maxSteps: 12,
     label: 'director',
   })
 
+  // Never throw away verified research findings if the Director hit a limit before
+  // writing prose or saving a Deliverable.
+  let finalOutput = result.output
+  if (!finalOutput.trim() && researchResults.length > 0 && runState.deliverables.length === 0) {
+    const latest = researchResults[researchResults.length - 1]
+    if (latest.findings.length > 0) {
+      const topFindings = latest.findings
+        .slice(0, 8)
+        .map((f) => `- ${f.claim}${f.sourceUrls[0] ? ` (${f.sourceUrls[0]})` : ''}`)
+        .join('\n')
+      finalOutput = `تم جمع نتائج بحث موثقة (لكن التنفيذ توقف قبل حفظ التقرير كـ Deliverable):\n\n${topFindings}`
+    }
+  }
+
   return {
-    text: result.output,
+    text: finalOutput,
     status: result.status,
     stopReason: result.stopReason,
     loadedSkills: result.loadedSkills,

@@ -331,7 +331,9 @@ export default function DeliverablesPage() {
                     <h3 className="font-semibold leading-snug">{item.title}</h3>
                     <span className="badge shrink-0 bg-primary-50 text-primary-700">{t(`type_${item.type}` as never)}</span>
                   </div>
-                  <p className="mt-1.5 line-clamp-3 whitespace-pre-line text-sm text-ink-600">{item.content}</p>
+                  <div className="relative mt-1.5 max-h-[4.7rem] overflow-hidden text-sm text-ink-600 [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
+                    <MarkdownContent content={item.content} className="text-sm leading-relaxed" />
+                  </div>
                   <div className="mt-6 flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-ink-100/60">
                     <span className="text-xs text-ink-400">{formatWorkspaceTime(item.created_at, tz, { dateStyle: 'medium', timeStyle: undefined })} · {t('versionShort', { version: item.version })}</span>
                     <div className="flex gap-2">

@@ -47,10 +47,11 @@ export class AiConfigurationError extends Error {
 }
 
 export class ModelNotAllowedError extends Error {
-  constructor(provider: string, model: string) {
+  constructor(provider: string, model: string, mode: AiEnvironmentMode = AI_MODE) {
     super(
-      `Model ${provider}/${model} is not allowed in AI_MODE=test. ` +
-        'Only Groq/openai/gpt-oss-120b and Dahl/zai-org/GLM-5.3-Flash may be dispatched.',
+      mode === 'production'
+        ? `Model ${provider}/${model} is not allowed in AI_MODE=production. Only sovereigneg models may be dispatched.`
+        : `Model ${provider}/${model} is not allowed in AI_MODE=test. Only Groq/openai/gpt-oss-120b, Dahl/zai-org/GLM-5.3-Flash, and Apinex/free/gpt-6-luna may be dispatched.`,
     )
     this.name = 'ModelNotAllowedError'
   }
@@ -85,12 +86,16 @@ export const TEST_ALLOWED_MODELS = [
   { provider: 'apinex', model: 'free/gpt-6-luna' },
 ] as const satisfies readonly ModelTarget[]
 
+export const PRODUCTION_ALLOWED_PROVIDER: AiProvider = 'sovereigneg'
+
 export function isModelAllowed(
   provider: string,
   model: string,
   mode: AiEnvironmentMode = AI_MODE,
 ): boolean {
-  if (mode !== 'test') return true
+  if (mode === 'production') {
+    return provider === PRODUCTION_ALLOWED_PROVIDER
+  }
   return TEST_ALLOWED_MODELS.some((allowed) => allowed.provider === provider && allowed.model === model)
 }
 
@@ -100,7 +105,7 @@ export function assertModelAllowed(
   mode: AiEnvironmentMode = AI_MODE,
 ): void {
   if (!isModelAllowed(provider, model, mode)) {
-    throw new ModelNotAllowedError(provider, model)
+    throw new ModelNotAllowedError(provider, model, mode)
   }
 }
 
@@ -109,26 +114,35 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.2,
       primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [{ provider: 'apinex', model: 'free/gpt-6-luna' }],
+      fallbacks: [
+        { provider: 'apinex', model: 'free/gpt-6-luna' },
+        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      ],
     },
     production: {
       temperature: 0.2,
-      primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [{ provider: 'sovereigneg', model: 'openai/gpt-oss-120b' }],
+      primary: { provider: 'sovereigneg', model: 'gpt-oss-120b' },
+      fallbacks: [
+        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
+        { provider: 'sovereigneg', model: 'gpt-6-luna' },
+      ],
     },
   },
   director: {
     test: {
       temperature: 0.3,
       primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
+      fallbacks: [
+        { provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      ],
     },
     production: {
       temperature: 0.3,
-      primary: { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      primary: { provider: 'sovereigneg', model: 'glm-5.3-flash' },
       fallbacks: [
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
-        { provider: 'sovereigneg', model: 'gpt-6-luna', disabled: true },
+        { provider: 'sovereigneg', model: 'gpt-6-luna' },
+        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
       ],
     },
   },
@@ -136,14 +150,17 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.3,
       primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
+      fallbacks: [
+        { provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      ],
     },
     production: {
       temperature: 0.3,
       primary: { provider: 'sovereigneg', model: 'SovereignEG/Qwen3.8-27B-FP8' },
       fallbacks: [
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
+        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
       ],
     },
   },
@@ -151,14 +168,17 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.7,
       primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [{ provider: 'apinex', model: 'free/gpt-6-luna' }],
+      fallbacks: [
+        { provider: 'apinex', model: 'free/gpt-6-luna' },
+        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      ],
     },
     production: {
       temperature: 0.7,
       primary: { provider: 'sovereigneg', model: 'claude-haiku-5.5' },
       fallbacks: [
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+        { provider: 'sovereigneg', model: 'gpt-6-luna' },
+        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
       ],
     },
   },
@@ -166,14 +186,17 @@ const ROLE_AI_MODELS = {
     test: {
       temperature: 0.3,
       primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [{ provider: 'groq', model: 'openai/gpt-oss-120b' }],
+      fallbacks: [
+        { provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
+      ],
     },
     production: {
       temperature: 0.3,
       primary: { provider: 'sovereigneg', model: 'gpt-6-luna' },
       fallbacks: [
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
+        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
+        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
       ],
     },
   },
@@ -181,11 +204,17 @@ const ROLE_AI_MODELS = {
 
 export const AI_MODELS = {
   ...ROLE_AI_MODELS,
-  onboardingCrawl: {
-    provider: 'groq',
-    model: 'openai/gpt-oss-120b',
-    temperature: 0.1,
-  } satisfies ModelConfig,
+  onboardingCrawl: (AI_MODE === 'production'
+    ? {
+        provider: 'sovereigneg',
+        model: 'gpt-oss-120b',
+        temperature: 0.1,
+      }
+    : {
+        provider: 'groq',
+        model: 'openai/gpt-oss-120b',
+        temperature: 0.1,
+      }) satisfies ModelConfig,
 } as const
 
 export function getRoleModelChain(
@@ -214,24 +243,19 @@ export function getModelConfigForOperation(operation: string): ModelConfig {
 export const PROD_AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
   {
     provider: 'sovereigneg',
-    model: 'openai/gpt-oss-120b',
+    model: 'gpt-oss-120b',
     timeoutMs: 20000,
   },
   {
-    provider: 'groq',
-    model: 'openai/gpt-oss-120b',
-    timeoutMs: 20000,
-  },
-  {
-    provider: 'groq',
-    model: 'openai/gpt-oss-20b',
-    timeoutMs: 15000,
-  },
-  {
-    provider: 'dahl',
-    model: 'zai-org/GLM-5.3-Flash',
+    provider: 'sovereigneg',
+    model: 'glm-5.3-flash',
     timeoutMs: 25000,
     reasoningEffort: 'none',
+  },
+  {
+    provider: 'sovereigneg',
+    model: 'gpt-6-luna',
+    timeoutMs: 25000,
   },
 ] as const
 

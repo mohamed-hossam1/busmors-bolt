@@ -266,6 +266,9 @@ function buildResearchInput(options: RunResearchOptions): string {
 
   lines.push('')
   lines.push(
+    'Efficiency rules: Keep external web searches/scrapes concise (at most 6–8 total calls; batch searches in parallel, stop once you have solid primary sources). If Context already includes Business Brain facts, do not re-call read_business_brain. Return your structured JSON as soon as sufficient evidence is collected.',
+  )
+  lines.push(
     'Return your structured result as a single fenced ```json block with this shape ' +
       '(omit empty arrays, keep evidence excerpts in the source language):',
   )
@@ -284,6 +287,9 @@ function buildResearchInput(options: RunResearchOptions): string {
     }),
   )
   lines.push('Only cite sourceUrls that actually came from your tool results. Never invent URLs, prices or statistics.')
+  lines.push(
+    'Efficiency rules: keep web tool calls focused (at most 6-8 searches/scrapes total, batching parallel queries where helpful). Skip read_business_brain if Context already provides the company facts. As soon as you have sufficient evidence, stop searching and output your ```json block immediately.',
+  )
   return lines.join('\n')
 }
 
@@ -312,6 +318,7 @@ export async function runResearchAgent(options: RunResearchOptions): Promise<Res
     createResearchToolDefinitions({
       brain: stores.brain,
       deliverables: stores.deliverables,
+      maxWebCalls: 8,
       taskContext: {
         assignment: options.assignment,
         priorFindings: Array.isArray(options.priorResult?.findings) ? options.priorResult!.findings! : [],
@@ -360,6 +367,7 @@ export async function runResearchAgent(options: RunResearchOptions): Promise<Res
     abortSignal: options.abortSignal,
     runTurn: options.runTurn,
     instanceId,
+    maxSteps: 8,
     label: revisionOf ? 'research-revision' : 'research',
   })
 

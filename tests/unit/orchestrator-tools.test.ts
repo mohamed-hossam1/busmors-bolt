@@ -115,6 +115,27 @@ describe('propose_brain_change', () => {
     assert.equal('approve' in (store as unknown as Record<string, unknown>), false)
     assert.equal('apply' in (store as unknown as Record<string, unknown>), false)
   })
+
+  it('forwards newValues into properties when adding a fact without explicit properties', async () => {
+    const { store, calls } = makeFakeBrain()
+    const tools = toolsFor(store)
+
+    await tools.propose_brain_change.execute({
+      action: 'add',
+      title: 'مناطق العمل والتجربة المجانية',
+      summary: 'نعمل في مصر والسعودية ونقدم تجربة مجانية لمدة 14 يوم.',
+      category: 'company_fact',
+      newValues: { regions: ['مصر', 'السعودية'], free_trial_days: 14 },
+      source: 'معلومات مقدمة من صاحب العمل',
+      rationale: 'توضيح نطاق الخدمة الجغرافي وعرض التجربة المجانية.',
+    })
+
+    assert.equal(calls.propose.length, 1)
+    assert.deepEqual(calls.propose[0].properties, {
+      regions: ['مصر', 'السعودية'],
+      free_trial_days: 14,
+    })
+  })
 })
 
 describe('delegate_to_director', () => {

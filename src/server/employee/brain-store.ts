@@ -73,8 +73,8 @@ export interface BrainStore {
   proposeChange(input: ProposeBrainChangeInput): Promise<ProposeBrainChangeResult>
 }
 
-const DEFAULT_LIMIT = 50
-const MAX_LIMIT = 100
+const DEFAULT_LIMIT = 200
+const MAX_LIMIT = 500
 
 function toFact(row: unknown): BrainFact | null {
   if (!row || typeof row !== 'object') return null

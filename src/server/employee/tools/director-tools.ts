@@ -136,13 +136,11 @@ export interface DirectorToolDeps {
    * Research Agent for role "research" and reports the others unavailable.
    */
   delegate?: (request: DelegateSpecialistRequest) => Promise<DelegateSpecialistResult>
+  /** Optional cap on direct web calls by the Director in a single turn. */
+  maxDirectWebCalls?: number
 }
 
-const readBusinessBrainInput = z.object({
-  query: z.string().max(200).optional(),
-  category: categorySchema.optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-})
+const readBusinessBrainInput = z.object({})
 
 const readSkillInput = z.object({
   skillId: z.string().min(1).max(128),
@@ -183,9 +181,16 @@ const createPostDraftInput = z.object({
 const proposeBrainChangeInput = z.object({
   action: z.enum(['add', 'edit', 'delete']),
   nodeId: z.string().min(1).max(64).optional(),
-  title: z.string().min(1).max(150),
-  summary: z.string().max(6000),
-  category: categorySchema,
+  title: z.string().min(1).max(150).describe('Concise, specific title of the business fact (in the owner language).'),
+  summary: z
+    .string()
+    .max(6000)
+    .describe(
+      'Concrete factual statement containing all actual details (locations, numbers, prices, trial duration, rules). NEVER write a meta-description like "Add details about..." or "إضافة تفاصيل...".',
+    ),
+  category: categorySchema.describe(
+    'Use company_fact for operating regions/facts/metrics, offering for products/plans/free trials/pricing, audience for customers, brand_rule for voice/rules, channel for channels, positioning for differentiation, strategic_goal for goals, competitor for competitors. Use company_profile ONLY when editing the existing primary company profile node.',
+  ),
   properties: propertiesSchema.optional(),
   oldValues: propertiesSchema.optional(),
   newValues: propertiesSchema.optional(),
@@ -216,6 +221,17 @@ const delegateAgentInput = z.object({
 })
 
 export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefinition<any, any>[] {
+  let directWebCalls = 0
+  const consumeDirectWebBudget = (): { status: 'limit_reached'; message: string } | null => {
+    if (deps.maxDirectWebCalls !== undefined && directWebCalls >= deps.maxDirectWebCalls) {
+      return {
+        status: 'limit_reached',
+        message: 'Direct search limit reached for this turn. Use delegate_agent(role: "research") if deeper evidence is needed, or save your Deliverable and reply now.',
+      }
+    }
+    directWebCalls += 1
+    return null
+  }
   return [
     {
       name: 'read_skill',
@@ -237,11 +253,11 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'read_business_brain',
       description:
-        'Read approved, current Business Brain facts for this workspace (read-only). Use approved facts as authoritative business knowledge; never invent facts.',
+        'Read ALL approved, current Business Brain facts for this workspace (returns the complete Business Brain with no category/query filter, read-only). Use approved facts as authoritative business knowledge; never invent facts.',
       external: false,
       inputSchema: readBusinessBrainInput,
-      execute: async (args: z.infer<typeof readBusinessBrainInput>) => {
-        const facts = await deps.brain.readApproved(args.query, args.category, args.limit)
+      execute: async () => {
+        const facts = await deps.brain.readApproved()
         return { facts }
       },
     },
@@ -340,17 +356,23 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'propose_brain_change',
       description:
-        'Propose a durable Business Brain addition, edit or deletion for owner approval. Creates a pending approval card only; never applies or approves. Include old/new values for edits, the source and a rationale; check for duplicates/conflicts first.',
+        'Propose a durable Business Brain addition, edit or deletion for owner approval. Creates a pending approval card only; never applies or approves. Write the actual concrete facts (exact regions, numbers, prices, trial days) inside `summary` and `properties`—never a meta-description like "Add details about...". Reserve `company_profile` for editing the primary company node (`action="edit"` with its `nodeId`); use `company_fact` for operational facts/locations and `offering` for offers/trials/pricing. Include old/new values for edits, the source and a rationale; check for duplicates/conflicts first.',
       external: false,
       inputSchema: proposeBrainChangeInput,
       execute: async (args: z.infer<typeof proposeBrainChangeInput>) => {
+        const effectiveProperties =
+          args.properties && Object.keys(args.properties).length > 0
+            ? args.properties
+            : args.newValues && Object.keys(args.newValues).length > 0
+              ? args.newValues
+              : null
         const input: ProposeBrainChangeInput = {
           action: args.action,
           nodeId: args.nodeId ?? null,
           title: args.title,
           summary: args.summary,
           category: args.category,
-          properties: args.properties ?? null,
+          properties: effectiveProperties,
           oldValues: args.oldValues ?? null,
           newValues: args.newValues ?? null,
           source: args.source,
@@ -375,6 +397,8 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
       external: true,
       inputSchema: webSearchInput,
       execute: async (args: z.infer<typeof webSearchInput>) => {
+        const limited = consumeDirectWebBudget()
+        if (limited) return limited
         const { webSearch } = await import('../../integrations/web-providers')
         return webSearch('tavily', args.query, args.maxResults ?? 5)
       },
@@ -386,6 +410,8 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
       external: true,
       inputSchema: webSearchInput,
       execute: async (args: z.infer<typeof webSearchInput>) => {
+        const limited = consumeDirectWebBudget()
+        if (limited) return limited
         const { webSearch } = await import('../../integrations/web-providers')
         return webSearch('exa', args.query, args.maxResults ?? 5)
       },
@@ -397,8 +423,14 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
       external: true,
       inputSchema: firecrawlInput,
       execute: async (args: z.infer<typeof firecrawlInput>) => {
+        const limited = consumeDirectWebBudget()
+        if (limited) return limited
         const { firecrawlScrape } = await import('../../integrations/web-providers')
-        return firecrawlScrape(args.url)
+        const res = await firecrawlScrape(args.url)
+        if (res.status === 'ok' && res.excerpt.length > 800) {
+          return { ...res, excerpt: `${res.excerpt.slice(0, 800).trimEnd()}…` }
+        }
+        return res
       },
     },
     {

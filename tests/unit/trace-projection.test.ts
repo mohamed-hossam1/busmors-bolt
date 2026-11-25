@@ -93,6 +93,26 @@ describe('projectTraceEvents', () => {
     assert.equal(skillEdge.from, agent.id)
   })
 
+  it('connects parent and child agents even when only parent_event_id is set', () => {
+    const projected = projectTraceEvents([
+      agentEvent({ id: 'e1', seq: 0, instance_id: 'orch-1', agent_id: 'orch-1', agent_role: 'orchestrator' }),
+      agentEvent({
+        id: 'e2',
+        seq: 1,
+        instance_id: 'dir-1',
+        agent_id: 'dir-1',
+        agent_role: 'director',
+        parent_agent_id: null,
+        parent_event_id: 'orch-1',
+        metadata: { label: 'director' },
+      }),
+    ])
+
+    const graph = buildAgentGraph({ events: projected, userMessage: 'اعمل خطة' })
+    const edge = graph.edges.find((e) => e.from === 'orch-1' && e.to === 'dir-1')
+    assert.ok(edge, 'edge between orchestrator and director must exist')
+  })
+
   it('never emits nodes for model or unknown event types', () => {
     const projected = projectTraceEvents([
       { id: 'm', seq: 0, event_type: 'model', agent_id: 'model' },

@@ -176,4 +176,53 @@ describe('orchestrator → director handoff', () => {
     const directorEvent = agentEvents.find((e) => e.agent_role === 'director')
     assert.equal(directorEvent?.parent_event_id, ORCH_INSTANCE, 'director nests under the orchestrator instance')
   })
+
+  it('blocks a second delegate_to_director invocation in the same turn after a failed director attempt', async () => {
+    const collector = createTraceCollector(
+      { traceId: TRACE_ID, workspaceId: 'ws-1', request: 'no-double-retry' },
+      { enabled: false },
+    )
+    const tracker = new TaskGuardrailTracker()
+    let directorTurnCount = 0
+
+    const runTurn: AgentTurnRunner = async (opts) => {
+      const tools = (opts.tools ?? {}) as LooseTools
+      if (opts.role === 'orchestrator') {
+        await tools.delegate_to_director.execute(HANDOFF)
+        await tools.delegate_to_director.execute(HANDOFF)
+        return {
+          text: '',
+          provider: 'mock',
+          model: 'mock',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          steps: [],
+          finishReason: 'stop',
+          latencyMs: 1,
+          totalLatencyMs: 1,
+          fallback: { used: false, attempts: [] },
+        }
+      }
+
+      directorTurnCount += 1
+      throw new Error('rate limit')
+    }
+
+    const result = await runOrchestrator({
+      workspaceId: 'ws-1',
+      userId: 'user-1',
+      messages: [{ role: 'user', content: 'اعمل خطة' } as never],
+      traceContext: { traceId: TRACE_ID },
+      collector,
+      tracker,
+      runTurn,
+      brain: makeFakeBrain(),
+      deliverables: noopStore,
+      calendar: noopCalendar,
+      workspace: noopWorkspace,
+      instanceId: ORCH_INSTANCE,
+    })
+
+    assert.equal(directorTurnCount, 1, 'second delegate_to_director call must not invoke runDirector again')
+    assert.equal(result.structured.directorFailed, true)
+  })
 })

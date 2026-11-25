@@ -32,6 +32,7 @@ export function ensureNonEmptyReply(
   output: string | null | undefined,
   state: EmployeeRunState,
   isArabic: boolean,
+  runInfo?: { status?: string; stopReason?: string },
 ): string {
   const trimmed = typeof output === 'string' ? output.trim() : ''
   if (trimmed) return trimmed
@@ -64,6 +65,16 @@ export function ensureNonEmptyReply(
     return hasDraft
       ? 'I’ve prepared a post as a draft in the card below. Review it and the suggested timing before publishing.'
       : 'I’ve saved a document to your deliverables. You’ll find it in the card below.'
+  }
+
+  if (
+    state.directorFailed ||
+    runInfo?.status === 'partial' ||
+    (runInfo?.stopReason && runInfo.stopReason !== 'finished')
+  ) {
+    return isArabic
+      ? 'تعذّر إكمال المهمة حالياً بسبب انتهاء المهلة أو ضغط الخدمة. جرب مرة أخرى أو قسّم الطلب لخطوات أصغر.'
+      : 'The task could not be completed right now due to a timeout or service limit. Please try again or break it into a smaller request.'
   }
 
   return isArabic

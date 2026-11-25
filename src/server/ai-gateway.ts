@@ -101,6 +101,90 @@ export interface ModelGatewayDeps {
 }
 
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 60_000
+export const DEFAULT_STEP_TIMEOUT_MS = 45_000
+export const DEFAULT_AGENT_TURN_TIMEOUT_MS = 95_000
+export const DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS = 240_000
+
+/**
+ * Best-effort deterministic repair for slightly malformed JSON emitted in LLM
+ * tool calls (markdown fences, raw newlines/tabs inside string literals, or
+ * trailing commas). Returns null when the input cannot be parsed cleanly.
+ */
+export function repairMalformedToolCallJson(raw: string): string | null {
+  if (typeof raw !== 'string') return null
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim()
+  if (!stripped) return null
+
+  const tryParse = (candidate: string): string | null => {
+    try {
+      JSON.parse(candidate)
+      return candidate
+    } catch {
+      return null
+    }
+  }
+
+  const direct = tryParse(stripped)
+  if (direct) return direct
+
+  // Escape unescaped control characters inside JSON string literals and strip
+  // trailing commas before `}` or `]`.
+  let escaped = ''
+  let inString = false
+  let prevEscape = false
+  for (let i = 0; i < stripped.length; i++) {
+    const ch = stripped[i]
+    if (prevEscape) {
+      escaped += ch
+      prevEscape = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      escaped += ch
+      prevEscape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      escaped += ch
+      continue
+    }
+    if (inString) {
+      if (ch === '\n') {
+        escaped += '\\n'
+        continue
+      }
+      if (ch === '\r') {
+        escaped += '\\r'
+        continue
+      }
+      if (ch === '\t') {
+        escaped += '\\t'
+        continue
+      }
+    }
+    escaped += ch
+  }
+
+  const noTrailingCommas = escaped.replace(/,\s*([}\]])/g, '$1')
+  return tryParse(noTrailingCommas)
+}
+
+function isProviderToolJsonError(error: unknown): boolean {
+  const record = asRecord(error)
+  const name = typeof record?.name === 'string' ? record.name : ''
+  const message = typeof record?.message === 'string' ? record.message : ''
+  return (
+    name === 'AI_JSONParseError' ||
+    name === 'AI_InvalidToolInputError' ||
+    name === 'JSONParseError' ||
+    /Failed to parse tool call arguments as JSON/i.test(message)
+  )
+}
 
 export class GatewayValidationError extends Error {
   constructor(message = 'The generated text did not pass validation.') {
@@ -323,7 +407,7 @@ export interface AgentTurnOptions {
   maxSteps?: number
   temperature?: number
   abortSignal?: AbortSignal
-  timeoutMs?: number
+  timeoutMs?: number | { totalMs?: number; stepMs?: number; chunkMs?: number }
   /** Return true to stop starting new steps (e.g. shared budget reached). */
   shouldStop?: (completedSteps: number) => boolean
   onStepFinish?: (step: AgentTurnStep) => void
@@ -338,9 +422,12 @@ interface AgentGenerateCallOptions {
   temperature?: number
   maxRetries: number
   abortSignal?: AbortSignal
-  timeout?: number
+  timeout?: number | { totalMs?: number; stepMs?: number; chunkMs?: number }
   stopWhen?: (result: { steps: unknown[] }) => boolean
   onStepFinish?: (step: unknown) => void
+  experimental_repairToolCall?: (options: {
+    toolCall: { toolCallId: string; toolName: string; input: string }
+  }) => Promise<{ toolCallId: string; toolName: string; input: string } | null>
 }
 
 interface AgentGenerateResult {
@@ -407,6 +494,14 @@ export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
         options.onStepFinish?.(step)
       }
 
+      const defaultTimeout = {
+        stepMs: DEFAULT_STEP_TIMEOUT_MS,
+        totalMs:
+          options.role === 'director' || options.role === 'orchestrator'
+            ? DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS
+            : DEFAULT_AGENT_TURN_TIMEOUT_MS,
+      }
+
       try {
         const result = await generate({
           model: getLanguageModel(target),
@@ -417,9 +512,14 @@ export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
           temperature: options.temperature ?? target.temperature,
           maxRetries: 0,
           abortSignal: options.abortSignal,
-          timeout: options.timeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
+          timeout: options.timeoutMs ?? defaultTimeout,
           stopWhen,
           onStepFinish,
+          experimental_repairToolCall: async ({ toolCall }) => {
+            const repaired = repairMalformedToolCallJson(toolCall.input)
+            if (!repaired || repaired === toolCall.input) return null
+            return { ...toolCall, input: repaired }
+          },
         })
 
         const latencyMs = Date.now() - attemptStartedAt
@@ -458,7 +558,13 @@ export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
           error: { ...details, statusCode: getErrorStatusCode(error), reason },
         })
 
-        if (options.abortSignal?.aborted || !isEligibleTechnicalFailure(error)) {
+        // Never restart a multi-step agent loop from step 0 after a timeout or
+        // multiple completed steps (that burns minutes & duplicates tool loops).
+        const allowMidRunFallback = steps.length === 0 || (reason !== 'timeout' && steps.length <= 1)
+        const canFallback =
+          allowMidRunFallback &&
+          (isEligibleTechnicalFailure(error) || isProviderToolJsonError(error))
+        if (options.abortSignal?.aborted || !canFallback) {
           throw error
         }
       }

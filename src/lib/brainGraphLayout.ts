@@ -45,8 +45,21 @@ export function calculateBrainPositions(nodes: BrainNode[]): BrainLayoutResult {
     }
   }
 
-  // Identify hub node (company profile if present)
-  const hubNode = nodes.find((n) => n.category === 'company_profile') ?? null
+  // Identify hub node: always pick the canonical/earliest approved company_profile
+  // (falling back to earliest company_profile) so adding new facts or profiles
+  // never displaces the primary company root from the center of the mind map.
+  const companyProfiles = nodes
+    .filter((n) => n.category === 'company_profile')
+    .sort((a, b) => {
+      const aApproved = a.status === 'approved' ? 0 : 1
+      const bApproved = b.status === 'approved' ? 0 : 1
+      if (aApproved !== bApproved) return aApproved - bApproved
+      const aTime = Date.parse(a.created_at)
+      const bTime = Date.parse(b.created_at)
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime
+      return a.id.localeCompare(b.id)
+    })
+  const hubNode = companyProfiles[0] ?? null
   const hubId = hubNode ? hubNode.id : '__business_hub__'
   const remainingNodes = nodes.filter((n) => n.id !== hubNode?.id)
 
@@ -56,9 +69,10 @@ export function calculateBrainPositions(nodes: BrainNode[]): BrainLayoutResult {
     y: -BRAIN_HUB_HEIGHT / 2,
   })
 
-  // Get active categories with at least 1 remaining node
+  // Get active categories with at least 1 remaining node (including any extra
+  // company_profile nodes so they never float unpositioned outside the tree).
   const categoriesPresent = BRAIN_CATEGORY_ORDER.filter(
-    (cat) => cat !== 'company_profile' && remainingNodes.some((n) => n.category === cat)
+    (cat) => remainingNodes.some((n) => n.category === cat)
   )
 
   const ITEM_PITCH = 60

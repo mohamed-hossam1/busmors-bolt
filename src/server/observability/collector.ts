@@ -218,6 +218,7 @@ export class TraceCollector {
   } = {}
 
   private events: AdminTraceEvent[] = []
+  private listeners = new Set<(event: AdminTraceEvent) => void>()
 
   constructor(identity: TraceIdentity, options: { sink?: TraceSink; enabled?: boolean } = {}) {
     this.traceId = identity.traceId
@@ -225,6 +226,14 @@ export class TraceCollector {
     this.sink = options.sink ?? defaultSink
     this.enabled = (options.enabled ?? observabilityEnabled()) && process.env.OBSERVABILITY_ENABLED !== 'false'
     this.startedAt = new Date().toISOString()
+  }
+
+  /** Subscribe to live trace events as they are pushed (used by SSE chat streaming). */
+  subscribe(listener: (event: AdminTraceEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
   }
 
   /** Bind the collector to a specific task run/attempt (dispatcher/resume path). */
@@ -441,6 +450,13 @@ export class TraceCollector {
     this.bytes += bytes
     this.events.push(event)
     this.seq += 1
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // Streaming listeners are best-effort and must never interrupt execution.
+      }
+    }
   }
 
   private buildTrace(): AdminTraceRow {

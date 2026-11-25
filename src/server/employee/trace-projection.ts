@@ -17,6 +17,7 @@ export interface TraceEventLike {
   agent_id?: string | null
   agent_role?: string | null
   parent_agent_id?: string | null
+  parent_event_id?: string | null
   instance_id?: string | null
   tool_name?: string | null
   status?: string | null
@@ -54,7 +55,7 @@ export function projectTraceEvents(events: ReadonlyArray<TraceEventLike>): Canva
         agent_id: event.agent_id ?? 'agent',
         agent_role: event.agent_role ?? null,
         instance_id: event.instance_id ?? event.agent_id ?? null,
-        parent_instance_id: event.parent_agent_id ?? null,
+        parent_instance_id: event.parent_agent_id ?? event.parent_event_id ?? null,
         status: event.status ?? null,
         public_message: label,
         failure_reason: event.error ?? null,
