@@ -347,7 +347,7 @@ export default function RoadmapExecutionDashboard({
               </button>
             ))}
             {linkedPosts?.map((post) => (
-              <button key={post.id} type="button" onClick={() => router.push('/calendar')} className="inline-flex items-center gap-1 rounded-full border border-ink-200 px-2 py-0.5 hover:border-primary-300">
+              <button key={post.id} type="button" onClick={() => router.push('/scheduling')} className="inline-flex items-center gap-1 rounded-full border border-ink-200 px-2 py-0.5 hover:border-primary-300">
                 <Calendar size={11} /> {post.platform} · {post.status}
               </button>
             ))}
