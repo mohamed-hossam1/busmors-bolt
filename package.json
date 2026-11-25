@@ -11,6 +11,8 @@
     "lint": "oxlint src scripts e2e playwright.config.ts next.config.ts tailwind.config.js",
     "preview": "next start",
     "test": "npm run test:e2e",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:live": "node --env-file=.env --import tsx --test tests/live/*.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report test-results/e2e/report",
@@ -20,17 +22,22 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^3.0.84",
+    "@ai-sdk/openai-compatible": "^2.0.94",
     "@composio/core": "0.28.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
+    "ai": "^6.0.336",
     "dompurify": "3.4.18",
+    "gray-matter": "^4.0.3",
     "lucide-react": "^1.59.0",
     "marked": "^18.1.1",
     "next": "^16.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "reactflow": "^11.11.4",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
@@ -41,6 +48,7 @@
     "playwright": "^1.65.1",
     "postcss": "^8.5.30",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2"
   },
   "engines": {

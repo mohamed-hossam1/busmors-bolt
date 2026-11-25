@@ -2,7 +2,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getServiceRoleKey } from './supabase-admin'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
-import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
+import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, assertModelAllowed, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -179,6 +179,12 @@ export async function executeWithFallback(options: {
 
   // In test mode, SovereignEG is strictly excluded so no tokens are consumed.
   const isTestMode = CURRENT_AI_MODE === 'test'
+  if (isTestMode) {
+    assertModelAllowed(primary.provider, primary.model)
+    for (const fallback of fallbacks) {
+      assertModelAllowed(fallback.provider, fallback.model)
+    }
+  }
   const effectivePrimary = isTestMode && primary.provider === 'sovereigneg' ? null : primary
   const targets: ExecutionTarget[] = effectivePrimary ? [effectivePrimary] : []
   if (isTestMode && !effectivePrimary) {
@@ -406,6 +412,9 @@ async function callProvider(
   apiKey: string,
   body: GenerateRequest
 ): Promise<string> {
+  if (CURRENT_AI_MODE === 'test') {
+    assertModelAllowed(key.provider, key.model)
+  }
   const isHigh = body.reasoningEffort === 'high'
   const maxTokens = (isHigh && body.maxTokens === undefined) ? undefined : Math.min(Math.max(body.maxTokens ?? 4096, 100), 8000)
   const temperature = Math.min(Math.max(body.temperature ?? 0.7, 0), 1)
