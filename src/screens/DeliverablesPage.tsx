@@ -62,7 +62,6 @@ export default function DeliverablesPage() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
-  const [starting, setStarting] = useState(false)
 
   const requestedDocument = searchParams.get('document')
   const shown = viewing ?? (requestedDocument
@@ -267,29 +266,9 @@ export default function DeliverablesPage() {
     router.push(`/employee?compose=${encodeURIComponent(request)}`)
   }
 
-  const continueWithDirector = async (item: Deliverable) => {
-    if (starting) return
-    setStarting(true)
-    setActionError('')
-    const { data: sessionData } = await supabase.auth.getSession()
-    const workspaceId = sessionData.session?.user.id
-    if (!workspaceId) {
-      setActionError(t('sessionExpiredContinue'))
-      setStarting(false)
-      return
-    }
-    const { data: conversation, error } = await supabase
-      .from('conversations')
-      .insert({ workspace_id: workspaceId, title: `Continue: ${item.title.slice(0, 60)}` })
-      .select()
-      .single()
-    if (error || !conversation) {
-      setActionError(t('continuationFailed'))
-      setStarting(false)
-      return
-    }
+  const continueWithDirector = (item: Deliverable) => {
     const request = `Continue from the saved document "${item.title}" (version ${item.version}). Build on it without repeating what is already settled.`
-    router.push(`/employee?conversation=${conversation.id}&compose=${encodeURIComponent(request)}&document=${item.id}&version=${item.version}`)
+    router.push(`/employee?compose=${encodeURIComponent(request)}&document=${item.id}&version=${item.version}`)
   }
 
   const displayed = editedVersion(versions, selectedVersion, shown)
@@ -426,7 +405,7 @@ export default function DeliverablesPage() {
                   <button onClick={() => download(displayed, 'md')} className="btn-secondary px-3 py-1.5 text-xs"><Download size={13} /> .md</button>
                   <button onClick={() => download(displayed, 'txt')} className="btn-secondary px-3 py-1.5 text-xs"><Download size={13} /> .txt</button>
                   <button onClick={() => reuse(shown)} className="btn-secondary px-3 py-1.5 text-xs"><Send size={13} /> {t('reuse')}</button>
-                  <button onClick={() => void continueWithDirector(shown)} disabled={starting} className="btn-secondary px-3 py-1.5 text-xs"><ArrowUpRight size={13} /> {starting ? t('starting') : t('continueWithDirector')}</button>
+                  <button onClick={() => continueWithDirector(shown)} className="btn-secondary px-3 py-1.5 text-xs"><ArrowUpRight size={13} /> {t('continueWithDirector')}</button>
                   <button onClick={() => void remove(shown)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"><Trash2 size={13} /> {t('delete')}</button>
                 </div>
                 {(shown.source_refs?.length > 0 || shown.context_refs?.length > 0 || shown.limitations?.length > 0) && (

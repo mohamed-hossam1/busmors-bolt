@@ -1,7 +1,6 @@
 'use server'
 import { getIdentity } from './auth'
 import { createAdminClient } from './supabase-admin'
-import { createHash } from 'node:crypto'
 import type { PlannedPost } from '../lib/types'
 
 export async function loadPosts(): Promise<PlannedPost[]> {
@@ -25,45 +24,6 @@ export async function loadPosts(): Promise<PlannedPost[]> {
 }
 
 export async function recoverPosts(): Promise<PlannedPost[]> {
- const identity = await getIdentity()
- if (!identity) throw new Error('Sign in again.')
- const userId = identity.user.id
-
- const { data } = await identity.supabase
-   .from('planned_posts')
-   .select('id')
-   .limit(1)
-
- if (data && data.length > 0) return loadPosts()
-
- // Recovery is limited to explicitly linked deliverable cards; it creates drafts
- // through the RPC (never a direct table write).
- const { data: messages } = await identity.supabase
-   .from('messages')
-   .select('id, payload, created_at')
-   .eq('type', 'deliverable_card')
-   .order('created_at', { ascending: false })
-   .limit(20)
-
- for (const msg of messages ?? []) {
-   const payload = msg.payload as { posts?: PlannedPost[]; deliverable_id?: string } | null
-   if (Array.isArray(payload?.posts) && payload.posts.length > 0) {
-     for (const p of payload.posts) {
-       const platform = (['instagram', 'facebook'].includes(p.platform) ? p.platform : 'facebook')
-       const hex = createHash('sha256').update(userId + ':' + msg.id + ':' + p.caption).digest('hex')
-       const idempotencyKey = hex.slice(0,8) + '-' + hex.slice(8,12) + '-4' + hex.slice(13,16) + '-a' + hex.slice(17,20) + '-' + hex.slice(20,32)
-       const { error: recErr } = await identity.supabase.rpc('create_post', {
-         p_platform: platform,
-         p_caption: (p.caption || '').slice(0, 6000) || 'Recovered draft',
-         p_hashtags: p.hashtags || '',
-         p_scheduled_for: null,
-         p_idempotency_key: idempotencyKey,
-       })
-       if (recErr) return loadPosts()
-     }
-     break
-   }
- }
  return loadPosts()
 }
 

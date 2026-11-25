@@ -51,63 +51,6 @@ export interface BrainEdge {
   provenance?: Record<string, unknown>
 }
 
-export type MessageRole = 'user' | 'agent' | 'system'
-export type MessageType =
-  | 'text'
-  | 'text_response'
-  | 'structured_form'
-  | 'budget_extension_request'
-  | 'post_reference'
-  | 'form'
-  | 'task_status'
-  | 'deliverable_card'
-  | 'deliverable_offer'
-  | 'knowledge_notification'
-  | 'error'
-
-export interface ChatMessage {
-  id: string
-  conversation_id: string
-  role: MessageRole
-  type: MessageType
-  content: string
-  payload: Record<string, unknown> | null
-  created_at: string
-}
-
-export interface Conversation {
-  id: string
-  workspace_id: string
-  title: string
-  created_at: string
-}
-
-export interface FormField {
-  name: string
-  label: string
-  type: 'text' | 'single' | 'multi' | 'select' | 'number' | 'url'
-  options?: string[]
-  value?: string | string[]
-}
-
-export interface AgentEvent {
-  id: string
-  task_id: string
-  instance_id?: string
-  run_id?: string
-  conversation_id?: string | null
-  parent_instance_id?: string | null
-  correlation_id?: string | null
-  seq: number
-  event_type: 'agent_started' | 'agent_completed' | 'agent_error' | 'agent_tool_used' | 'tool_call' | 'delegation' | 'skill_read' | 'flow_connection'
-  agent_id: string
-  payload: Record<string, unknown>
-  started_at?: string | null
-  ended_at?: string | null
-  failure_reason?: string | null
-  created_at: string
-}
-
 export interface Deliverable {
   id: string
   workspace_id: string

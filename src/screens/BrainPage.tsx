@@ -29,7 +29,6 @@ import BrainGraph from '../components/brain/BrainGraph'
 import NodeEditor from '../components/brain/NodeEditor'
 import KnowledgeEvidence, { KnowledgeLabels } from '../components/brain/KnowledgeEvidence'
 import ProposalReview from '../components/brain/ProposalReview'
-import ResearchProposalReview, { type ResearchProposalRow } from '../components/brain/ResearchProposalReview'
 import RelationshipEditor from '../components/brain/RelationshipEditor'
 import { brainError, saveBrainItem } from '../lib/brainApi'
 import { organizeBrainWithAi } from '../lib/crawl'
@@ -71,7 +70,6 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
   const [evidence,setEvidence] = useState<BrainNode|null>(null)
   const [relationships,setRelationships] = useState(false)
   const [proposals,setProposals] = useState<BrainProposal[]>(initial.proposals)
-  const [researchProposals,setResearchProposals] = useState<ResearchProposalRow[]>([])
   const [nodes, setNodes] = useState<BrainNode[]>(initial.nodes)
   const [edges, setEdges] = useState<BrainEdge[]>(initial.edges)
   const [audit, setAudit] = useState<AuditEntry[]>(initial.audit)
@@ -101,21 +99,19 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
       supabase.from('brain_edges').select('*'),
       supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(50),
       supabase.from('brain_proposals').select('*').eq('status','pending').order('created_at',{ascending:false}),
-      supabase.from('research_proposals').select('*').order('created_at',{ascending:false}).limit(50),
     ])
     if(results.some(result=>result.error)) { setPageError(t('brainLoadError'));setLoading(false);return }
     setNodes((results[0].data??[]) as BrainNode[])
     setEdges((results[1].data??[]) as BrainEdge[])
     setAudit((results[2].data??[]) as AuditEntry[])
     setProposals((results[3].data??[]) as BrainProposal[])
-    setResearchProposals((results[4].data??[]) as ResearchProposalRow[])
     setPageError('');setLoading(false)
   }
 
 
   const candidates = useMemo(() => nodes.filter((n) => n.status === 'candidate' && !proposals.some(p=>p.node_id===n.id)), [nodes,proposals])
   const approved = useMemo(() => nodes.filter((n) => n.status === 'approved'), [nodes])
-  const pendingCount = proposals.length + candidates.length + researchProposals.filter(proposal => proposal.status === 'pending').length
+  const pendingCount = proposals.length + candidates.length
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((n) => {
@@ -515,7 +511,6 @@ export default function BrainPage({ initial }: { initial: { nodes: BrainNode[]; 
             </div>
 
             {(filterTab==='all'||filterTab==='candidate')&&<ProposalReview proposals={proposals.filter(p=>(selectedCategory==='all'||p.diff.category===selectedCategory)&&(!searchQuery||`${p.diff.title} ${p.diff.summary}`.toLowerCase().includes(searchQuery.toLowerCase())))} nodes={nodes} onChanged={load}/>}
-            {filterTab==='all'&&<ResearchProposalReview proposals={researchProposals} onChanged={load}/>}
             {/* Completely Empty State */}
             {candidates.length === 0 && approved.length === 0 && proposals.length === 0 && (
               <div className="card p-8 text-center text-sm text-ink-500">

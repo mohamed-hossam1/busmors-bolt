@@ -73,7 +73,7 @@ test('RLS prevents cross-workspace reads and relationship forgery', async () => 
   expect(hidden.error).toBeNull()
   expect(hidden.data).toEqual([])
 
-  const forged = await intruderClient.from('conversations').insert({ workspace_id: primary.id, title: 'Foreign conversation' }).select()
+  const forged = await intruderClient.from('brain_nodes').insert({ workspace_id: primary.id, category: 'offering', title: 'Foreign fact' }).select()
   expect(forged.error).toBeTruthy()
   const primaryClient = await signInClient(primary)
   const primaryRows = await primaryClient.from('brain_nodes').select('id').eq('workspace_id', primary.id)

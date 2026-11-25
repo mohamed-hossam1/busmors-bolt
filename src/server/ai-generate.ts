@@ -1,10 +1,6 @@
-// [functions.ai-generate]
-// verify_jwt = true
-
 import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { getServiceRoleKey, hasServiceRoleKey } from './supabase-admin'
-import { OPERATIONS, validateOutput, type Operation } from './ai/operations'
+import { getServiceRoleKey } from './supabase-admin'
 import { CRAWL_PROMPTS, type CrawlOperation } from './ai/crawl-prompts'
 import { getModelConfigForOperation, AI_FALLBACK_TEMPLATE, CURRENT_AI_MODE, type FallbackTargetConfig, type ModelConfig } from '../config/ai-models'
 
@@ -14,24 +10,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 }
 
-// Orchestrator chat operations run without a task/allowance row: they are bounded
-// by a fixed system prompt, a low token cap and a short provider timeout.
-const ORCHESTRATOR_OPERATIONS = new Set<string>(['orchestrate', 'brain_answer', 'title'])
-
 interface GenerateRequest {
   signal?: AbortSignal
-  taskId?: string
-  runId?: string
-  operation?: Operation
   usage?: { inputTokens?: number; outputTokens?: number }
   systemPrompt: string
   userPrompt: string
   maxTokens?: number
   temperature?: number
   jsonMode?: boolean
-  /** When true, uses the shared business key instead of the caller's own key.
-   * Only allowed for onboarding website crawling (extraction of the caller's
-   * own submitted site) — the shared key is the business's, not the user's. */
+  /** Shared business key path dedicated strictly to Onboarding website crawling. */
   useSharedCrawlKey?: boolean
   crawlOperation?: CrawlOperation
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
@@ -114,133 +101,10 @@ export async function generateAi(req: Request) {
       return await handleSharedCrawlRequest(admin, body, workspaceId || 'server')
     }
 
-    if (!workspaceId) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Everything below is the task path. It needs service_role-only RPCs
-    // (reserve_task_call, finish_task_call, read_ai_key) and direct tasks/ai_keys
-    // table access, so it must fail closed when only the anon key is available.
-    // The shared-crawl path above is the only path that benefits from an
-    // anon-key admin client.
-    if (!hasServiceRoleKey()) {
-      return new Response(JSON.stringify({ error: 'server_misconfigured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (!body.operation || !Object.hasOwn(OPERATIONS, body.operation)) {
-      return new Response(JSON.stringify({ error: 'invalid_operation', code: 'INVALID_OPERATION' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-    body.systemPrompt = OPERATIONS[body.operation]
-    const opConfig = getModelConfigForOperation(body.operation)
-
-    // The Orchestrator path answers/decides without a task row or allowance.
-    if (ORCHESTRATOR_OPERATIONS.has(body.operation)) {
-      return await handleOrchestratorRequest(admin, body, workspaceId)
-    }
-
-    body.usage = undefined
-    body.jsonMode = !['chat','diagnose','analyze'].includes(body.operation)
-    const isHigh = opConfig.reasoningEffort === 'high' || body.reasoningEffort === 'high'
-    if (isHigh) {
-      body.reasoningEffort = 'high'
-      body.maxTokens = undefined
-    } else {
-      body.maxTokens = Math.min(Math.max(Number.isFinite(body.maxTokens) ? body.maxTokens! : (opConfig.maxTokens ?? 3500), 100), body.operation === 'route' ? 1000 : 6000)
-      body.reasoningEffort = body.reasoningEffort ?? opConfig.reasoningEffort
-    }
-    if (opConfig.temperature !== undefined && body.temperature === undefined) {
-      body.temperature = opConfig.temperature
-    }
-    body.providerTimeoutMs = isHigh ? 45000 : 25000
-    if (!body.taskId || !body.runId || !/^[0-9a-f-]{36}$/i.test(body.taskId) || !/^[0-9a-f-]{36}$/i.test(body.runId)) {
-      return new Response(JSON.stringify({error:'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
-    }
-    const {data:task,error:taskError}=await admin.from('tasks').select('id,workspace_id,run_id,status').eq('id',body.taskId).eq('workspace_id',workspaceId).maybeSingle()
-    if(taskError||!task||task.run_id!==body.runId||task.status!=='running')return new Response(JSON.stringify({error:'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
-
-    const { data: keyMeta } = await admin
-      .from('ai_keys')
-      .select('workspace_id, provider, model, custom_base_url, status')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle()
-    let key = (keyMeta as KeyRow | null) ?? null
-    let managedKey: string | null = null
-    if (!key || key.status !== 'active') {
-      managedKey = process.env.AI_API_KEY ?? null
-      const provider = opConfig.provider || process.env.AI_PROVIDER || 'groq'
-      const model = opConfig.model || process.env.AI_MODEL || 'openai/gpt-oss-120b'
-      if (managedKey && provider && model) key = { workspace_id: workspaceId, provider, model, custom_base_url: process.env.AI_BASE_URL ?? null, status: 'active' }
-    }
-
-    if (!key || key.status !== 'active') {
-      return new Response(JSON.stringify({ error: 'no_active_key' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const plaintextKey = managedKey ?? await decryptKey(workspaceId, admin)
-    if (!plaintextKey) {
-      return new Response(JSON.stringify({ error: 'no_active_key' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const callId=crypto.randomUUID()
-    // Byte count is deliberately conservative when a tokenizer/usage is unavailable.
-    // reserve_task_call rejects a limit outside 1..50000 (INVALID_CALL); clamp so an
-    // oversized prompt surfaces as a real budget/validation error, not run_not_active.
-    // One token per byte overstated prompts about 3-4x (gpt-oss averages ~4 bytes
-    // per English token and >=3 for Arabic/emoji), and a failed call is charged its
-    // full reservation, so two failures could exhaust a 16k allowance on routing
-    // alone. bytes/3 still stays above real token counts for practical text.
-    const tokenLimit=Math.min(50000,Math.ceil(new TextEncoder().encode(body.systemPrompt+body.userPrompt).length/3)+(body.maxTokens ?? 8000)+256)
-    const {error:reservationError}=await admin.rpc('reserve_task_call',{p_task_id:task.id,p_run_id:body.runId,p_call_id:callId,p_operation:body.operation,p_token_limit:tokenLimit})
-    if(reservationError)return new Response(JSON.stringify({error:reservationError.message.includes('BUDGET_EXHAUSTED')?'budget_exhausted':'run_not_active'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
-    let succeeded=false
-    try {
-      const result = await executeWithFallback({
-        primary: {
-          provider: key.provider,
-          model: key.model,
-          apiKey: plaintextKey,
-          baseUrl: key.custom_base_url,
-          reasoningEffort: body.reasoningEffort,
-          timeoutMs: body.providerTimeoutMs,
-        },
-        fallbacks: AI_FALLBACK_TEMPLATE,
-        request: body,
-        validate: (generated) => {
-          const operation = body.operation as Operation
-          const isValid = validateOutput(operation, generated)
-          if (!isValid && process.env.NODE_ENV !== 'production') {
-            let shape = 'unparseable'
-            try {
-              shape = JSON.stringify(JSON.parse(generated), (k, value) => k && typeof value !== 'object' ? (typeof value === 'number' || k === 'mode' || k === 'intent' ? value : typeof value) : value).slice(0, 600)
-            } catch {}
-            console.warn('[ai-generate] invalid_output', operation, shape)
-          }
-          return isValid
-        },
-        logPrefix: '[task-generate]',
-      })
-      const generated = result.text
-      succeeded = true
-      return new Response(JSON.stringify({ text: generated, usage: body.usage ?? null, callId }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } finally {
-      const {error:usageError}=await admin.rpc('finish_task_call',{p_task_id:task.id,p_call_id:callId,p_success:succeeded,p_usage:body.usage??{}})
-      if(usageError)throw new Error('usage_record_failed')
-    }
+    return new Response(JSON.stringify({ error: 'shared_key_not_allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err) {
     const message = err instanceof Error && /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(err.message) ? err.message : 'provider_unavailable'
     return new Response(JSON.stringify({ error: message }), {
@@ -396,104 +260,6 @@ export async function executeWithFallback(options: {
   }
 
   throw lastError ?? new Error('all_targets_failed')
-}
-
-/**
- * Orchestrator decision / Brain answer without a task row.
- * Bounded by the fixed system prompt, a low token cap and a short timeout. It uses
- * the managed model key when present, otherwise the workspace's own (decrypted)
- * key. No allowance is reserved and nothing is written to the task tables.
- */
-async function handleOrchestratorRequest(
-  admin: SupabaseClient,
-  body: GenerateRequest,
-  workspaceId: string,
-): Promise<Response> {
-  const operation = body.operation as 'orchestrate' | 'brain_answer'
-  const opConfig = getModelConfigForOperation(operation)
-  const jsonMode = operation === 'orchestrate'
-  const request: GenerateRequest = {
-    systemPrompt: body.systemPrompt,
-    userPrompt: body.userPrompt,
-    signal: body.signal,
-    jsonMode,
-    temperature: body.temperature ?? opConfig.temperature ?? 0.3,
-    maxTokens: jsonMode ? 700 : 900,
-    reasoningEffort: opConfig.reasoningEffort ?? 'low',
-    providerTimeoutMs: 20000,
-  }
-
-  const managedKey = opConfig.provider === 'dahl'
-    ? ((process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY) ?? null)
-    : opConfig.provider === 'sovereigneg'
-      ? ((process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY) ?? null)
-      : (process.env.AI_API_KEY ?? null)
-  const provider = opConfig.provider || 'groq'
-  const model = opConfig.model || 'openai/gpt-oss-120b'
-  let key: KeyRow | null = managedKey && provider && model
-    ? {
-        workspace_id: workspaceId,
-        provider,
-        model,
-        custom_base_url: provider === 'dahl'
-          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
-          : provider === 'sovereigneg'
-            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-            : (process.env.AI_BASE_URL ?? null),
-        status: 'active'
-      }
-    : null
-  let plaintextKey: string | null = managedKey
-
-  if (!key || !plaintextKey) {
-    const { data: keyMeta } = await admin
-      .from('ai_keys')
-      .select('workspace_id, provider, model, custom_base_url, status')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle()
-    if (keyMeta && (keyMeta as KeyRow).status === 'active') {
-      key = keyMeta as KeyRow
-      plaintextKey = await decryptKey(workspaceId, admin)
-    }
-  }
-
-  if (!key || !plaintextKey) {
-    return new Response(JSON.stringify({ error: 'no_active_key' }), {
-      status: 404,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  try {
-    const result = await executeWithFallback({
-      primary: {
-        provider,
-        model,
-        apiKey: plaintextKey,
-        baseUrl: provider === 'dahl'
-          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
-          : provider === 'sovereigneg'
-            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-            : null,
-        timeoutMs: 20000,
-      },
-      fallbacks: AI_FALLBACK_TEMPLATE,
-      request,
-      validate: (generated) => validateOutput(operation, generated),
-      logPrefix: '[orchestrator]',
-    })
-    return new Response(JSON.stringify({ text: result.text, usage: body.usage ?? null }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (err) {
-    const rawMessage = err instanceof Error ? err.message : 'generation failed'
-    const message = /^(invalid_key|invalid_output|truncated_json_response|unexpected_provider_response|provider_error_\d{3}|missing_base_url|unapproved_base_url)$/.test(rawMessage) ? rawMessage : 'provider_unavailable'
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
 }
 
 async function handleSharedCrawlRequest(

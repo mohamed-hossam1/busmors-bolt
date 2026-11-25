@@ -1,7 +1,37 @@
 import 'server-only'
 import { cleanPageForAi, type CrawledPage } from '../lib/crawlContent'
 import { DEFAULT_CRAWL_PAGES } from '../lib/crawlConstants'
-import { firecrawlScrape } from './research/providers'
+
+async function firecrawlScrape(
+  url: string,
+  options: { signal: AbortSignal; timeoutMs?: number },
+): Promise<{ ok: true; title: string; markdown: string } | { ok: false }> {
+  const apiKey = process.env.FIRECRAWL_API_KEY?.trim()
+  if (!apiKey) return { ok: false }
+  const timeout = Math.min(25000, Math.max(1000, options.timeoutMs ?? 10000))
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, proxy: 'auto', timeout }),
+      signal: AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]),
+    })
+    if (!response.ok) return { ok: false }
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean
+      data?: { markdown?: string; metadata?: { title?: string | string[] } }
+    }
+    if (!payload.success || !payload.data?.markdown) return { ok: false }
+    const rawTitle = payload.data.metadata?.title
+    return {
+      ok: true,
+      title: Array.isArray(rawTitle) ? (rawTitle[0] ?? '') : (rawTitle ?? ''),
+      markdown: payload.data.markdown,
+    }
+  } catch {
+    return { ok: false }
+  }
+}
 
 export type CrawlProgressCallback = (read: number, total: number, currentUrl?: string) => void
 export { DEFAULT_CRAWL_PAGES }

@@ -2,20 +2,26 @@ import { test, expect } from 'playwright/test'
 import { accountByLabel } from '../support/runtime'
 import { signInClient } from '../support/accounts'
 import { signIn, waitForHydration } from '../support/browser'
-import { submitTask, taskEvidence } from '../support/tasks'
+import { runSql, sqlLiteral } from '../support/database'
 import { poll } from '../support/poll'
 
 test('a generated document is saved, versioned, searchable, and rendered in Deliverables', async ({ page }) => {
   const account = accountByLabel('primary')
   const client = await signInClient(account)
   await signIn(page, account)
-  await page.goto('/employee')
   const marker = `E2E-${crypto.randomUUID().slice(0, 8)}`
-  const task = await submitTask(page, client, `Diagnose a decline in qualified ceramic repair inquiries. Include marker ${marker} in the title. Separate observations and hypotheses.`)
-  expect(task.status, task.result_summary ?? 'diagnosis did not complete').toBe('completed')
-  const evidence = await taskEvidence(client, task.id)
-  expect(evidence.deliverables).toHaveLength(1)
-  const document = evidence.deliverables[0]
+  const docId = crypto.randomUUID()
+  const title = `Diagnosis report ${marker}`
+  const content = `Observations and hypotheses for ${marker}.`
+  runSql(`
+    BEGIN;
+    INSERT INTO public.deliverables(id, workspace_id, title, type, content, version)
+    VALUES (${sqlLiteral(docId)}, ${sqlLiteral(account.id)}, ${sqlLiteral(title)}, 'performance_diagnosis', ${sqlLiteral(content)}, 1);
+    INSERT INTO public.deliverable_versions(workspace_id, deliverable_id, version, title, content, provenance, source_refs, context_refs, limitations)
+    VALUES (${sqlLiteral(account.id)}, ${sqlLiteral(docId)}, 1, ${sqlLiteral(title)}, ${sqlLiteral(content)}, '{"kind":"e2e"}'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb);
+    COMMIT;
+  `)
+  const document = { id: docId, title, content }
 
   await page.goto('/deliverables')
   await waitForHydration(page)

@@ -6,8 +6,6 @@ INSERT INTO auth.users(id) VALUES
 INSERT INTO workspaces(id) VALUES
  ('aaaaaaaa-1111-4111-8111-111111111111'),
  ('bbbbbbbb-2222-4222-8222-222222222222');
-INSERT INTO conversations(id,workspace_id,title) VALUES
- ('cccccccc-3333-4333-8333-333333333333','aaaaaaaa-1111-4111-8111-111111111111','Continue a document');
 INSERT INTO deliverables(id,workspace_id,title,type,content,version,created_at) VALUES
  ('dddddddd-4444-4444-8444-444444444444','aaaaaaaa-1111-4111-8111-111111111111','First report','general','Alpha body',1,'2026-11-01 10:00:00+00'),
  ('eeeeeeee-5555-4555-8555-555555555555','aaaaaaaa-1111-4111-8111-111111111111','Second report','research_report','Beta body',1,'2026-11-02 10:00:00+00'),
@@ -45,14 +43,6 @@ BEGIN
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'STALE_VERSION' THEN RAISE; END IF; END;
  BEGIN PERFORM update_deliverable('ffffffff-6666-4666-8666-666666666666',1,'Hijack','Hijack body'); RAISE EXCEPTION 'Foreign document edit accepted';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'NOT_FOUND' THEN RAISE; END IF; END;
-
- -- Continue with Director retains an exact, owner-checked document version.
- PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue the saved report',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',2),'90000000-0000-4000-8000-000000000001');
- PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Continue from version one',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',1),'90000000-0000-4000-8000-000000000002');
- BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge foreign document',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','ffffffff-6666-4666-8666-666666666666','version',1),'90000000-0000-4000-8000-000000000003'); RAISE EXCEPTION 'Foreign document origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
- BEGIN PERFORM enqueue_task('cccccccc-3333-4333-8333-333333333333','Forge missing version',jsonb_build_object('kind','document','conversationId','cccccccc-3333-4333-8333-333333333333','deliverableId','dddddddd-4444-4444-8444-444444444444','version',99),'90000000-0000-4000-8000-000000000004'); RAISE EXCEPTION 'Missing document version origin accepted';
- EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'INVALID_ORIGIN' THEN RAISE; END IF; END;
 
  BEGIN PERFORM delete_deliverable('dddddddd-4444-4444-8444-444444444444',1); RAISE EXCEPTION 'Stale delete accepted';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM<>'STALE_VERSION' THEN RAISE; END IF; END;

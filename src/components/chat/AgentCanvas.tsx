@@ -32,12 +32,18 @@ import {
   BrainCircuit,
 } from 'lucide-react'
 import { Spinner } from '@/components/ui/Spinner'
-import type { AgentEvent } from '../../lib/types'
 import { useCopy } from '../../hooks/useCopy'
 import { PostPreviewCard, type PostPreviewData } from './PostPreview'
 import { readCanvasLayout, saveCanvasLayout } from '../../lib/chatCanvasStorage'
-import { buildAgentGraph, type CanvasGraph, type CanvasNode, type CanvasNodeKind, type PersistedEvent } from '../../features/research/canvas/graph'
+import {
+  buildAgentGraph,
+  type CanvasEvent,
+  type CanvasGraph,
+  type CanvasNode,
+  type CanvasNodeKind,
+} from './agentCanvasGraph'
 
+export type { CanvasEvent, CanvasGraph, CanvasNode, CanvasNodeKind } from './agentCanvasGraph'
 export type CanvasPreviewPost = PostPreviewData
 const EMPTY_PREVIEWS: CanvasPreviewPost[] = []
 
@@ -215,15 +221,19 @@ export default function AgentCanvas({
   events,
   running,
   taskId,
+  taskHref,
   userMessage = null,
+  activeRootId = null,
   previewPosts = EMPTY_PREVIEWS,
 }: {
   conversationId: string | null
-  events: AgentEvent[]
+  events: CanvasEvent[]
   running: boolean
   taskId?: string | null
+  taskHref?: string | null
   taskStatus?: string
   userMessage?: string | null
+  activeRootId?: string | null
   previewPosts?: CanvasPreviewPost[]
 }) {
   const { t } = useCopy()
@@ -239,10 +249,11 @@ export default function AgentCanvas({
   const onSelect = useCallback((id: string) => setSelectedId(current => (current === id ? null : id)), [])
 
   const graph = useMemo(() => buildAgentGraph({
-    events: events as unknown as PersistedEvent[],
+    events,
     running,
     userMessage,
-  }), [events, running, userMessage])
+    activeRootId,
+  }), [events, running, userMessage, activeRootId])
 
   useEffect(() => {
     const layout = buildHierarchicalLayout(graph)
@@ -355,8 +366,8 @@ export default function AgentCanvas({
               <pre className="mt-1 overflow-x-auto rounded bg-ink-50 p-2 text-[10px] text-ink-700">{JSON.stringify(selected.parametersRedacted, null, 2)}</pre>
             </details>
           )}
-          {taskId && (
-            <Link href={`/employee?task=${encodeURIComponent(taskId)}`} className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900">
+          {(taskHref || taskId) && (
+            <Link href={taskHref ?? `/employee?task=${encodeURIComponent(taskId!)}`} className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-primary-700 hover:text-primary-900">
               {t('openTask')} <ExternalLink size={11} />
             </Link>
           )}

@@ -8,11 +8,9 @@ const checks = [
   'competition-db-check.sql',
   'intake-db-check.sql',
   'brain-governance-db-check.sql',
-  'task-execution-db-check.sql',
   'deliverable-db-check.sql',
   'discovery-db-check.sql',
   'planned-posts-db-check.sql',
-  'deliverable-offer-db-check.sql',
   'post-proposed-time-db-check.sql',
   'facebook-connection-db-check.sql',
 ]

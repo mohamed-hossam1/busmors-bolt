@@ -28,9 +28,7 @@ export function verifyRequiredSchema() {
     SELECT array_remove(ARRAY[
       CASE WHEN to_regprocedure('public.bootstrap_workspace()') IS NULL THEN 'bootstrap_workspace' END,
       CASE WHEN to_regprocedure('public.save_crawl_brain(text,jsonb,jsonb,integer,boolean)') IS NULL THEN 'save_crawl_brain' END,
-      CASE WHEN to_regprocedure('public.enqueue_task(uuid,text,jsonb,uuid)') IS NULL THEN 'enqueue_task' END,
-      CASE WHEN to_regprocedure('public.save_task_result(uuid,uuid,jsonb,boolean)') IS NULL THEN 'save_task_result' END,
-      CASE WHEN to_regclass('public.task_results') IS NULL THEN 'task_results' END,
+      CASE WHEN to_regclass('public.deliverables') IS NULL THEN 'deliverables' END,
       CASE WHEN to_regclass('public.post_versions') IS NULL THEN 'post_versions' END,
       CASE WHEN to_regclass('public.publish_attempts') IS NULL THEN 'publish_attempts' END
     ], NULL) AS missing
