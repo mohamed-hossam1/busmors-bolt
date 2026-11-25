@@ -52,7 +52,10 @@ import {
   saveDiscoveryAnswer,
   saveDiscoveryDraft,
   syncDiscoveryQuestions,
+  generateRoadmap,
+  loadActiveRoadmap,
 } from './api'
+import RoadmapGeneratedView from './RoadmapGeneratedView'
 import { mergePrefillSuggestions, type MergedSuggestion, type QuestionPrefillMerge } from './prefill-merge'
 import type {
   DirectorProposal,
@@ -62,6 +65,7 @@ import type {
   DiscoveryQuestion,
   DiscoveryQuestionOption,
   PrefillSuggestion,
+  RoadmapLoad,
 } from './types'
 
 const CHALLENGE_ICONS: Record<string, typeof Lightbulb> = {
@@ -517,6 +521,9 @@ export default function DiscoveryWizard() {
   const [somethingElseNote, setSomethingElseNote] = useState('')
   const [contextBusy, setContextBusy] = useState(false)
   const [directorState, setDirectorState] = useState<Record<string, DirectorCardState>>({})
+  const [generated, setGenerated] = useState<RoadmapLoad | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
 
   const questionsRef = useRef<DiscoveryQuestion[]>([])
   const draftRef = useRef<DiscoveryDraft | null>(null)
@@ -592,6 +599,11 @@ export default function DiscoveryWizard() {
       setDraft(nextDraft)
       applyQuestions(nextQuestions)
       setPreliminary(nextDraft.status === 'planned')
+      if (nextDraft.status === 'planned') {
+        void loadActiveRoadmap()
+          .then((loaded) => { if (loaded.roadmap) setGenerated(loaded) })
+          .catch(() => {})
+      }
       setGoalPicker(false)
       applyLocal({})
       setDirectorState({})
@@ -1013,6 +1025,32 @@ export default function DiscoveryWizard() {
     }
   }
 
+  const generateRoadmapNow = async () => {
+    if (!draftRef.current || generating) return
+    setGenerating(true)
+    setGenerateError('')
+    try {
+      const loaded = await generateRoadmap(draftRef.current.id, locale)
+      setGenerated(loaded)
+      setNotice('')
+    } catch (error) {
+      setGenerateError(rpcCode(error) === 'STALE_VERSION'
+        ? 'This Discovery changed in another tab. Reload the saved draft before generating.'
+        : 'The roadmap could not be generated. Your answers are unchanged; retry when the connection is available.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const backToDiscovery = () => {
+    setGenerated(null)
+    setGenerateError('')
+  }
+
+  const handleRoadmapUpdated = (roadmap: RoadmapLoad['roadmap'], activeVersion: RoadmapLoad['activeVersion']) => {
+    setGenerated((current) => (current ? { ...current, roadmap, activeVersion } : current))
+  }
+
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (Object.keys(localRef.current).length > 0) {
@@ -1142,6 +1180,19 @@ export default function DiscoveryWizard() {
           <button type="button" onClick={() => setGoalPicker(false)} className="btn-secondary mt-5">{t('backToCurrentGoal')}</button>
         )}
       </div>
+    )
+  }
+
+  if (generated) {
+    return (
+      <RoadmapGeneratedView
+        data={generated}
+        locale={locale}
+        regenerating={generating}
+        onBackToDiscovery={backToDiscovery}
+        onRegenerate={() => void generateRoadmapNow()}
+        onUpdated={handleRoadmapUpdated}
+      />
     )
   }
 
@@ -1380,6 +1431,16 @@ export default function DiscoveryWizard() {
               <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('preliminaryPlanNote')}</p>
             </section>
           )}
+
+          <section className="card p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} className="text-primary-600" /> {t('generateRoadmap')}</h2>
+            <p className="mt-2 text-xs leading-5 text-ink-600">{t('generateRoadmapHelp')}</p>
+            {generateError && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{generateError}</p>}
+            <button type="button" onClick={() => void generateRoadmapNow()} disabled={generating || !draft} className="btn-primary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
+              {generating ? <><Spinner size={13} /> {t('generatingRoadmap')}</> : <><Sparkles size={13} /> {t('generateRoadmapCta')}</>}
+            </button>
+            <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('generateRoadmapNote')}</p>
+          </section>
         </aside>
       </div>
     </div>

@@ -6,8 +6,10 @@ import type {
   DiscoveryDraft,
   DiscoveryLoad,
   DiscoveryQuestion,
+  GeneratedPrimaryObjective,
   PlannedQuestion,
   PrefillSuggestion,
+  RoadmapLoad,
 } from './types'
 
 export async function loadDiscovery(): Promise<DiscoveryLoad> {
@@ -147,4 +149,60 @@ export async function requestDirectorSuggestion(
     throw new Error('The Marketing Director returned an invalid suggestion.')
   }
   return { mode: 'roadmap_quick_answer', proposal: data.proposal as DirectorProposal }
+}
+
+/** Generate (or regenerate) the workspace's structured roadmap from Discovery. */
+export async function generateRoadmap(draftId: string, locale?: string): Promise<RoadmapLoad> {
+  const response = await fetch('/api/roadmap/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ draftId, locale }),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapLoad> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The roadmap could not be generated. Please retry.')
+  }
+  return {
+    roadmap: data.roadmap ?? null,
+    activeVersion: data.activeVersion ?? null,
+    steps: Array.isArray(data.steps) ? data.steps : [],
+    staleDependencies: Array.isArray(data.staleDependencies) ? data.staleDependencies : [],
+  }
+}
+
+/** Load the workspace's active roadmap, if any. */
+export async function loadActiveRoadmap(): Promise<RoadmapLoad> {
+  const response = await fetch('/api/roadmap', { method: 'GET' })
+  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapLoad> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The roadmap could not be loaded.')
+  }
+  return {
+    roadmap: data.roadmap ?? null,
+    activeVersion: data.activeVersion ?? null,
+    steps: Array.isArray(data.steps) ? data.steps : [],
+    staleDependencies: Array.isArray(data.staleDependencies) ? data.staleDependencies : [],
+  }
+}
+
+/** Edit the primary objective of the active roadmap with optimistic concurrency. */
+export async function updateRoadmapObjective(
+  roadmapId: string,
+  expectedVersion: number,
+  primaryObjective: GeneratedPrimaryObjective,
+): Promise<{ roadmap: RoadmapLoad['roadmap']; activeVersion: RoadmapLoad['activeVersion'] }> {
+  const response = await fetch('/api/roadmap', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roadmapId, expectedVersion, primaryObjective }),
+  })
+  const data = (await response.json().catch(() => ({}))) as {
+    roadmap?: RoadmapLoad['roadmap']
+    activeVersion?: RoadmapLoad['activeVersion']
+    error?: unknown
+  }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The objective could not be saved.')
+  }
+  return { roadmap: data.roadmap ?? null, activeVersion: data.activeVersion ?? null }
 }

@@ -136,3 +136,143 @@ export interface DiscoveryPlanContext {
   facts: BrainNode[]
   locale?: string
 }
+
+// --- Generated roadmap (Phase 3) ---
+
+export type GeneratedResponsibleParty = 'owner' | 'director' | 'joint'
+export type GeneratedActionKind = 'research' | 'analysis' | 'content' | 'owner_execution' | 'joint'
+export type GeneratedPriority = 'high' | 'medium' | 'low'
+
+export interface GeneratedAction {
+  key: string
+  title: string
+  description: string
+  businessRationale: string
+  responsibleParty: GeneratedResponsibleParty
+  actionKind: GeneratedActionKind
+  priority: GeneratedPriority
+  expectedOutput: string
+  successCriteria: string
+  dependencies: string[]
+  linkedMetric: string | null
+  evidence: string[]
+  uncertainty: string
+}
+
+export interface GeneratedMilestone {
+  key: string
+  title: string
+  description: string
+  sequenceLabel: string
+  actions: GeneratedAction[]
+}
+
+export interface GeneratedDiagnosis {
+  perceivedProblem: string
+  rootDiagnosis: string
+  supportingEvidence: string[]
+  hypotheses: string[]
+  unknowns: string[]
+}
+
+export interface GeneratedPrimaryObjective {
+  title: string
+  outcome: string
+  proposedTarget: string | null
+  isProposedTarget: boolean
+}
+
+export interface GeneratedMetric {
+  key: string
+  name: string
+  currentBaseline: string
+  target: string
+  isProposedTarget: boolean
+  measurementMethod: string
+  reviewTiming: string
+}
+
+export interface GeneratedPriorities {
+  focusFirst: Array<{ title: string; why: string }>
+  intentionallyDeferred: Array<{ title: string; why: string }>
+}
+
+export interface GeneratedRisk {
+  kind: 'risk' | 'assumption'
+  statement: string
+  mitigation: string
+}
+
+export interface GeneratedReviewCadence {
+  frequency: 'weekly' | 'biweekly' | 'monthly'
+  intervalDays: number
+  rationale: string
+}
+
+export interface GeneratedRoadmap {
+  diagnosis: GeneratedDiagnosis
+  primaryObjective: GeneratedPrimaryObjective
+  metrics: GeneratedMetric[]
+  priorities: GeneratedPriorities
+  milestones: GeneratedMilestone[]
+  risksAndAssumptions: GeneratedRisk[]
+  reviewCadence: GeneratedReviewCadence
+}
+
+export interface RoadmapRecord {
+  id: string
+  workspace_id: string
+  goal: string
+  version: number
+  status: string
+  draft_id: string | null
+  active_version_id: string | null
+  review_cadence_days: number
+  next_review_at: string | null
+  updated_at: string
+  created_at: string
+}
+
+export interface RoadmapVersionRecord {
+  id: string
+  roadmap_id: string
+  version: number
+  status: string
+  summary: GeneratedRoadmap & Record<string, unknown>
+  context_refs: unknown[]
+  created_at: string
+}
+
+export interface RoadmapStepRecord {
+  id: string
+  roadmap_id: string
+  plan_version_id: string
+  step_key: string
+  position: number
+  title: string
+  status: string
+  milestone_key: string | null
+  milestone_title: string | null
+  priority: GeneratedPriority
+  owner_role: GeneratedResponsibleParty
+  action_kind: GeneratedActionKind
+  success_criteria: string
+  linked_metric: string | null
+}
+
+export interface StaleDependency {
+  dependencyId: string
+  nodeId: string
+  nodeVersion: number
+  currentVersion: number
+  status: string
+  isCurrent: boolean
+  reason: string
+}
+
+export interface RoadmapLoad {
+  roadmap: RoadmapRecord | null
+  activeVersion: RoadmapVersionRecord | null
+  steps: RoadmapStepRecord[]
+  staleDependencies: StaleDependency[]
+}
