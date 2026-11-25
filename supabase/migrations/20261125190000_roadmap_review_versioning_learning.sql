@@ -479,7 +479,7 @@ BEGIN
    AND prev.step_key = coalesce(NULLIF(s ->> 'stepKey', ''), 'step-' || (ord - 1));
 
   UPDATE roadmaps
-     SET version = new_version, active_version_id = new_v.id, updated_at = now()
+     SET version = version + 1, active_version_id = new_v.id, updated_at = now()
    WHERE id = r.id
   RETURNING * INTO r;
 

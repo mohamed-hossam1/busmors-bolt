@@ -160,10 +160,10 @@ DECLARE
   conv_id uuid;
   link_del uuid;
   link_post uuid;
-  result_note text;
+  v_result_note text;
   expected_status text;
   expected_version integer;
-  origin jsonb;
+  v_origin jsonb;
 BEGIN
   IF w IS NULL THEN
     RAISE EXCEPTION 'NOT_AUTHENTICATED' USING ERRCODE = '28000';
@@ -200,8 +200,8 @@ BEGIN
     END IF;
   END IF;
 
-  result_note := NULLIF(p_payload ->> 'resultNote', '');
-  origin := jsonb_build_object(
+  v_result_note := NULLIF(p_payload ->> 'resultNote', '');
+  v_origin := jsonb_build_object(
     'kind', 'roadmap_step',
     'roadmapId', s.roadmap_id,
     'planVersionId', s.plan_version_id,
@@ -211,7 +211,7 @@ BEGIN
   IF p_action = 'run' THEN
     INSERT INTO step_actions(workspace_id, step_id, action, idempotency_key, payload)
     VALUES (w, s.id, 'run', p_idempotency_key,
-      jsonb_set(coalesce(p_payload, '{}'::jsonb), '{origin}', coalesce(p_payload -> 'origin', origin), true))
+      jsonb_set(coalesce(p_payload, '{}'::jsonb), '{origin}', coalesce(p_payload -> 'origin', v_origin), true))
     RETURNING * INTO action_record;
 
     conv_id := NULLIF(p_payload ->> 'conversationId', '')::uuid;
@@ -247,7 +247,7 @@ BEGIN
     UPDATE roadmap_steps
        SET status = 'completed',
            execution_state = 'completed',
-           result_note = result_note,
+           result_note = v_result_note,
            attestation = p_payload,
            completed_at = now()
      WHERE id = s.id

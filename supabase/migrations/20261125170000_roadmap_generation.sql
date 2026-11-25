@@ -233,7 +233,7 @@ DECLARE
   w uuid := auth.uid();
   r roadmaps;
   v roadmap_versions;
-  summary jsonb;
+  next_summary jsonb;
 BEGIN
   IF w IS NULL THEN
     RAISE EXCEPTION 'NOT_AUTHENTICATED' USING ERRCODE = '28000';
@@ -258,9 +258,9 @@ BEGIN
     RAISE EXCEPTION 'ACTIVE_VERSION_NOT_FOUND' USING ERRCODE = 'P0002';
   END IF;
 
-  summary := jsonb_set(coalesce(v.summary, '{}'::jsonb), '{primaryObjective}', coalesce(p_primary_objective, '{}'::jsonb), true);
+  next_summary := jsonb_set(coalesce(v.summary, '{}'::jsonb), '{primaryObjective}', coalesce(p_primary_objective, '{}'::jsonb), true);
 
-  UPDATE roadmap_versions SET summary = summary WHERE id = v.id RETURNING * INTO v;
+  UPDATE roadmap_versions SET summary = next_summary WHERE id = v.id RETURNING * INTO v;
   UPDATE roadmaps SET version = version + 1, updated_at = now() WHERE id = r.id RETURNING * INTO r;
 
   RETURN jsonb_build_object('roadmap', to_jsonb(r), 'activeVersion', to_jsonb(v));
