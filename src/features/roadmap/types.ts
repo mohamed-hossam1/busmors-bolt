@@ -312,6 +312,83 @@ export interface StaleDependency {
   reason: string
 }
 
+// --- Phase 5: review, versioning & learning log ---
+
+export type DirectorRecommendation = 'Continue' | 'Adjust' | 'Pause' | 'Change direction'
+
+export const DIRECTOR_RECOMMENDATIONS: readonly DirectorRecommendation[] = [
+  'Continue',
+  'Adjust',
+  'Pause',
+  'Change direction',
+]
+
+export interface RoadmapCheckinRecord {
+  id: string
+  workspace_id: string
+  roadmap_id: string
+  plan_version_id: string
+  completed_summary: string
+  actual_results: string
+  what_didnt_work: string
+  blockers: string
+  business_changes: string
+  director_recommendation: DirectorRecommendation
+  director_assessment: string
+  director_rationale: string
+  next_review_at: string | null
+  created_at: string
+}
+
+export type RoadmapRevisionStatus = 'proposed' | 'approved' | 'rejected'
+
+export interface RoadmapRevisionDiffItem {
+  key: string
+  title: string
+  why?: string
+  change?: string
+}
+
+export interface RoadmapRevisionDiff {
+  added: RoadmapRevisionDiffItem[]
+  removedOrPostponed: RoadmapRevisionDiffItem[]
+  modified: RoadmapRevisionDiffItem[]
+  summaryChanges: string[]
+}
+
+export interface RoadmapRevisionRecord {
+  id: string
+  workspace_id: string
+  roadmap_id: string
+  base_version_id: string
+  base_version: number
+  owner_request: string
+  status: RoadmapRevisionStatus
+  rationale: string
+  diff: RoadmapRevisionDiff | Record<string, unknown>
+  proposed_summary: GeneratedRoadmap & Record<string, unknown>
+  proposed_steps: unknown[]
+  applied_version_id: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface RoadmapLearningLogRecord {
+  id: string
+  workspace_id: string
+  roadmap_id: string
+  plan_version_id: string | null
+  step_id: string | null
+  hypothesis: string
+  experiment: string
+  expected_outcome: string
+  actual_outcome: string
+  learning: string
+  decision: string
+  promoted_proposal_id: string | null
+  created_at: string
+}
+
 export interface RoadmapLoad {
   roadmap: RoadmapRecord | null
   activeVersion: RoadmapVersionRecord | null
@@ -321,4 +398,9 @@ export interface RoadmapLoad {
   stepActions?: RoadmapStepActionRecord[]
   linkedDeliverables?: LinkedDeliverableSummary[]
   linkedPosts?: LinkedPostSummary[]
+  /** Phase 5 review/versioning/learning data (optional until the migration is applied). */
+  versions?: RoadmapVersionRecord[]
+  checkins?: RoadmapCheckinRecord[]
+  pendingRevision?: RoadmapRevisionRecord | null
+  learningLog?: RoadmapLearningLogRecord[]
 }

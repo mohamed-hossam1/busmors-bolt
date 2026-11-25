@@ -3,13 +3,18 @@ import type { BrainNode } from '../../lib/types'
 import { eligibleBrainFacts, planPrefill, planToRpc } from './discovery'
 import type {
   DirectorProposal,
+  DirectorRecommendation,
   DiscoveryDraft,
   DiscoveryLoad,
   DiscoveryQuestion,
   GeneratedPrimaryObjective,
   PlannedQuestion,
   PrefillSuggestion,
+  RoadmapCheckinRecord,
+  RoadmapLearningLogRecord,
   RoadmapLoad,
+  RoadmapRevisionDiff,
+  RoadmapRevisionRecord,
 } from './types'
 
 export async function loadDiscovery(): Promise<DiscoveryLoad> {
@@ -185,6 +190,178 @@ export async function loadActiveRoadmap(): Promise<RoadmapLoad> {
     stepActions: Array.isArray(data.stepActions) ? data.stepActions : [],
     linkedDeliverables: Array.isArray(data.linkedDeliverables) ? data.linkedDeliverables : [],
     linkedPosts: Array.isArray(data.linkedPosts) ? data.linkedPosts : [],
+    versions: Array.isArray(data.versions) ? data.versions : [],
+    checkins: Array.isArray(data.checkins) ? data.checkins : [],
+    pendingRevision: data.pendingRevision ?? null,
+    learningLog: Array.isArray(data.learningLog) ? data.learningLog : [],
+  }
+}
+
+// --- Phase 5: review, revision & learning log client ---
+
+export interface CheckinInput {
+  roadmapId: string
+  locale?: string
+  completedSummary?: string
+  actualResults?: string
+  whatDidntWork?: string
+  blockers?: string
+  businessChanges?: string
+  nextReviewDays?: number
+}
+
+export interface CheckinResult {
+  evaluation: {
+    assessment: string
+    recommendation: DirectorRecommendation
+    rationale: string
+    nextReviewDays: number
+  }
+  checkin: RoadmapCheckinRecord | null
+  roadmap: RoadmapLoad['roadmap']
+}
+
+/** Evaluate and persist a progress check-in with the Marketing Director. */
+export async function submitCheckin(input: CheckinInput): Promise<CheckinResult> {
+  const response = await fetch('/api/roadmap/checkin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<CheckinResult> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The check-in could not be saved.')
+  }
+  return {
+    evaluation: data.evaluation as CheckinResult['evaluation'],
+    checkin: data.checkin ?? null,
+    roadmap: data.roadmap ?? null,
+  }
+}
+
+export interface RevisionResult {
+  revision: RoadmapRevisionRecord | null
+  diff: RoadmapRevisionDiff
+  rationale: string
+}
+
+/** Propose an ad-hoc roadmap revision (never applied without owner approval). */
+export async function proposeRevision(roadmapId: string, ownerRequest: string, locale?: string): Promise<RevisionResult> {
+  const response = await fetch('/api/roadmap/revisions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roadmapId, ownerRequest, locale }),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<RevisionResult> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The revision could not be proposed.')
+  }
+  return {
+    revision: data.revision ?? null,
+    diff: data.diff ?? { added: [], removedOrPostponed: [], modified: [], summaryChanges: [] },
+    rationale: typeof data.rationale === 'string' ? data.rationale : '',
+  }
+}
+
+/** Approve and apply a proposed revision (creates a new immutable version). */
+export async function approveRevision(revisionId: string, expectedVersion: number): Promise<RoadmapLoad> {
+  const response = await fetch(`/api/roadmap/revisions/${revisionId}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedVersion }),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapLoad> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The revision could not be applied.')
+  }
+  return normalizeLoad(data)
+}
+
+/** Reject a proposed revision. */
+export async function rejectRevision(revisionId: string): Promise<void> {
+  const response = await fetch(`/api/roadmap/revisions/${revisionId}/reject`, { method: 'POST' })
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: unknown }
+    throw new Error(typeof data.error === 'string' ? data.error : 'The revision could not be rejected.')
+  }
+}
+
+export interface LearningLogInput {
+  roadmapId: string
+  stepId?: string | null
+  hypothesis: string
+  experiment: string
+  expectedOutcome?: string
+  actualOutcome?: string
+  learning: string
+  decision?: string
+}
+
+/** Record a Roadmap-scoped learning entry. */
+export async function createLearningLogEntry(input: LearningLogInput): Promise<RoadmapLearningLogRecord | null> {
+  const response = await fetch('/api/roadmap/learning-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const data = (await response.json().catch(() => ({}))) as { entry?: RoadmapLearningLogRecord; error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The learning could not be saved.')
+  }
+  return data.entry ?? null
+}
+
+export type BrainPromotableCategory =
+  | 'company_fact'
+  | 'audience'
+  | 'offering'
+  | 'positioning'
+  | 'channel'
+  | 'brand_rule'
+  | 'strategic_goal'
+
+export interface PromoteLearningResult {
+  proposalId: string
+  status: 'pending'
+  duplicate: boolean
+  entry: RoadmapLearningLogRecord | null
+}
+
+/** Promote a learning to the Business Brain as a pending proposal. */
+export async function promoteLearningToBrain(
+  learningId: string,
+  input: { category?: BrainPromotableCategory; title?: string; summary?: string } = {},
+): Promise<PromoteLearningResult> {
+  const response = await fetch(`/api/roadmap/learning-log/${learningId}/promote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const data = (await response.json().catch(() => ({}))) as Partial<PromoteLearningResult> & { error?: unknown }
+  if (!response.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'The learning could not be proposed to the Brain.')
+  }
+  return {
+    proposalId: data.proposalId ?? '',
+    status: 'pending',
+    duplicate: data.duplicate === true,
+    entry: data.entry ?? null,
+  }
+}
+
+function normalizeLoad(data: Partial<RoadmapLoad>): RoadmapLoad {
+  return {
+    roadmap: data.roadmap ?? null,
+    activeVersion: data.activeVersion ?? null,
+    steps: Array.isArray(data.steps) ? data.steps : [],
+    staleDependencies: Array.isArray(data.staleDependencies) ? data.staleDependencies : [],
+    stepActions: Array.isArray(data.stepActions) ? data.stepActions : [],
+    linkedDeliverables: Array.isArray(data.linkedDeliverables) ? data.linkedDeliverables : [],
+    linkedPosts: Array.isArray(data.linkedPosts) ? data.linkedPosts : [],
+    versions: Array.isArray(data.versions) ? data.versions : [],
+    checkins: Array.isArray(data.checkins) ? data.checkins : [],
+    pendingRevision: data.pendingRevision ?? null,
+    learningLog: Array.isArray(data.learningLog) ? data.learningLog : [],
   }
 }
 

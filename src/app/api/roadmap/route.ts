@@ -23,6 +23,10 @@ export async function GET(request: Request) {
       stepActions: Array.isArray(loaded.stepActions) ? loaded.stepActions : [],
       linkedDeliverables: Array.isArray(loaded.linkedDeliverables) ? loaded.linkedDeliverables : [],
       linkedPosts: Array.isArray(loaded.linkedPosts) ? loaded.linkedPosts : [],
+      versions: Array.isArray(loaded.versions) ? loaded.versions : [],
+      checkins: Array.isArray(loaded.checkins) ? loaded.checkins : [],
+      pendingRevision: loaded.pendingRevision ?? null,
+      learningLog: Array.isArray(loaded.learningLog) ? loaded.learningLog : [],
     })
   } catch (error) {
     return apiError(error)

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  History,
   Lightbulb,
   Link2,
   Pencil,
@@ -26,6 +27,12 @@ import { useLocaleRouter } from '../../context/I18nContext'
 import { useCopy } from '../../hooks/useCopy'
 import type { AppKey } from '../../lib/i18n'
 import { loadActiveRoadmap, performRoadmapStepAction, updateRoadmapObjective } from './api'
+import {
+  AdjustRoadmapModal,
+  LearningLogPanel,
+  ReviewProgressModal,
+  VersionHistoryDrawer,
+} from './RoadmapAdaptationPanels'
 import type {
   GeneratedAction,
   GeneratedMilestone,
@@ -94,12 +101,15 @@ export default function RoadmapExecutionDashboard({
   const [linkFor, setLinkFor] = useState<string | null>(null)
   const [linkDeliverableId, setLinkDeliverableId] = useState('')
   const [linkPostId, setLinkPostId] = useState('')
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [adjustOpen, setAdjustOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     setView(data)
   }, [data])
 
-  const { roadmap, activeVersion, steps, staleDependencies, linkedDeliverables, linkedPosts } = view
+  const { roadmap, activeVersion, steps, staleDependencies, linkedDeliverables, linkedPosts, versions, checkins, pendingRevision, learningLog } = view
   const plan = activeVersion?.summary ?? null
 
   const progress = useMemo(() => computeProgress(steps), [steps])
@@ -371,6 +381,15 @@ export default function RoadmapExecutionDashboard({
           <p className="workspace-description">{t('roadmapGeneratedSubtitle', { goal: roadmap.goal, version: roadmap.version })}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setReviewOpen(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
+            <CheckCircle2 size={13} /> {t('reviewProgress')}
+          </button>
+          <button type="button" onClick={() => setAdjustOpen(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
+            <Pencil size={13} /> {t('adjustRoadmap')}
+          </button>
+          <button type="button" onClick={() => setHistoryOpen(true)} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
+            <History size={13} /> {t('versionHistory')}
+          </button>
           <button type="button" onClick={onBackToDiscovery} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
             <ArrowLeft size={13} /> {t('backToDiscovery')}
           </button>
@@ -402,7 +421,7 @@ export default function RoadmapExecutionDashboard({
               {nextReview ? ` · ${t('nextReviewLabel', { date: nextReview })}` : ''}
             </p>
           </div>
-          <button type="button" className="btn-secondary min-h-8 px-3 py-1 text-xs">{t('reviewProgress')}</button>
+          <button type="button" onClick={() => setReviewOpen(true)} className="btn-secondary min-h-8 px-3 py-1 text-xs">{t('reviewProgress')}</button>
         </section>
       )}
 
@@ -494,8 +513,51 @@ export default function RoadmapExecutionDashboard({
               </ul>
             </div>
           )
-        })}
+          })}
       </section>
+
+      {/* Business learning log (Roadmap-scoped, separate from Business Brain) */}
+      <LearningLogPanel
+        roadmapId={roadmap.id}
+        locale={locale}
+        steps={steps}
+        entries={learningLog ?? []}
+        onChanged={() => void reload()}
+      />
+
+      {reviewOpen && (
+        <ReviewProgressModal
+          roadmapId={roadmap.id}
+          locale={locale}
+          checkins={checkins ?? []}
+          onClose={() => setReviewOpen(false)}
+          onSaved={() => void reload()}
+        />
+      )}
+
+      {adjustOpen && (
+        <AdjustRoadmapModal
+          roadmap={roadmap}
+          locale={locale}
+          pendingRevision={pendingRevision ?? null}
+          onClose={() => setAdjustOpen(false)}
+          onApplied={(fresh) => {
+            setView(fresh)
+            onUpdated(fresh.roadmap, fresh.activeVersion)
+            setAdjustOpen(false)
+          }}
+          onRejected={() => void reload()}
+        />
+      )}
+
+      {historyOpen && (
+        <VersionHistoryDrawer
+          versions={versions ?? []}
+          locale={locale}
+          activeVersionId={activeVersion?.id ?? null}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </div>
   )
 }
