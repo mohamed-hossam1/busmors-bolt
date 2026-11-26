@@ -1,8 +1,16 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { loadE2EEnv } from './env'
+import { runSql, sqlLiteral } from './database'
 import { registerAccount, type TestAccountRecord } from './runtime'
 
 export interface TestAccount extends TestAccountRecord { client: SupabaseClient }
+
+let phoneSeq = Math.floor(Math.random() * 1000)
+
+export function newPhone(): string {
+  phoneSeq = (phoneSeq + 1) % 100_000_000
+  return `+2010${phoneSeq.toString().padStart(8, '0')}`
+}
 
 export function newCredentials(label: string) {
   const run = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
@@ -10,25 +18,56 @@ export function newCredentials(label: string) {
   return { email: `busmora-e2e-${label}-${run}@${domain}`, password: `E2e!${crypto.randomUUID()}aA9` }
 }
 
+export function createPromoCode(label: string, heavyTasksLimit = 6): string {
+  const sanitized = label.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'CODE'
+  const random = crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()
+  const code = `BUSM-E2E-${sanitized}-${random}`.slice(0, 64)
+  runSql(`INSERT INTO promo_codes(code, heavy_tasks_limit) VALUES (${sqlLiteral(code)}, ${heavyTasksLimit})`)
+  return code
+}
+
 export function anonymousClient() {
   const env = loadE2EEnv()
   return createClient(env.supabaseUrl, env.anonKey, { auth: { persistSession: false, autoRefreshToken: false } })
 }
 
+function serviceClient(): SupabaseClient {
+  const env = loadE2EEnv()
+  if (!env.serviceRoleKey) {
+    throw new Error('Missing service role key (E2E_SUPABASE_SECRET_KEY/E2E_SUPABASE_SERVICE_ROLE_KEY/SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY) required to provision invite-only promo accounts.')
+  }
+  return createClient(env.supabaseUrl, env.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+}
+
 export async function createAccount(label: string, completeOnboarding = false): Promise<TestAccount> {
-  const auth = anonymousClient()
+  const admin = serviceClient()
   const { email, password } = newCredentials(label)
-  const { data, error } = await auth.auth.signUp({ email, password })
-  if (error) throw new Error(`Real account registration failed: ${error.message}`)
-  if (!data.user || !data.session) throw new Error('Registration did not return a session. Disable email confirmation in the disposable E2E project.')
-  const client = createClient(loadE2EEnv().supabaseUrl, loadE2EEnv().anonKey, {
-    global: { headers: { Authorization: `Bearer ${data.session.access_token}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  const account = { label, id: data.user.id, email, password, client }
-  registerAccount({ label, id: data.user.id, email, password })
-  const bootstrap = await client.rpc('bootstrap_workspace')
-  if (bootstrap.error) throw new Error(`Workspace bootstrap failed: ${bootstrap.error.message}`)
+  const phone = newPhone()
+  const promoCode = createPromoCode(label)
+  const reservationToken = crypto.randomUUID()
+
+  const reserved = await admin.rpc('reserve_promo_signup', { p_code: promoCode, p_phone: phone, p_reservation_token: reservationToken })
+  if (reserved.error || !reserved.data?.ok) {
+    throw new Error(`Promo reservation failed: ${reserved.error?.message ?? reserved.data?.errorCode ?? 'unknown'}`)
+  }
+
+  const created = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { phone_number: phone } })
+  if (created.error || !created.data.user) {
+    await admin.rpc('release_promo_signup', { p_code: promoCode, p_reservation_token: reservationToken })
+    throw new Error(`Admin user creation failed: ${created.error?.message ?? 'no user returned'}`)
+  }
+  const id = created.data.user.id
+
+  const finalized = await admin.rpc('finalize_promo_signup', { p_user_id: id, p_code: promoCode, p_phone: phone, p_email: email, p_reservation_token: reservationToken })
+  if (finalized.error || !finalized.data?.ok) {
+    await admin.auth.admin.deleteUser(id)
+    await admin.rpc('release_promo_signup', { p_code: promoCode, p_reservation_token: reservationToken })
+    throw new Error(`Promo finalize failed: ${finalized.error?.message ?? finalized.data?.errorCode ?? 'unknown'}`)
+  }
+
+  const client = await signInClient({ label, id, email, password })
+  registerAccount({ label, id, email, password })
+  const account: TestAccount = { label, id, email, password, client }
   if (completeOnboarding) await confirmManualBusiness(account)
   return account
 }

@@ -116,6 +116,13 @@ export interface OrchestratorToolDeps {
  * persisted ids the runtime confirmed and never fabricates specialist output.
  */
 export function summarizeDirectorResult(result: DirectorOutput): Record<string, unknown> {
+  if (result.quotaExhausted === true) {
+    return {
+      status: 'quota_exhausted',
+      message:
+        'QUOTA_EXHAUSTED: 0 of 6 heavy tasks remaining. Do NOT retry delegate_to_director. Inform the owner politely in their language that all 6 beta heavy tasks have been used up, while general chat and Business Brain questions remain unlimited.',
+    }
+  }
   return {
     status: result.status,
     reply: result.text,

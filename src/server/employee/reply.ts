@@ -43,6 +43,14 @@ export function ensureNonEmptyReply(
   const directorReply = typeof state.directorReply === 'string' ? state.directorReply.trim() : ''
   if (directorReply) return directorReply
 
+  // The workspace used all 6 beta heavy tasks before the Director could run.
+  // Be honest and reassuring: general chat and Business Brain Q&A stay unlimited.
+  if (state.quotaExhausted) {
+    return isArabic
+      ? 'استخدمت كل الـ 6 مهام المتقدمة المطلوبة في النسخة التجريبية. الشات العادي والأسئلة عن بيانات مشروعك (Business Brain) شغّالين زي ما هم من غير حدود.'
+      : 'You have used all 6 beta advanced tasks. General chat and Business Brain Q&A remain unlimited.'
+  }
+
   if (state.clarification) {
     return isArabic
       ? 'محتاج أوضّح نقطة صغيرة قبل ما أكمل. جاوبني على اللي تحت وأنا هكمّل على طول.'

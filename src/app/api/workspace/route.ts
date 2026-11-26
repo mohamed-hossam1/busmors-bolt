@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   // configured (AI_API_KEY + AI_PROVIDER + AI_MODEL) so Settings can tell the
   // user the workspace uses the managed model by default (BYOK is optional).
   const managedModel = Boolean(process.env.AI_API_KEY)
-  return Response.json({ ...data, managedModel })
+  const { data: heavyTasks } = await supabase.rpc('get_heavy_task_quota')
+  return Response.json({ ...data, managedModel, heavyTasks: heavyTasks ?? null })
  } catch (error) { return apiError(error) }
 }

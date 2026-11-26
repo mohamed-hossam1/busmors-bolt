@@ -163,15 +163,19 @@ export async function generateRoadmap(draftId: string, locale?: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ draftId, locale }),
   })
-  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapLoad> & { error?: unknown }
+  const data = (await response.json().catch(() => ({}))) as Partial<RoadmapLoad> & { error?: unknown; code?: unknown; quota?: unknown }
   if (!response.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'The roadmap could not be generated. Please retry.')
+    const err = new Error(typeof data.error === 'string' ? data.error : 'The roadmap could not be generated. Please retry.') as Error & { code?: string; quota?: unknown }
+    err.code = typeof data.code === 'string' ? data.code : undefined
+    err.quota = data.quota
+    throw err
   }
   return {
     roadmap: data.roadmap ?? null,
     activeVersion: data.activeVersion ?? null,
     steps: Array.isArray(data.steps) ? data.steps : [],
     staleDependencies: Array.isArray(data.staleDependencies) ? data.staleDependencies : [],
+    heavyTasks: data.heavyTasks ?? null,
   }
 }
 

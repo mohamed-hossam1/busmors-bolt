@@ -54,6 +54,8 @@ interface RoadmapExecutionDashboardProps {
   data: RoadmapLoad
   locale: string
   regenerating?: boolean
+  regenerateDisabled?: boolean
+  regenerateNotice?: string | null
   onBackToDiscovery: () => void
   onRegenerate: () => void
   onUpdated: (roadmap: RoadmapLoad['roadmap'], activeVersion: RoadmapLoad['activeVersion']) => void
@@ -84,6 +86,8 @@ export default function RoadmapExecutionDashboard({
   data,
   locale,
   regenerating = false,
+  regenerateDisabled = false,
+  regenerateNotice = null,
   onBackToDiscovery,
   onRegenerate,
   onUpdated,
@@ -393,13 +397,15 @@ export default function RoadmapExecutionDashboard({
           <button type="button" onClick={onBackToDiscovery} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
             <ArrowLeft size={13} /> {t('backToDiscovery')}
           </button>
-          <button type="button" onClick={onRegenerate} disabled={regenerating} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
+          <button type="button" onClick={onRegenerate} disabled={regenerating || regenerateDisabled} className="btn-secondary min-h-9 px-3 py-1.5 text-xs">
             {regenerating ? <Spinner size={13} /> : <RefreshCw size={13} />} {t('regenerateRoadmap')}
           </button>
         </div>
       </header>
 
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+
+      {regenerateNotice && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{regenerateNotice}</p>}
 
       {staleDependencies.length > 0 && (
         <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4">

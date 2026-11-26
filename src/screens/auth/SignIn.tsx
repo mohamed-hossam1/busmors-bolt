@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useLocaleRouter as useRouter } from '@/context/I18nContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
+import { isGoogleAuthEnabled } from '../../lib/authFlags'
 import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthLayout'
 
 import GoogleButton from '../../components/auth/GoogleButton'
@@ -38,8 +39,9 @@ export default function SignIn() {
 
   return (
     <AuthLayout title={t('signInTitle')} subtitle={t('signInSubtitle')}>
-      {params.has('error') && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{t('signInError')}</p>}
-      <GoogleButton />
+      {params.has('error') && params.get('error') !== 'invite_required' && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{t('signInError')}</p>}
+      {params.get('error') === 'invite_required' && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">{t('inviteRequiredError')}</p>}
+      {isGoogleAuthEnabled() && <GoogleButton />}
       <form onSubmit={submit} className="space-y-4">
         <AuthField label={t('email')} type="email" value={email} onChange={setEmail} placeholder="you@company.com" />
         <AuthField label={t('password')} type="password" value={password} onChange={setPassword} />

@@ -1,4 +1,5 @@
 import { requireApiIdentity, apiError } from '@/server/auth'
+import { createSupabaseHeavyTaskGate } from '@/server/quota/heavy-tasks'
 import { answerLabel, isOpenStatus, isPositiveStatus, localizeQuestionSchema } from '@/features/roadmap/discovery'
 import type { DiscoveryAnswerValue, DiscoveryQuestionSchema } from '@/features/roadmap/types'
 import { isDeliverableStale } from '@/server/roadmap/prefill'
@@ -145,42 +146,68 @@ export async function POST(request: Request) {
 
     const priorLearnings = await loadPriorLearnings(supabase, user.id, archivedRes.data ?? [])
 
-    const result = await generateRoadmapPlan({
-      workspaceId: user.id,
-      locale,
-      goal,
-      goalLabel: goal,
-      answers,
-      openUnknowns,
-      brain,
-      deliverables,
-      priorLearnings,
-    })
+    // Reserve a heavy-task slot before doing the expensive generation (Phase 4).
+    // Roadmap generation is one of the 6 beta heavy tasks.
+    const heavyTaskGate = createSupabaseHeavyTaskGate(user.id)
+    const reservation = await heavyTaskGate.reserve({ source: 'roadmap_generate' })
+    if (!reservation.allowed) {
+      return Response.json(
+        {
+          error: 'All 6 beta heavy tasks have been used.',
+          code: 'HEAVY_TASK_QUOTA_EXHAUSTED',
+          quota: reservation.quota,
+        },
+        { status: 403 },
+      )
+    }
 
-    const payload = buildRoadmapPersistencePayload(result.plan, result.usedBrainNodes)
-    const nextReviewAt = new Date(
-      Date.now() + result.plan.reviewCadence.intervalDays * 24 * 60 * 60 * 1000,
-    ).toISOString()
+    try {
+      const result = await generateRoadmapPlan({
+        workspaceId: user.id,
+        locale,
+        goal,
+        goalLabel: goal,
+        answers,
+        openUnknowns,
+        brain,
+        deliverables,
+        priorLearnings,
+      })
 
-    const saved = await supabase.rpc('create_generated_roadmap', {
-      p_draft_id: draftId,
-      p_expected_draft_version: typeof draft.version === 'number' ? draft.version : 1,
-      p_goal: goal,
-      p_summary: payload.summary,
-      p_steps: payload.steps,
-      p_context_refs: payload.contextRefs,
-      p_review_cadence_days: result.plan.reviewCadence.intervalDays,
-      p_next_review_at: nextReviewAt,
-    })
-    if (saved.error) throw saved.error
+      const payload = buildRoadmapPersistencePayload(result.plan, result.usedBrainNodes)
+      const nextReviewAt = new Date(
+        Date.now() + result.plan.reviewCadence.intervalDays * 24 * 60 * 60 * 1000,
+      ).toISOString()
 
-    const data = asRecord(saved.data)
-    return Response.json({
-      roadmap: data.roadmap ?? null,
-      activeVersion: data.activeVersion ?? null,
-      steps: Array.isArray(data.steps) ? data.steps : [],
-      staleDependencies: [],
-    })
+      const saved = await supabase.rpc('create_generated_roadmap', {
+        p_draft_id: draftId,
+        p_expected_draft_version: typeof draft.version === 'number' ? draft.version : 1,
+        p_goal: goal,
+        p_summary: payload.summary,
+        p_steps: payload.steps,
+        p_context_refs: payload.contextRefs,
+        p_review_cadence_days: result.plan.reviewCadence.intervalDays,
+        p_next_review_at: nextReviewAt,
+      })
+      if (saved.error) throw saved.error
+
+      // The roadmap was persisted successfully — consume the reserved slot.
+      const settled = await heavyTaskGate.settle(reservation.runId!)
+
+      const data = asRecord(saved.data)
+      return Response.json({
+        roadmap: data.roadmap ?? null,
+        activeVersion: data.activeVersion ?? null,
+        steps: Array.isArray(data.steps) ? data.steps : [],
+        staleDependencies: [],
+        heavyTasks: settled,
+      })
+    } catch (error) {
+      // Generation or persistence failed — refund the slot, then let apiError
+      // translate the error into the HTTP response.
+      await heavyTaskGate.release(reservation.runId!, 'released_failed')
+      throw error
+    }
   } catch (error) {
     return apiError(error)
   }

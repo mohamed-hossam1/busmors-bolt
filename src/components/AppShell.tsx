@@ -15,7 +15,7 @@ import { ROUTES } from '../shared/routes'
 
 export default function AppShell({ children, adsEnabled = false }: { children: React.ReactNode; adsEnabled?: boolean }) {
   const { t } = useCopy()
-  const { session } = useAuth()
+  const { session, heavyTasks } = useAuth()
   const router = useLocaleRouter()
   const pathname = useLocalePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -51,6 +51,20 @@ export default function AppShell({ children, adsEnabled = false }: { children: R
       ))}
     </nav>
   )
+  const quotaBadge = heavyTasks && heavyTasks.activated ? (
+    <div
+      className={`mx-1 mb-1 rounded-lg border px-3 py-2.5 ${
+        heavyTasks.remaining === 0
+          ? 'border-amber-400/40 bg-amber-500/10'
+          : 'border-white/10 bg-cosmic-raised'
+      }`}
+    >
+      <p className={`text-[11px] font-medium ${heavyTasks.remaining === 0 ? 'text-amber-300' : 'text-white'}`}>
+        {t('heavyTasksRemaining', { remaining: heavyTasks.remaining, limit: heavyTasks.limit })}
+      </p>
+      <p className="mt-1 text-[10px] leading-4 text-stage-subtle">{t('orchestratorUnlimitedHint')}</p>
+    </div>
+  ) : null
   const account = (
     <div className="dashboard-account m-1 p-3">
       <div className="flex items-center gap-2.5 pb-3">
@@ -75,14 +89,14 @@ export default function AppShell({ children, adsEnabled = false }: { children: R
             <div id="workspace-mobile-menu" role="dialog" aria-modal="true" aria-label={t('workspaceNavigation')} className="dashboard-sidebar fixed inset-y-0 start-0 flex w-80 max-w-[90vw] flex-col p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <div className="flex items-center justify-between pb-5"><Brand light /><button aria-label={t('closeMenu')} onClick={() => setMobileMenuOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl text-stage-muted hover:bg-cosmic-active"><X size={20} /></button></div>
               <div className="px-3 pb-3"><LanguageSwitcher /></div>
-              {navigation}{account}
+              {navigation}{quotaBadge}{account}
             </div>
           </div>
         )}
         <aside className="dashboard-desktop-sidebar dashboard-sidebar hidden shrink-0 flex-col md:flex">
           <div className="px-3 pb-6 pt-4"><Brand light /></div>
           <div className="mx-1 flex items-center gap-2.5 rounded-xl border border-white/10 bg-cosmic-raised px-3 py-3.5"><Sparkles size={17} className="text-primary-300" /><div><p className="text-xs font-medium text-white">{t('madeForYourBusiness')}</p><p className="mt-1 text-[10px] text-stage-subtle">{t('contextDirectionUsefulWork')}</p></div></div>
-          {navigation}{account}
+          {navigation}{quotaBadge}{account}
           <p className="px-4 pb-2 pt-4 text-[10px] text-stage-subtle">{t('yourBusinessAtTheCenter')}</p>
         </aside>
         <main id="workspace-content" className="dashboard-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">

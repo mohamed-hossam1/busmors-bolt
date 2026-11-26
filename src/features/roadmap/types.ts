@@ -1,5 +1,5 @@
 import type { AnswerStatus } from '../../lib/contracts'
-import type { BrainNode } from '../../lib/types'
+import type { BrainNode, HeavyTaskQuotaSummary } from '../../lib/types'
 
 export type DiscoveryGoal =
   | 'validate_idea'
@@ -394,6 +394,8 @@ export interface RoadmapLoad {
   activeVersion: RoadmapVersionRecord | null
   steps: RoadmapStepRecord[]
   staleDependencies: StaleDependency[]
+  /** Live heavy-task quota snapshot returned by the generate route (optional). */
+  heavyTasks?: HeavyTaskQuotaSummary | null
   /** Phase 4 execution data (optional until the execution migration is applied). */
   stepActions?: RoadmapStepActionRecord[]
   linkedDeliverables?: LinkedDeliverableSummary[]

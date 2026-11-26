@@ -13,6 +13,7 @@ import {
   type ConversationSupabase,
 } from '@/server/employee/conversation-store'
 import { ensureNonEmptyReply, isArabicText } from '@/server/employee/reply'
+import { createSupabaseHeavyTaskGate } from '@/server/quota/heavy-tasks'
 import { describeLiveTraceStep } from '@/server/employee/live-status'
 import { projectTraceEvents } from '@/server/employee/trace-projection'
 
@@ -146,6 +147,8 @@ export async function POST(request: Request) {
       (request.headers.get('accept') ?? '').includes('text/event-stream')
 
     if (!wantsStream) {
+      const heavyTaskGate = createSupabaseHeavyTaskGate(workspaceId)
+      const initialQuota = await heavyTaskGate.getQuota()
       const result = await runOrchestrator({
         workspaceId,
         userId: user.id,
@@ -154,7 +157,11 @@ export async function POST(request: Request) {
         traceContext: { traceId },
         collector,
         supabase,
+        heavyTaskGate,
+        heavyTasksRemaining: initialQuota.remaining,
       })
+
+      const updatedQuota = await heavyTaskGate.getQuota()
 
       // Guarantee a visible, non-empty reply even for tool-only turns.
       const reply = ensureNonEmptyReply(result.output, result.structured, arabic, {
@@ -190,6 +197,8 @@ export async function POST(request: Request) {
         clarification: result.structured.clarification,
         deliverables: result.structured.deliverables,
         drafts: result.structured.drafts,
+        heavyTasks: updatedQuota,
+        quotaExhausted: result.structured.quotaExhausted === true,
       })
     }
 
@@ -226,6 +235,8 @@ export async function POST(request: Request) {
         })
 
         try {
+          const heavyTaskGate = createSupabaseHeavyTaskGate(workspaceId)
+          const initialQuota = await heavyTaskGate.getQuota()
           const result = await runOrchestrator({
             workspaceId,
             userId: user.id,
@@ -235,7 +246,11 @@ export async function POST(request: Request) {
             collector,
             abortSignal: request.signal,
             supabase,
+            heavyTaskGate,
+            heavyTasksRemaining: initialQuota.remaining,
           })
+
+          const updatedQuota = await heavyTaskGate.getQuota()
 
           const reply = ensureNonEmptyReply(result.output, result.structured, arabic, {
             status: result.status,
@@ -270,6 +285,8 @@ export async function POST(request: Request) {
             clarification: result.structured.clarification,
             deliverables: result.structured.deliverables,
             drafts: result.structured.drafts,
+            heavyTasks: updatedQuota,
+            quotaExhausted: result.structured.quotaExhausted === true,
           })
         } catch (err) {
           emit('error', {
