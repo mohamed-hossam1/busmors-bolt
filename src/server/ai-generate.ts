@@ -131,6 +131,8 @@ export function resolveApiKeyForProvider(provider: string, explicitKey?: string 
       return process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null
     case 'openrouter':
       return process.env.OPENROUTER_API_KEY || null
+    case 'vercel':
+      return process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_AI_GATEWAY_API_KEY || null
     default:
       return process.env.AI_API_KEY || null
   }
@@ -202,7 +204,9 @@ export async function executeWithFallback(options: {
           ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
           : fb.provider === 'sovereigneg'
             ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-            : null
+            : fb.provider === 'vercel'
+              ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1')
+              : null
       ),
       apiKey: (fb as ExecutionTarget).apiKey ?? resolveApiKeyForProvider(fb.provider),
       reasoningEffort: fb.reasoningEffort,
@@ -298,9 +302,10 @@ async function handleSharedCrawlRequest(
 
   // Fallback: Groq API key
   const fallbackKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+  const vercelKey = resolveApiKeyForProvider('vercel')
 
   let sharedRpcKey: string | null = null
-  if (!dahlKey && !fallbackKey) {
+  if (!dahlKey && !fallbackKey && !vercelKey) {
     const { data: rpcSecret, error: secretError } = await admin.rpc('read_shared_crawl_key')
     if (!secretError && rpcSecret) sharedRpcKey = String(rpcSecret)
   }
@@ -308,7 +313,7 @@ async function handleSharedCrawlRequest(
   const effectiveDahlKey = dahlKey || sharedRpcKey
   const effectiveFallbackKey = fallbackKey || sharedRpcKey
 
-  if (!effectiveDahlKey && !effectiveFallbackKey) {
+  if (!effectiveDahlKey && !effectiveFallbackKey && !vercelKey) {
     // A personal key is optional; it is read and used entirely on the server.
     const { data: meta } = await admin
       .from('ai_keys')
@@ -329,14 +334,16 @@ async function handleSharedCrawlRequest(
 
   const primaryApiKey = crawlConfig.provider === 'dahl'
     ? effectiveDahlKey
-    : crawlConfig.provider === 'sovereigneg'
-      ? resolveApiKeyForProvider('sovereigneg')
+    : crawlConfig.provider === 'sovereigneg' || crawlConfig.provider === 'vercel'
+      ? resolveApiKeyForProvider(crawlConfig.provider)
       : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
   const primaryBaseUrl = crawlConfig.provider === 'dahl'
     ? dahlBaseUrl
     : crawlConfig.provider === 'sovereigneg'
       ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-      : null
+      : crawlConfig.provider === 'vercel'
+        ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1')
+        : null
   const primaryTimeout = crawlConfig.provider === 'dahl' ? 25000 : 20000
 
   try {
@@ -447,7 +454,7 @@ async function callProvider(
     return text
   }
 
-  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, dahl, sovereigneg, custom
+  // OpenAI-compatible: openai, groq, google (gemini open-compat), openrouter, dahl, sovereigneg, vercel, custom
   const base =
     key.provider === 'openai'
       ? 'https://api.openai.com/v1'
@@ -461,7 +468,9 @@ async function callProvider(
               ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1').replace(/\/$/, '')
               : key.provider === 'sovereigneg'
                 ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1').replace(/\/$/, '')
-                : (key.custom_base_url ?? '').replace(/\/$/, '')
+                : key.provider === 'vercel'
+                  ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1').replace(/\/$/, '')
+                  : (key.custom_base_url ?? '').replace(/\/$/, '')
   if (!base) throw new Error('missing_base_url')
   if (key.provider === 'custom') {
     const configuredAllowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)

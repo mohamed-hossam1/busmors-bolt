@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 export type AiEnvironmentMode = 'test' | 'production'
 export type AgentRole = 'orchestrator' | 'director' | 'research' | 'content' | 'marketing-analyst'
-export type AiProvider = 'groq' | 'dahl' | 'sovereigneg' | 'apinex'
+export type AiProvider = 'groq' | 'dahl' | 'sovereigneg' | 'apinex' | 'vercel'
 export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high'
 
 export interface ModelConfig {
@@ -51,7 +51,7 @@ export class ModelNotAllowedError extends Error {
     super(
       mode === 'production'
         ? `Model ${provider}/${model} is not allowed in AI_MODE=production. Only sovereigneg models may be dispatched.`
-        : `Model ${provider}/${model} is not allowed in AI_MODE=test. Only Groq/openai/gpt-oss-120b, Dahl/zai-org/GLM-5.3-Flash, and Apinex/free/gpt-6-luna may be dispatched.`,
+        : `Model ${provider}/${model} is not allowed in AI_MODE=test. Only vercel/nvidia/nemotron-3.5-lightning-free may be dispatched.`,
     )
     this.name = 'ModelNotAllowedError'
   }
@@ -81,9 +81,7 @@ export const CURRENT_AI_MODE = AI_MODE
 export const IS_TEST_MODE = AI_MODE === 'test'
 
 export const TEST_ALLOWED_MODELS = [
-  { provider: 'groq', model: 'openai/gpt-oss-120b' },
-  { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-  { provider: 'apinex', model: 'free/gpt-6-luna' },
+  { provider: 'vercel', model: 'nvidia/nemotron-3.5-lightning-free' },
 ] as const satisfies readonly ModelTarget[]
 
 export const PRODUCTION_ALLOWED_PROVIDER: AiProvider = 'sovereigneg'
@@ -109,15 +107,17 @@ export function assertModelAllowed(
   }
 }
 
+const TEST_PRIMARY_MODEL: ModelTarget = {
+  provider: 'vercel',
+  model: 'nvidia/nemotron-3.5-lightning-free',
+}
+
 const ROLE_AI_MODELS = {
   orchestrator: {
     test: {
       temperature: 0.2,
-      primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [
-        { provider: 'apinex', model: 'free/gpt-6-luna' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-      ],
+      primary: TEST_PRIMARY_MODEL,
+      fallbacks: [],
     },
     production: {
       temperature: 0.2,
@@ -131,11 +131,8 @@ const ROLE_AI_MODELS = {
   director: {
     test: {
       temperature: 0.3,
-      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-      ],
+      primary: TEST_PRIMARY_MODEL,
+      fallbacks: [],
     },
     production: {
       temperature: 0.3,
@@ -149,11 +146,8 @@ const ROLE_AI_MODELS = {
   research: {
     test: {
       temperature: 0.3,
-      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-      ],
+      primary: TEST_PRIMARY_MODEL,
+      fallbacks: [],
     },
     production: {
       temperature: 0.3,
@@ -167,11 +161,8 @@ const ROLE_AI_MODELS = {
   content: {
     test: {
       temperature: 0.7,
-      primary: { provider: 'groq', model: 'openai/gpt-oss-120b' },
-      fallbacks: [
-        { provider: 'apinex', model: 'free/gpt-6-luna' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-      ],
+      primary: TEST_PRIMARY_MODEL,
+      fallbacks: [],
     },
     production: {
       temperature: 0.7,
@@ -185,11 +176,8 @@ const ROLE_AI_MODELS = {
   'marketing-analyst': {
     test: {
       temperature: 0.3,
-      primary: { provider: 'apinex', model: 'free/gpt-6-luna' },
-      fallbacks: [
-        { provider: 'groq', model: 'openai/gpt-oss-120b' },
-        { provider: 'dahl', model: 'zai-org/GLM-5.3-Flash' },
-      ],
+      primary: TEST_PRIMARY_MODEL,
+      fallbacks: [],
     },
     production: {
       temperature: 0.3,
@@ -211,8 +199,8 @@ export const AI_MODELS = {
         temperature: 0.1,
       }
     : {
-        provider: 'groq',
-        model: 'openai/gpt-oss-120b',
+        provider: 'vercel',
+        model: 'nvidia/nemotron-3.5-lightning-free',
         temperature: 0.1,
       }) satisfies ModelConfig,
 } as const
@@ -261,15 +249,9 @@ export const PROD_AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
 
 export const TEST_AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
   {
-    provider: 'groq',
-    model: 'openai/gpt-oss-120b',
-    timeoutMs: 20000,
-  },
-  {
-    provider: 'dahl',
-    model: 'zai-org/GLM-5.3-Flash',
+    provider: 'vercel',
+    model: 'nvidia/nemotron-3.5-lightning-free',
     timeoutMs: 25000,
-    reasoningEffort: 'none',
   },
 ] as const
 
@@ -306,6 +288,18 @@ export function getProviderCredentials(provider: AiProvider): {
         apiKey: requiredEnv(process.env, 'APINEX_API_KEY'),
         baseURL: process.env.APINEX_BASE_URL?.trim() || 'https://api.apinex.bond/v1',
       }
+    case 'vercel': {
+      const apiKey =
+        process.env.AI_GATEWAY_API_KEY?.trim() ||
+        process.env.VERCEL_AI_GATEWAY_API_KEY?.trim()
+      if (!apiKey) {
+        throw new AiConfigurationError('Missing required environment variable AI_GATEWAY_API_KEY.')
+      }
+      return {
+        apiKey,
+        baseURL: process.env.AI_GATEWAY_BASE_URL?.trim() || 'https://ai-gateway.vercel.sh/v1',
+      }
+    }
   }
 }
 
@@ -339,6 +333,13 @@ const apinexProvider = () =>
     apiKey: process.env.APINEX_API_KEY?.trim() ?? '',
   })
 
+const vercelProvider = () =>
+  createOpenAICompatible({
+    name: 'vercel',
+    baseURL: process.env.AI_GATEWAY_BASE_URL?.trim() || 'https://ai-gateway.vercel.sh/v1',
+    apiKey: (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_AI_GATEWAY_API_KEY)?.trim() ?? '',
+  })
+
 export function getLanguageModel(target: ModelTarget | ResolvedModelTarget): LanguageModel {
   switch (target.provider) {
     case 'groq':
@@ -349,5 +350,7 @@ export function getLanguageModel(target: ModelTarget | ResolvedModelTarget): Lan
       return sovereignEgProvider().languageModel(target.model)
     case 'apinex':
       return apinexProvider().languageModel(target.model)
+    case 'vercel':
+      return vercelProvider().languageModel(target.model)
   }
 }

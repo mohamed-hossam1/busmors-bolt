@@ -29,6 +29,8 @@ const originalEnv = {
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   DAHL_API_KEY: process.env.DAHL_API_KEY,
   APINEX_API_KEY: process.env.APINEX_API_KEY,
+  AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+  SOVEREIGNEG_API_KEY: process.env.SOVEREIGNEG_API_KEY,
 }
 
 let gatewayModule: typeof import('../../src/server/ai-gateway')
@@ -51,6 +53,8 @@ before(async () => {
   process.env.GROQ_API_KEY = 'test-groq-key'
   process.env.DAHL_API_KEY = 'test-dahl-key'
   process.env.APINEX_API_KEY = 'test-apinex-key'
+  process.env.AI_GATEWAY_API_KEY = 'test-vercel-gateway-key'
+  process.env.SOVEREIGNEG_API_KEY = 'test-sovereigneg-key'
   const gatewayModulePath = '../../src/server/ai-gateway.ts?gateway-test=1'
   gatewayModule = await import(gatewayModulePath)
 })
@@ -64,6 +68,10 @@ after(() => {
   else process.env.DAHL_API_KEY = originalEnv.DAHL_API_KEY
   if (originalEnv.APINEX_API_KEY === undefined) delete process.env.APINEX_API_KEY
   else process.env.APINEX_API_KEY = originalEnv.APINEX_API_KEY
+  if (originalEnv.AI_GATEWAY_API_KEY === undefined) delete process.env.AI_GATEWAY_API_KEY
+  else process.env.AI_GATEWAY_API_KEY = originalEnv.AI_GATEWAY_API_KEY
+  if (originalEnv.SOVEREIGNEG_API_KEY === undefined) delete process.env.SOVEREIGNEG_API_KEY
+  else process.env.SOVEREIGNEG_API_KEY = originalEnv.SOVEREIGNEG_API_KEY
 })
 
 describe('central model gateway', () => {
@@ -83,7 +91,7 @@ describe('central model gateway', () => {
         finishReason: 'stop',
       },
     ])
-    const generateWithRole = gatewayModule.createModelGateway({ generateText: generate as never })
+    const generateWithRole = gatewayModule.createModelGateway({ generateText: generate as never, mode: 'production' })
 
     const result = await generateWithRole({
       role: 'content',
@@ -92,8 +100,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'apinex')
-    assert.equal(result.model, 'free/gpt-6-luna')
+    assert.equal(result.provider, 'sovereigneg')
+    assert.equal(result.model, 'gpt-6-luna')
     assert.equal(result.fallback.used, true)
     assert.equal(result.fallback.reason, 'rate_limit')
     assert.equal(result.usage.inputTokens, 11)
@@ -112,7 +120,7 @@ describe('central model gateway', () => {
         finishReason: 'stop',
       },
     ])
-    const generateWithRole = gatewayModule.createModelGateway({ generateText: generate as never })
+    const generateWithRole = gatewayModule.createModelGateway({ generateText: generate as never, mode: 'production' })
 
     const result = await generateWithRole({
       role: 'research',
@@ -121,7 +129,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'groq')
+    assert.equal(result.provider, 'sovereigneg')
+    assert.equal(result.model, 'glm-5.3-flash')
     assert.equal(result.fallback.reason, 'timeout')
   })
 
@@ -175,7 +184,7 @@ describe('central model gateway', () => {
     assert.equal(gatewayModule.repairMalformedToolCallJson('{not valid at all'), null)
   })
 
-  it('falls back to the next provider when step 0 fails on malformed tool call JSON', async () => {
+  it('falls back to the next target when step 0 fails on malformed tool call JSON', async () => {
     const jsonParseFailure = Object.assign(new Error('Failed to parse tool call arguments as JSON'), {
       name: 'AI_JSONParseError',
     })
@@ -187,7 +196,7 @@ describe('central model gateway', () => {
         finishReason: 'stop',
       },
     ])
-    const runTurn = gatewayModule.createAgentTurnRunner({ generateText: generate as never })
+    const runTurn = gatewayModule.createAgentTurnRunner({ generateText: generate as never, mode: 'production' })
 
     const result = await runTurn({
       role: 'director',
@@ -196,9 +205,28 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'dahl')
+    assert.equal(result.provider, 'sovereigneg')
+    assert.equal(result.model, 'gpt-6-luna')
     assert.equal(result.text, 'recovered response')
     assert.equal(result.fallback.used, true)
+  })
+
+  it('uses vercel/nvidia/nemotron-3.5-lightning-free in test mode for every role', async () => {
+    const { calls, generate } = mockSequence([
+      {
+        text: 'test ok',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        finishReason: 'stop',
+      },
+    ])
+    const runTurn = gatewayModule.createAgentTurnRunner({ generateText: generate as never })
+
+    const result = await runTurn({ role: 'orchestrator', system: 'system', prompt: 'prompt' })
+
+    assert.equal(calls.length, 1)
+    assert.equal(result.provider, 'vercel')
+    assert.equal(result.model, 'nvidia/nemotron-3.5-lightning-free')
+    assert.equal(result.fallback.used, false)
   })
 
   it('uses large stepMs and totalMs timeouts for agent turns so tool delegations do not time out at 45s', async () => {

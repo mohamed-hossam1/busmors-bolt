@@ -12,6 +12,7 @@ import {
   getLanguageModel,
   getRoleModelChain,
   type AgentRole,
+  type AiEnvironmentMode,
   type ResolvedModelTarget,
 } from '../config/ai-models'
 
@@ -98,6 +99,7 @@ type GenerateTextLike = (options: GenerateTextCallOptions) => Promise<GenerateTe
 
 export interface ModelGatewayDeps {
   generateText?: GenerateTextLike
+  mode?: AiEnvironmentMode
 }
 
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 300_000
@@ -276,7 +278,7 @@ export function createModelGateway(deps: ModelGatewayDeps = {}) {
   const generate = deps.generateText ?? (generateText as unknown as GenerateTextLike)
 
   return async function generateWithRole(options: GenerateWithRoleOptions): Promise<GenerateWithRoleResult> {
-    const chain = getRoleModelChain(options.role)
+    const chain = getRoleModelChain(options.role, deps.mode)
     if (chain.length === 0) {
       throw new Error(`No active model targets configured for role ${options.role}.`)
     }
@@ -291,7 +293,7 @@ export function createModelGateway(deps: ModelGatewayDeps = {}) {
       }
 
       const target = chain[attemptIndex]
-      assertModelAllowed(target.provider, target.model)
+      assertModelAllowed(target.provider, target.model, deps.mode)
       assertProviderCredentials(target.provider)
 
       const attemptStartedAt = Date.now()
@@ -444,6 +446,7 @@ type AgentGenerateLike = (options: AgentGenerateCallOptions) => Promise<AgentGen
 
 export interface AgentGatewayDeps {
   generateText?: AgentGenerateLike
+  mode?: AiEnvironmentMode
 }
 
 function normalizeStep(step: unknown, index: number): AgentTurnStep {
@@ -462,7 +465,7 @@ export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
   const generate = deps.generateText ?? (generateText as unknown as AgentGenerateLike)
 
   return async function runAgentTurn(options: AgentTurnOptions): Promise<AgentTurnResult> {
-    const chain = getRoleModelChain(options.role)
+    const chain = getRoleModelChain(options.role, deps.mode)
     if (chain.length === 0) {
       throw new Error(`No active model targets configured for role ${options.role}.`)
     }
@@ -478,7 +481,7 @@ export function createAgentTurnRunner(deps: AgentGatewayDeps = {}) {
       }
 
       const target = chain[attemptIndex]
-      assertModelAllowed(target.provider, target.model)
+      assertModelAllowed(target.provider, target.model, deps.mode)
       assertProviderCredentials(target.provider)
 
       const attemptStartedAt = Date.now()

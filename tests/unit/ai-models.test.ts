@@ -33,23 +33,21 @@ describe('AI model configuration', () => {
 
     for (const role of roles) {
       const chain = config.getRoleModelChain(role) as Array<{ provider: string; model: string }>
-      assert.ok(chain.length > 0)
-      for (const target of chain) {
-        assert.equal(config.isModelAllowed(target.provider, target.model), true)
-        assert.notEqual(target.provider, 'sovereigneg')
-      }
+      assert.equal(chain.length, 1)
+      assert.equal(chain[0].provider, 'vercel')
+      assert.equal(chain[0].model, 'nvidia/nemotron-3.5-lightning-free')
+      assert.equal(config.isModelAllowed(chain[0].provider, chain[0].model), true)
     }
 
-    assert.equal(config.getRoleModelChain('research')[0].provider, 'apinex')
-    assert.equal(config.getRoleModelChain('research')[0].model, 'free/gpt-6-luna')
-    assert.equal(config.getRoleModelChain('content')[0].provider, 'groq')
-    assert.equal(config.isModelAllowed('apinex', 'free/gpt-6-luna'), true)
+    assert.equal(config.AI_MODELS.onboardingCrawl.provider, 'vercel')
+    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'nvidia/nemotron-3.5-lightning-free')
+    assert.equal(config.isModelAllowed('vercel', 'nvidia/nemotron-3.5-lightning-free'), true)
     assert.throws(
       () => config.assertModelAllowed('sovereigneg', 'gpt-6-luna'),
       config.ModelNotAllowedError,
     )
     assert.throws(
-      () => config.assertModelAllowed('groq', 'openai/gpt-oss-20b'),
+      () => config.assertModelAllowed('groq', 'openai/gpt-oss-120b'),
       config.ModelNotAllowedError,
     )
   })
