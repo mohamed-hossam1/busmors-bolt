@@ -100,10 +100,12 @@ export interface ModelGatewayDeps {
   generateText?: GenerateTextLike
 }
 
-export const DEFAULT_ATTEMPT_TIMEOUT_MS = 60_000
-export const DEFAULT_STEP_TIMEOUT_MS = 45_000
-export const DEFAULT_AGENT_TURN_TIMEOUT_MS = 95_000
-export const DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS = 240_000
+export const DEFAULT_ATTEMPT_TIMEOUT_MS = 300_000
+// AI SDK `stepMs` spans both the model call and tool execution inside that step
+// (including delegated sub-agents like research/content/director), so keep it large.
+export const DEFAULT_STEP_TIMEOUT_MS = 600_000
+export const DEFAULT_AGENT_TURN_TIMEOUT_MS = 300_000
+export const DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS = 600_000
 
 /**
  * Best-effort deterministic repair for slightly malformed JSON emitted in LLM

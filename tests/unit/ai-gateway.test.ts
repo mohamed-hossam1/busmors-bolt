@@ -9,7 +9,7 @@ type MockOptions = {
   temperature?: number
   maxRetries: number
   abortSignal?: AbortSignal
-  timeout?: number
+  timeout?: number | { totalMs?: number; stepMs?: number; chunkMs?: number }
 }
 
 type MockResult = {
@@ -199,5 +199,36 @@ describe('central model gateway', () => {
     assert.equal(result.provider, 'dahl')
     assert.equal(result.text, 'recovered response')
     assert.equal(result.fallback.used, true)
+  })
+
+  it('uses large stepMs and totalMs timeouts for agent turns so tool delegations do not time out at 45s', async () => {
+    const { calls, generate } = mockSequence([
+      {
+        text: 'director ok',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        finishReason: 'stop',
+      },
+      {
+        text: 'research ok',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        finishReason: 'stop',
+      },
+    ])
+    const runTurn = gatewayModule.createAgentTurnRunner({ generateText: generate as never })
+
+    await runTurn({ role: 'director', system: 'system', prompt: 'prompt' })
+    await runTurn({ role: 'research', system: 'system', prompt: 'prompt' })
+
+    assert.deepEqual(calls[0].timeout, {
+      stepMs: gatewayModule.DEFAULT_STEP_TIMEOUT_MS,
+      totalMs: gatewayModule.DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS,
+    })
+    assert.deepEqual(calls[1].timeout, {
+      stepMs: gatewayModule.DEFAULT_STEP_TIMEOUT_MS,
+      totalMs: gatewayModule.DEFAULT_AGENT_TURN_TIMEOUT_MS,
+    })
+    assert.ok(gatewayModule.DEFAULT_STEP_TIMEOUT_MS >= 600_000)
+    assert.ok(gatewayModule.DEFAULT_ORCHESTRATION_TURN_TIMEOUT_MS >= 600_000)
+    assert.ok(gatewayModule.DEFAULT_AGENT_TURN_TIMEOUT_MS >= 300_000)
   })
 })
