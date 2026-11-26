@@ -50,7 +50,7 @@ export class ModelNotAllowedError extends Error {
   constructor(provider: string, model: string, mode: AiEnvironmentMode = AI_MODE) {
     super(
       mode === 'production'
-        ? `Model ${provider}/${model} is not allowed in AI_MODE=production. Only sovereigneg models may be dispatched.`
+        ? `Model ${provider}/${model} is not allowed in AI_MODE=production. Only vercel models may be dispatched.`
         : `Model ${provider}/${model} is not allowed in AI_MODE=test. Only vercel/nvidia/nemotron-3.5-lightning-free may be dispatched.`,
     )
     this.name = 'ModelNotAllowedError'
@@ -84,7 +84,7 @@ export const TEST_ALLOWED_MODELS = [
   { provider: 'vercel', model: 'nvidia/nemotron-3.5-lightning-free' },
 ] as const satisfies readonly ModelTarget[]
 
-export const PRODUCTION_ALLOWED_PROVIDER: AiProvider = 'sovereigneg'
+export const PRODUCTION_ALLOWED_PROVIDER: AiProvider = 'vercel'
 
 export function isModelAllowed(
   provider: string,
@@ -112,6 +112,21 @@ const TEST_PRIMARY_MODEL: ModelTarget = {
   model: 'nvidia/nemotron-3.5-lightning-free',
 }
 
+const PROD_GPT5_NANO: ModelTarget = {
+  provider: 'vercel',
+  model: 'openai/gpt-5-nano',
+}
+
+const PROD_GEMINI_FLASH_LITE: ModelTarget = {
+  provider: 'vercel',
+  model: 'google/gemini-2.5-flash-lite',
+}
+
+const PROD_NEMOTRON_FREE_FALLBACK: ModelTarget = {
+  provider: 'vercel',
+  model: 'nvidia/nemotron-3.5-lightning-free',
+}
+
 const ROLE_AI_MODELS = {
   orchestrator: {
     test: {
@@ -121,11 +136,8 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.2,
-      primary: { provider: 'sovereigneg', model: 'gpt-oss-120b' },
-      fallbacks: [
-        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
-        { provider: 'sovereigneg', model: 'gpt-6-luna' },
-      ],
+      primary: PROD_GPT5_NANO,
+      fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
   director: {
@@ -136,11 +148,8 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: { provider: 'sovereigneg', model: 'glm-5.3-flash' },
-      fallbacks: [
-        { provider: 'sovereigneg', model: 'gpt-6-luna' },
-        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
-      ],
+      primary: PROD_GPT5_NANO,
+      fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
   research: {
@@ -151,11 +160,8 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: { provider: 'sovereigneg', model: 'SovereignEG/Qwen3.8-27B-FP8' },
-      fallbacks: [
-        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
-        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
-      ],
+      primary: PROD_GEMINI_FLASH_LITE,
+      fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
   content: {
@@ -166,11 +172,8 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.7,
-      primary: { provider: 'sovereigneg', model: 'claude-haiku-5.5' },
-      fallbacks: [
-        { provider: 'sovereigneg', model: 'gpt-6-luna' },
-        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
-      ],
+      primary: PROD_GEMINI_FLASH_LITE,
+      fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
   'marketing-analyst': {
@@ -181,11 +184,8 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: { provider: 'sovereigneg', model: 'gpt-6-luna' },
-      fallbacks: [
-        { provider: 'sovereigneg', model: 'glm-5.3-flash' },
-        { provider: 'sovereigneg', model: 'gpt-oss-120b' },
-      ],
+      primary: PROD_GEMINI_FLASH_LITE,
+      fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
 } as const satisfies Record<AgentRole, Record<AiEnvironmentMode, RoleModelConfig>>
@@ -194,8 +194,8 @@ export const AI_MODELS = {
   ...ROLE_AI_MODELS,
   onboardingCrawl: (AI_MODE === 'production'
     ? {
-        provider: 'sovereigneg',
-        model: 'gpt-oss-120b',
+        provider: 'vercel',
+        model: 'google/gemini-2.5-flash-lite',
         temperature: 0.1,
       }
     : {
@@ -230,19 +230,8 @@ export function getModelConfigForOperation(operation: string): ModelConfig {
 
 export const PROD_AI_FALLBACK_TEMPLATE: readonly FallbackTargetConfig[] = [
   {
-    provider: 'sovereigneg',
-    model: 'gpt-oss-120b',
-    timeoutMs: 20000,
-  },
-  {
-    provider: 'sovereigneg',
-    model: 'glm-5.3-flash',
-    timeoutMs: 25000,
-    reasoningEffort: 'none',
-  },
-  {
-    provider: 'sovereigneg',
-    model: 'gpt-6-luna',
+    provider: 'vercel',
+    model: 'nvidia/nemotron-3.5-lightning-free',
     timeoutMs: 25000,
   },
 ] as const

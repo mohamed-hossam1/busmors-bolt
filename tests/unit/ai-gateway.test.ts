@@ -100,8 +100,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'sovereigneg')
-    assert.equal(result.model, 'gpt-6-luna')
+    assert.equal(result.provider, 'vercel')
+    assert.equal(result.model, 'nvidia/nemotron-3.5-lightning-free')
     assert.equal(result.fallback.used, true)
     assert.equal(result.fallback.reason, 'rate_limit')
     assert.equal(result.usage.inputTokens, 11)
@@ -129,8 +129,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'sovereigneg')
-    assert.equal(result.model, 'glm-5.3-flash')
+    assert.equal(result.provider, 'vercel')
+    assert.equal(result.model, 'nvidia/nemotron-3.5-lightning-free')
     assert.equal(result.fallback.reason, 'timeout')
   })
 
@@ -205,8 +205,8 @@ describe('central model gateway', () => {
     })
 
     assert.equal(calls.length, 2)
-    assert.equal(result.provider, 'sovereigneg')
-    assert.equal(result.model, 'gpt-6-luna')
+    assert.equal(result.provider, 'vercel')
+    assert.equal(result.model, 'nvidia/nemotron-3.5-lightning-free')
     assert.equal(result.text, 'recovered response')
     assert.equal(result.fallback.used, true)
   })

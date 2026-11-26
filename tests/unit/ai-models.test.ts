@@ -52,30 +52,35 @@ describe('AI model configuration', () => {
     )
   })
 
-  it('uses only SovereignEG models across all production role chains and fallback template', async () => {
+  it('uses only Vercel AI Gateway models across all production role chains and fallback template', async () => {
     const config = await loadConfig('production')
     const roles = ['orchestrator', 'director', 'research', 'content', 'marketing-analyst'] as const
 
     for (const role of roles) {
       const chain = config.getRoleModelChain(role) as Array<{ provider: string; model: string }>
-      assert.ok(chain.length > 0)
+      assert.equal(chain.length, 2)
+      assert.equal(chain[1].model, 'nvidia/nemotron-3.5-lightning-free')
       for (const target of chain) {
-        assert.equal(target.provider, 'sovereigneg')
+        assert.equal(target.provider, 'vercel')
         assert.equal(config.isModelAllowed(target.provider, target.model), true)
       }
     }
 
-    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'gpt-oss-120b')
-    assert.equal(config.getRoleModelChain('director')[0].model, 'glm-5.3-flash')
-    assert.equal(config.getRoleModelChain('research')[0].model, 'SovereignEG/Qwen3.8-27B-FP8')
-    assert.equal(config.getRoleModelChain('content')[0].model, 'claude-haiku-5.5')
-    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'gpt-6-luna')
+    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'openai/gpt-5-nano')
+    assert.equal(config.getRoleModelChain('director')[0].model, 'openai/gpt-5-nano')
+    assert.equal(config.getRoleModelChain('research')[0].model, 'google/gemini-2.5-flash-lite')
+    assert.equal(config.getRoleModelChain('content')[0].model, 'google/gemini-2.5-flash-lite')
+    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'google/gemini-2.5-flash-lite')
+    assert.equal(config.AI_MODELS.onboardingCrawl.provider, 'vercel')
+    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'google/gemini-2.5-flash-lite')
 
     for (const fb of config.PROD_AI_FALLBACK_TEMPLATE as Array<{ provider: string; model: string }>) {
-      assert.equal(fb.provider, 'sovereigneg')
+      assert.equal(fb.provider, 'vercel')
+      assert.equal(fb.model, 'nvidia/nemotron-3.5-lightning-free')
     }
 
     assert.equal(config.isModelAllowed('groq', 'openai/gpt-oss-120b'), false)
+    assert.equal(config.isModelAllowed('sovereigneg', 'gpt-oss-120b'), false)
     assert.throws(
       () => config.assertModelAllowed('dahl', 'zai-org/GLM-5.3-Flash'),
       config.ModelNotAllowedError,
