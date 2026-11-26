@@ -61,8 +61,13 @@ export function AuthField(props: {
   onChange: (v: string) => void
   placeholder?: string
   autoComplete?: string
+  disabled?: boolean
+  readOnly?: boolean
+  helper?: ReactNode
+  status?: ReactNode
+  onBlur?: () => void
 }) {
-  const isLtrField = props.type === 'email' || props.type === 'password'
+  const isLtrField = props.type === 'email' || props.type === 'password' || props.type === 'tel'
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium text-ink-700">
@@ -73,11 +78,20 @@ export function AuthField(props: {
         dir={isLtrField ? 'ltr' : undefined}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
+        onBlur={props.onBlur}
         placeholder={props.placeholder}
         className={`input-field ${isLtrField ? 'text-left placeholder:text-start' : ''}`}
-        autoComplete={props.autoComplete ?? (props.type === 'email' ? 'email' : props.type === 'password' ? 'current-password' : 'organization')}
+        autoComplete={props.autoComplete ?? (props.type === 'email' ? 'email' : props.type === 'password' ? 'current-password' : props.type === 'tel' ? 'tel' : 'organization')}
+        disabled={props.disabled}
+        readOnly={props.readOnly}
         required
       />
+      {(props.status || props.helper) && (
+        <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-500">
+          {props.status}
+          {props.helper}
+        </span>
+      )}
     </label>
   )
 }

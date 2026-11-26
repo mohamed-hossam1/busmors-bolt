@@ -1,3 +1,5 @@
+import { stripLocale } from './i18n'
+
 const allowed = new Set(['employee', 'roadmap', 'brain', 'deliverables', 'scheduling', 'settings', 'onboarding'])
 const localePattern = /^(en|ar)$/
 export function safeReturnPath(value: unknown): string | null {
@@ -15,4 +17,12 @@ export const authCallbackUrl = () => {
  const next = safeReturnPath(new URLSearchParams(window.location.search).get('next'))
  if (next) url.searchParams.set('next', next)
  return url.toString()
+}
+
+const AUTH_ROUTES = /^\/(signin|signup|reset)(\/|$)/
+
+export function shouldRedirectOAuthCode(pathname: string, hasCode: boolean): boolean {
+  if (!hasCode) return false
+  if (pathname.split('/')[1] === 'auth') return false
+  return !AUTH_ROUTES.test(stripLocale(pathname))
 }

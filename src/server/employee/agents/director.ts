@@ -107,6 +107,12 @@ export interface DirectorOutput {
   research: ResearchResult[]
   /** Structured results from Content Agent delegations (Phase 5 Part A). */
   content: ContentResult[]
+  /**
+   * Set by the Orchestrator's quota gate when no heavy-task slot was available,
+   * so a quota-exhausted stub is classified as a refund rather than a failure.
+   * Always undefined on a real Director run.
+   */
+  quotaExhausted?: boolean
 }
 
 export interface RunDirectorOptions {

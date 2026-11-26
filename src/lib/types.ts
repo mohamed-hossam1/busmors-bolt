@@ -118,6 +118,14 @@ export interface PlannedPost {
   created_at: string
 }
 
+export interface HeavyTaskQuotaSummary {
+  activated: boolean
+  limit: number
+  used: number
+  reserved: number
+  remaining: number
+}
+
 export interface WorkspaceSettings {
   workspace_id: string
   country: string
@@ -134,6 +142,7 @@ export interface WorkspaceSettings {
   crawl_status: { pages_read?: number; pages_total?: number; finished?: boolean }
   brand_colors: { primary: string; accent: string }
   plan: 'starter' | 'growth' | 'scale'
+  heavyTasks?: HeavyTaskQuotaSummary | null
   updated_at: string
 }
 

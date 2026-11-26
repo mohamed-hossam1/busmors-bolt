@@ -11,6 +11,7 @@ import {
   type DirectorHandoff,
 } from '../tools/orchestrator-tools'
 import { runDirector } from './director'
+import type { DirectorOutput } from './director'
 import type { BrainFact, BrainStore, ProposeBrainChangeResult } from '../brain-store'
 import {
   createEmployeeRunState,
@@ -22,6 +23,7 @@ import type {
   WorkspaceContextStore,
 } from '../director-store'
 import type { TraceCollector } from '../../observability'
+import { classifyDirectorOutcome, type HeavyTaskGate, type HeavyTaskReservation } from '../../quota/heavy-tasks'
 
 /**
  * Busmora Orchestrator (Phase 2).
@@ -126,7 +128,14 @@ Currently enabled:
 - Proposing Business Brain additions, edits, and deletions as pending approval cards for the owner to approve or reject.
 - Delegating substantive marketing tasks to the Director (which executes directly or delegates to specialists) and returns real results, saved Deliverables, Calendar drafts, or interactive Clarification Cards.`
 
-export function buildOrchestratorSystemPrompt(): string {
+export function buildOrchestratorSystemPrompt(heavyTasksRemaining?: number | null): string {
+  const quotaNote =
+    heavyTasksRemaining === 0
+      ? `
+
+## Runtime Quota Notice (this workspace)
+This workspace has used all 6 beta heavy tasks (0 remaining). You MUST still answer direct questions and Business Brain questions normally — general chat and Business Brain Q&A remain unlimited. If the owner asks for a marketing task that needs the Director (campaign, content, strategy, research, analysis), do NOT call delegate_to_director again; honestly tell the owner, in their language, that all 6 beta heavy tasks have been used up while general chat and Business Brain remain unlimited.`
+      : ''
   return `${ORCHESTRATOR_SYSTEM_PROMPT}
 
 ## Product Reference (data)
@@ -135,7 +144,7 @@ ${ORCHESTRATOR_PRODUCT_KNOWLEDGE}
 ## Clarification and Delegation Rules
 - Whenever the owner asks for any marketing plan, ad campaign, strategy, content, calendar, market research, or performance diagnosis — even if the request is brief or missing details (goal, budget, target audience, duration, channels) — ALWAYS call delegate_to_director immediately.
 - NEVER ask campaign discovery questions or numbered lists of clarifying questions directly in chat text; only the Director can call ask_clarification to display interactive Clarification Cards.
-- On a follow-up or clarification reply inside an active conversation, DO NOT re-call read_business_brain unless the user just supplied new facts or explicitly asked to check/update Brain data; immediately call delegate_to_director with the user's reply and existing conversation context.`
+- On a follow-up or clarification reply inside an active conversation, DO NOT re-call read_business_brain unless the user just supplied new facts or explicitly asked to check/update Brain data; immediately call delegate_to_director with the user's reply and existing conversation context.${quotaNote}`
 }
 
 export interface RunOrchestratorOptions {
@@ -159,6 +168,14 @@ export interface RunOrchestratorOptions {
   /** Authenticated Supabase client used to build the Brain/Director stores. */
   supabase?: unknown
   instanceId?: string
+  /**
+   * Heavy-task quota gate (Phase 4). When set, a slot is reserved before each
+   * Director delegation and settled/released by the real outcome. Omitted in
+   * isolated unit tests, leaving the legacy behavior unchanged.
+   */
+  heavyTaskGate?: HeavyTaskGate
+  /** Remaining heavy tasks for this workspace (0 triggers the runtime notice). */
+  heavyTasksRemaining?: number | null
 }
 
 function assertBrainSource(options: RunOrchestratorOptions): void {
@@ -326,23 +343,75 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
         }
         directorAttempts += 1
         const continuationAppendix = await buildContinuationAppendix()
-        const directorResult = await runDirector({
-          workspaceId: options.workspaceId,
-          input: `${renderDirectorInput(handoff)}${continuationAppendix}`,
-          traceContext: {
+
+        // Reserve a heavy-task slot before running the Director (Phase 4). When
+        // the workspace is out of quota, short-circuit with a quota-exhausted
+        // stub — never a Director failure — and never invoke the Director.
+        const gate = options.heavyTaskGate
+        let reservation: HeavyTaskReservation | undefined
+        if (gate) {
+          reservation = await gate.reserve({
+            source: 'director_chat',
+            conversationId: options.conversationId ?? null,
             traceId: options.traceContext.traceId,
-            parentEventId: orchestratorInstanceId,
-          },
-          tracker,
-          collector: options.collector,
-          abortSignal: options.abortSignal,
-          runTurn: options.runTurn,
-          supabase: options.supabase,
-          brain,
-          deliverables: options.deliverables,
-          calendar: options.calendar,
-          workspace: workspaceStore ?? options.workspace,
-        })
+          })
+          if (!reservation.allowed) {
+            structured.quotaExhausted = true
+            structured.heavyTasks = reservation.quota
+            return {
+              text: '',
+              status: 'partial',
+              stopReason: 'error',
+              loadedSkills: tracker.listLoadedSkills(),
+              usedTools: tracker.listUsedTools(),
+              clarification: null,
+              deliverables: [],
+              drafts: [],
+              brainProposals: [],
+              research: [],
+              content: [],
+              quotaExhausted: true,
+            }
+          }
+        }
+
+        let directorResult: DirectorOutput
+        try {
+          directorResult = await runDirector({
+            workspaceId: options.workspaceId,
+            input: `${renderDirectorInput(handoff)}${continuationAppendix}`,
+            traceContext: {
+              traceId: options.traceContext.traceId,
+              parentEventId: orchestratorInstanceId,
+            },
+            tracker,
+            collector: options.collector,
+            abortSignal: options.abortSignal,
+            runTurn: options.runTurn,
+            supabase: options.supabase,
+            brain,
+            deliverables: options.deliverables,
+            calendar: options.calendar,
+            workspace: workspaceStore ?? options.workspace,
+          })
+        } catch (error) {
+          // A thrown Director run never consumes quota — refund the slot, then
+          // let the original error propagate unchanged.
+          if (gate && reservation) await gate.release(reservation.runId!, 'released_failed')
+          throw error
+        }
+
+        // Settle (consume) or release (refund) the reserved slot by the real
+        // outcome. With no gate (isolated unit tests) this is a no-op.
+        if (gate && reservation) {
+          const decision = classifyDirectorOutcome(directorResult)
+          if (decision === 'consume') {
+            await gate.settle(reservation.runId!)
+          } else {
+            await gate.release(reservation.runId!, decision)
+          }
+        }
+
         lastDirectorStatus = directorResult.status
         // Merge the Director's structured outputs into the shared run state.
         if (directorResult.clarification) structured.clarification = directorResult.clarification
@@ -352,7 +421,11 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
         // never replaces it with a generic fallback reply.
         if (!structured.directorReply && directorResult.text && directorResult.text.trim()) {
           structured.directorReply = directorResult.text
-        } else if (directorResult.status !== 'completed' && !directorResult.text?.trim()) {
+        } else if (
+          !directorResult.quotaExhausted &&
+          directorResult.status !== 'completed' &&
+          !directorResult.text?.trim()
+        ) {
           structured.directorFailed = true
         }
         return directorResult
@@ -369,7 +442,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
 
   const result = await runAgent({
     role: 'orchestrator',
-    systemPrompt: buildOrchestratorSystemPrompt(),
+    systemPrompt: buildOrchestratorSystemPrompt(options.heavyTasksRemaining),
     messages: options.messages,
     tools,
     workspaceId: options.workspaceId,

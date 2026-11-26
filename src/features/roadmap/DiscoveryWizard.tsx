@@ -491,7 +491,7 @@ function QuestionCard({
 }
 
 export default function DiscoveryWizard() {
-  const { settings } = useAuth()
+  const { settings, heavyTasks, setHeavyTasks, refreshSettings } = useAuth()
   const { t } = useCopy()
   const { locale } = useI18n()
   const hasWebsite = Boolean(settings?.company_url?.trim())
@@ -1027,16 +1027,27 @@ export default function DiscoveryWizard() {
 
   const generateRoadmapNow = async () => {
     if (!draftRef.current || generating) return
+    if (heavyTasks?.remaining === 0) {
+      setGenerateError(t('roadmapQuotaExhausted'))
+      return
+    }
     setGenerating(true)
     setGenerateError('')
     try {
       const loaded = await generateRoadmap(draftRef.current.id, locale)
       setGenerated(loaded)
+      if (loaded.heavyTasks) setHeavyTasks(loaded.heavyTasks)
       setNotice('')
+      void refreshSettings()
     } catch (error) {
-      setGenerateError(rpcCode(error) === 'STALE_VERSION'
-        ? 'This Discovery changed in another tab. Reload the saved draft before generating.'
-        : 'The roadmap could not be generated. Your answers are unchanged; retry when the connection is available.')
+      if ((error as { code?: string }).code === 'HEAVY_TASK_QUOTA_EXHAUSTED') {
+        setGenerateError(t('roadmapQuotaExhausted'))
+        void refreshSettings()
+      } else {
+        setGenerateError(rpcCode(error) === 'STALE_VERSION'
+          ? 'This Discovery changed in another tab. Reload the saved draft before generating.'
+          : 'The roadmap could not be generated. Your answers are unchanged; retry when the connection is available.')
+      }
     } finally {
       setGenerating(false)
     }
@@ -1189,6 +1200,8 @@ export default function DiscoveryWizard() {
         data={generated}
         locale={locale}
         regenerating={generating}
+        regenerateDisabled={heavyTasks?.remaining === 0}
+        regenerateNotice={generateError || (heavyTasks?.remaining === 0 ? t('roadmapQuotaExhausted') : null)}
         onBackToDiscovery={backToDiscovery}
         onRegenerate={() => void generateRoadmapNow()}
         onUpdated={handleRoadmapUpdated}
@@ -1436,7 +1449,10 @@ export default function DiscoveryWizard() {
             <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} className="text-primary-600" /> {t('generateRoadmap')}</h2>
             <p className="mt-2 text-xs leading-5 text-ink-600">{t('generateRoadmapHelp')}</p>
             {generateError && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{generateError}</p>}
-            <button type="button" onClick={() => void generateRoadmapNow()} disabled={generating || !draft} className="btn-primary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
+            {heavyTasks?.remaining === 0 && !generateError && (
+              <p role="status" className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{t('roadmapQuotaExhausted')}</p>
+            )}
+            <button type="button" onClick={() => void generateRoadmapNow()} disabled={generating || !draft || heavyTasks?.remaining === 0} className="btn-primary mt-3 min-h-9 w-full px-3 py-1.5 text-xs">
               {generating ? <><Spinner size={13} /> {t('generatingRoadmap')}</> : <><Sparkles size={13} /> {t('generateRoadmapCta')}</>}
             </button>
             <p className="mt-2 text-[10px] leading-5 text-ink-500">{t('generateRoadmapNote')}</p>

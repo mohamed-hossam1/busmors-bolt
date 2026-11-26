@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { publicSupabaseConfig } from './lib/supabase-config'
 import { defaultLocale, hasLocale, LOCALE_COOKIE, type Locale } from './lib/i18n'
+import { shouldRedirectOAuthCode } from './lib/authRouting'
 
 const PROTECTED = /^\/(employee|brain|roadmap|scheduling|deliverables|settings|onboarding|ads)(\/|$)/
 const AUTH_ROUTES = /^\/(signin|signup|reset)(\/|$)/
@@ -26,7 +27,7 @@ export async function proxy(request: NextRequest) {
   // "/ar?code=...") must be routed through the server callback so the code is
   // exchanged and the user is sent to onboarding/employee. Otherwise the code is
   // never consumed and the user is stranded on a marketing page.
-  if (segment !== 'auth' && request.nextUrl.searchParams.has('code')) {
+  if (shouldRedirectOAuthCode(pathname, request.nextUrl.searchParams.has('code'))) {
     const target = request.nextUrl.clone()
     target.pathname = '/auth/callback'
     target.search = search
@@ -69,7 +70,7 @@ export async function proxy(request: NextRequest) {
     redirect.cookies.set(LOCALE_COOKIE, locale, { path: '/', maxAge: 31536000, sameSite: 'lax' })
     return redirect
   }
-  if (user && AUTH_ROUTES.test(withoutLocale(pathname))) {
+  if (user && AUTH_ROUTES.test(withoutLocale(pathname)) && request.nextUrl.searchParams.get('error') !== 'invite_required') {
     const target = request.nextUrl.clone()
     target.pathname = `/${locale}/employee`
     target.search = ''

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertCircle, MessageSquare, Network, PanelLeft, Send, X } from 'lucide-react'
 import { useCopy } from '../hooks/useCopy'
+import { useAuth } from '../context/AuthContext'
 import AgentCanvas from '../components/chat/AgentCanvas'
 import MarkdownContent from '../components/chat/MarkdownContent'
 import ThinkingIndicator from '../components/chat/ThinkingIndicator'
@@ -20,6 +21,7 @@ import type {
   DeliverableRefData,
   DraftRefData,
 } from '../components/chat/employeeCards'
+import type { HeavyTaskQuotaSummary } from '../lib/types'
 
 interface ChatApiResponse {
   reply?: string
@@ -33,6 +35,8 @@ interface ChatApiResponse {
   status?: string
   stopReason?: string
   events?: CanvasEvent[]
+  heavyTasks?: HeavyTaskQuotaSummary | null
+  quotaExhausted?: boolean
 }
 
 const STARTERS = [
@@ -44,6 +48,7 @@ const STARTERS = [
 
 export default function EmployeePage() {
   const { t } = useCopy()
+  const { heavyTasks, setHeavyTasks } = useAuth()
   const searchParams = useSearchParams()
   const [mobileTab, setMobileTab] = useState<'chat' | 'canvas'>('chat')
   const [input, setInput] = useState('')
@@ -264,6 +269,7 @@ export default function EmployeePage() {
       }
 
       const finalData = data as ChatApiResponse
+      if (finalData.heavyTasks) setHeavyTasks(finalData.heavyTasks)
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -398,7 +404,29 @@ export default function EmployeePage() {
               </button>
               <span className="truncate text-xs font-medium text-ink-600">{t('chatTab')}</span>
             </div>
+            {heavyTasks?.activated && (
+              <span
+                className={`shrink-0 rounded-lg border px-2.5 py-1 text-[10px] font-medium ${
+                  heavyTasks.remaining === 0
+                    ? 'border-amber-300 bg-amber-50 text-amber-800'
+                    : 'border-ink-200 bg-ink-50 text-ink-600'
+                }`}
+              >
+                {t('heavyTasksRemaining', { remaining: heavyTasks.remaining, limit: heavyTasks.limit })}
+              </span>
+            )}
           </div>
+
+          {heavyTasks?.remaining === 0 && (
+            <div className="mx-3.5 mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold">{t('heavyTasksExhaustedTitle')}</p>
+                <p className="mt-0.5 leading-5">{t('heavyTasksExhaustedBody')}</p>
+                <p className="mt-0.5 text-[11px] leading-5 text-amber-800">{t('orchestratorUnlimitedHint')}</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mx-3.5 mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 sm:mx-5">

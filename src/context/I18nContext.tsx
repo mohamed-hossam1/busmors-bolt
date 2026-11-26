@@ -53,8 +53,9 @@ export function I18nProvider({
   const setLocale = useCallback(
     (next: Locale) => {
       const cleanPath = stripLocale(pathname)
+      const search = typeof window !== 'undefined' ? window.location.search : ''
       document.cookie = `${LOCALE_COOKIE}=${next};path=/;max-age=31536000;samesite=lax`
-      router.push(localize(cleanPath, next))
+      router.push(localize(cleanPath, next) + search)
     },
     [localize, pathname, router],
   )

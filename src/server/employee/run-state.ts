@@ -1,4 +1,5 @@
 import type { ClarificationCard } from './tools/director-tools'
+import type { HeavyTaskQuotaSummary } from '../../lib/types'
 
 /**
  * Structured outputs produced during a single Employee turn (Phase 3.5).
@@ -61,6 +62,14 @@ export interface EmployeeRunState {
   directorReply: string | null
   /** True when the Director failed/stopped partially in this turn without prose. */
   directorFailed?: boolean
+  /**
+   * True when the workspace's heavy-task quota was exhausted before the Director
+   * could run. The Orchestrator surfaces an honest "all beta tasks used up"
+   * message; this is never treated as a Director failure.
+   */
+  quotaExhausted?: boolean
+  /** The latest heavy-task quota snapshot observed during this turn. */
+  heavyTasks?: HeavyTaskQuotaSummary
 }
 
 export function createEmployeeRunState(): EmployeeRunState {
@@ -71,6 +80,7 @@ export function createEmployeeRunState(): EmployeeRunState {
     drafts: [],
     directorReply: null,
     directorFailed: false,
+    quotaExhausted: false,
   }
 }
 

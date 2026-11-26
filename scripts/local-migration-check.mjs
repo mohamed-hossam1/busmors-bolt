@@ -14,6 +14,7 @@ const checks = [
   'post-proposed-time-db-check.sql',
   'facebook-connection-db-check.sql',
   'meta-ads-db-check.sql',
+  'promo-quota-db-check.sql',
 ]
 
 const conn = localConnection()

@@ -3,14 +3,15 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import type { WorkspaceSettings } from '../lib/types'
+import type { WorkspaceSettings, HeavyTaskQuotaSummary } from '../lib/types'
 import { errorMessage } from '../lib/contracts'
 
 interface AuthState {
   session: Session | null; settings: WorkspaceSettings | null; loading: boolean
   error: string | null; recovery: boolean; refreshSettings: () => Promise<void>
+  heavyTasks: HeavyTaskQuotaSummary | null; setHeavyTasks: (next: HeavyTaskQuotaSummary | null) => void
 }
-const AuthContext = createContext<AuthState>({ session: null, settings: null, loading: true, error: null, recovery: false, refreshSettings: async () => {} })
+const AuthContext = createContext<AuthState>({ session: null, settings: null, loading: true, error: null, recovery: false, refreshSettings: async () => {}, heavyTasks: null, setHeavyTasks: () => {} })
 
 export function AuthProvider({ children, initial }: { children: ReactNode; initial?: { session: Session | null; settings: WorkspaceSettings | null } }) {
   const [session, setSession] = useState<Session | null>(initial?.session ?? null)
@@ -18,6 +19,7 @@ export function AuthProvider({ children, initial }: { children: ReactNode; initi
   const [loading, setLoading] = useState(!initial)
   const [error, setError] = useState<string | null>(null)
   const [recovery, setRecovery] = useState(false)
+  const [heavyTasks, setHeavyTasks] = useState<HeavyTaskQuotaSummary | null>(initial?.settings?.heavyTasks ?? null)
   const identity = useRef<string | null>(initial?.session?.user.id ?? initial?.settings?.workspace_id ?? null)
   const generation = useRef(0)
   const settingsReady = useRef(!!initial?.settings)
@@ -32,7 +34,7 @@ export function AuthProvider({ children, initial }: { children: ReactNode; initi
       if (!response.ok) throw new Error('Workspace could not be loaded.')
       const data = await response.json()
       if (!data?.workspace_id || data.workspace_id !== userId) throw new Error('Workspace setup returned an invalid response.')
-      if (run === generation.current) { settingsReady.current=true;setSettings(data as WorkspaceSettings) }
+      if (run === generation.current) { settingsReady.current=true;setSettings(data as WorkspaceSettings);setHeavyTasks((data as WorkspaceSettings).heavyTasks ?? null) }
     } catch (error) { if (run === generation.current) setError(errorMessage(error)) }
     finally { if (run === generation.current) setLoading(false) }
   }, [])
@@ -47,6 +49,7 @@ export function AuthProvider({ children, initial }: { children: ReactNode; initi
         identity.current = nextId
         ++generation.current
         setSettings(null)
+        setHeavyTasks(null)
         settingsReady.current=false
         setError(null)
         if (nextId) {
@@ -69,6 +72,6 @@ export function AuthProvider({ children, initial }: { children: ReactNode; initi
     return () => { alive = false; subscription.unsubscribe(); ++generation.current }
   }, [refreshSettings])
 
-  return <AuthContext.Provider value={{ session, settings, loading, error, recovery, refreshSettings }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ session, settings, loading, error, recovery, refreshSettings, heavyTasks, setHeavyTasks }}>{children}</AuthContext.Provider>
 }
 export function useAuth() { return useContext(AuthContext) }
