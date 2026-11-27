@@ -210,7 +210,8 @@ export default function PromoManager() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 print:max-w-none print:space-y-0 print:p-0">
+      <div className={qrCards.length > 0 ? 'space-y-6 print:hidden' : 'space-y-6'}>
       <header className="space-y-1">
         <h1 className="text-xl font-semibold text-ink-900">{t('adminPromosTitle')}</h1>
         <p className="text-sm text-ink-500">{t('adminPromosSubtitle')}</p>
@@ -573,6 +574,7 @@ export default function PromoManager() {
           }}
         />
       )}
+      </div>
 
       {qrCards.length > 0 && (
         <PromoQrModal cards={qrCards} initialLocale={createQrLocale} onClose={() => setQrCards([])} />

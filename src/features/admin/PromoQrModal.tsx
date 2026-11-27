@@ -10,12 +10,52 @@ import { useTranslate } from '@/context/I18nContext'
 
 const subscribeOrigin = () => () => {}
 
+const CARDS_PER_PRINT_PAGE = 6
+
+function chunkCards<T>(items: T[], size: number): T[][] {
+  const pages: T[][] = []
+  for (let i = 0; i < items.length; i += size) pages.push(items.slice(i, i + size))
+  return pages
+}
+
 const PRINT_STYLES = `
+@page {
+  margin: 8mm;
+}
 @media print {
-  body * { visibility: hidden !important; }
-  .promo-print-sheet, .promo-print-sheet * { visibility: visible !important; }
-  .promo-print-sheet { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; height: auto !important; display: grid !important; }
-  .promo-print-sheet .promo-print-card { break-inside: avoid; page-break-inside: avoid; }
+  .promo-print-page {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .promo-print-page:not(:last-child) {
+    break-after: page;
+    page-break-after: always;
+  }
+  .promo-print-sheet .promo-print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 12px 14px !important;
+    gap: 6px !important;
+    box-shadow: none !important;
+  }
+  .promo-print-sheet .promo-print-card .promo-print-qr {
+    width: 152px !important;
+    height: 152px !important;
+  }
+  .promo-print-sheet .promo-print-card .promo-print-code {
+    font-size: 14px !important;
+    line-height: 1.25 !important;
+  }
+  .promo-print-sheet .promo-print-card .promo-print-url {
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+  .promo-print-sheet .promo-print-card .badge {
+    padding: 2px 8px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
 }
 `
 
@@ -92,7 +132,7 @@ export default function PromoQrModal({
         role="dialog"
         aria-modal="true"
         aria-label={t('adminPromosQrModalTitle')}
-        className="card modal-panel max-h-[90dvh] w-full max-w-4xl overflow-y-auto p-5 sm:p-6 print:max-h-none print:w-full print:max-w-none print:overflow-visible print:border-0 print:shadow-none"
+        className="card modal-panel max-h-[90dvh] w-full max-w-4xl overflow-y-auto p-5 sm:p-6 print:max-h-none print:w-full print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -137,52 +177,57 @@ export default function PromoQrModal({
           </button>
         </div>
 
-        <div className="promo-print-sheet grid gap-4 sm:grid-cols-2 print:grid-cols-2 print:gap-6">
-          {cards.map((card, index) => {
-            const dataUrl = urls[index]
-            const signupUrl = buildSignupUrl(origin, qrLocale, card.code)
-            return (
-              <div key={card.id} className="promo-print-card card flex flex-col items-center gap-3 p-4 text-center">
-                {dataUrl ? (
-                  <img src={dataUrl} alt={card.code} width={180} height={180} className="h-[180px] w-[180px]" />
-                ) : (
-                  <div className="h-[180px] w-[180px]" />
-                )}
-                <p className="font-mono text-base font-bold text-ink-900">{card.code}</p>
-                <p className="w-full break-all text-xs text-ink-500">{signupUrl}</p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <span className="badge bg-ink-100 text-ink-600">
-                    {card.heavyTasksUsed} / {card.heavyTasksLimit}
-                  </span>
-                  {card.batchLabel && <span className="badge bg-primary-50 text-primary-700">{card.batchLabel}</span>}
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 print:hidden">
-                  <button
-                    type="button"
-                    onClick={() => copy('code:' + card.code, card.code)}
-                    className="btn-secondary h-8 px-2.5 text-xs"
-                  >
-                    {copiedKey === 'code:' + card.code ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-                    {copiedKey === 'code:' + card.code ? t('adminPromosCopied') : t('adminPromosCopyCode')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => copy('link:' + card.code, signupUrl)}
-                    className="btn-secondary h-8 px-2.5 text-xs"
-                  >
-                    {copiedKey === 'link:' + card.code ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-                    {copiedKey === 'link:' + card.code ? t('adminPromosCopied') : t('adminPromosCopyLink')}
-                  </button>
-                  {dataUrl && (
-                    <a download={`${card.code}.png`} href={dataUrl} className="btn-secondary h-8 px-2.5 text-xs">
-                      <Download size={13} aria-hidden="true" />
-                      {t('adminPromosDownloadPng')}
-                    </a>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+        <div className="promo-print-sheet space-y-4 print:space-y-0">
+          {chunkCards(cards, CARDS_PER_PRINT_PAGE).map((pageCards, pageIndex) => (
+            <div key={pageIndex} className="promo-print-page grid gap-4 sm:grid-cols-2 print:grid-cols-2">
+              {pageCards.map((card, offset) => {
+                const index = pageIndex * CARDS_PER_PRINT_PAGE + offset
+                const dataUrl = urls[index]
+                const signupUrl = buildSignupUrl(origin, qrLocale, card.code)
+                return (
+                  <div key={card.id} className="promo-print-card card flex flex-col items-center gap-3 p-4 text-center">
+                    {dataUrl ? (
+                      <img src={dataUrl} alt={card.code} width={180} height={180} className="promo-print-qr h-[180px] w-[180px]" />
+                    ) : (
+                      <div className="promo-print-qr h-[180px] w-[180px]" />
+                    )}
+                    <p className="promo-print-code font-mono text-base font-bold text-ink-900">{card.code}</p>
+                    <p className="promo-print-url w-full break-all text-xs text-ink-500">{signupUrl}</p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <span className="badge bg-ink-100 text-ink-600">
+                        {card.heavyTasksUsed} / {card.heavyTasksLimit}
+                      </span>
+                      {card.batchLabel && <span className="badge bg-primary-50 text-primary-700">{card.batchLabel}</span>}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 print:hidden">
+                      <button
+                        type="button"
+                        onClick={() => copy('code:' + card.code, card.code)}
+                        className="btn-secondary h-8 px-2.5 text-xs"
+                      >
+                        {copiedKey === 'code:' + card.code ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                        {copiedKey === 'code:' + card.code ? t('adminPromosCopied') : t('adminPromosCopyCode')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copy('link:' + card.code, signupUrl)}
+                        className="btn-secondary h-8 px-2.5 text-xs"
+                      >
+                        {copiedKey === 'link:' + card.code ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                        {copiedKey === 'link:' + card.code ? t('adminPromosCopied') : t('adminPromosCopyLink')}
+                      </button>
+                      {dataUrl && (
+                        <a download={`${card.code}.png`} href={dataUrl} className="btn-secondary h-8 px-2.5 text-xs">
+                          <Download size={13} aria-hidden="true" />
+                          {t('adminPromosDownloadPng')}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
         </div>
       </section>
     </div>
