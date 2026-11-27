@@ -115,26 +115,52 @@ export async function generateAi(req: Request) {
 }
 
 export function resolveApiKeyForProvider(provider: string, explicitKey?: string | null): string | null {
-  if (explicitKey) return explicitKey
+  if (explicitKey?.trim()) return explicitKey.trim()
+  let resolved: string | undefined
   switch (provider) {
     case 'dahl':
-      return process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY || null
+      resolved = process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_API_KEY
+      break
     case 'sovereigneg':
-      return process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY || null
+      resolved = process.env.SOVEREIGNEG_API_KEY || process.env.AI_SOVEREIGNEG_API_KEY || process.env.AI_API_KEY
+      break
     case 'groq':
-      return process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
+      resolved = process.env.GROQ_API_KEY || process.env.AI_API_KEY
+      break
     case 'anthropic':
-      return process.env.ANTHROPIC_API_KEY || null
+      resolved = process.env.ANTHROPIC_API_KEY
+      break
     case 'openai':
-      return process.env.OPENAI_API_KEY || null
+      resolved = process.env.OPENAI_API_KEY
+      break
     case 'google':
-      return process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || null
+      resolved = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+      break
     case 'openrouter':
-      return process.env.OPENROUTER_API_KEY || null
+      resolved = process.env.OPENROUTER_API_KEY
+      break
     case 'vercel':
-      return process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_AI_GATEWAY_API_KEY || null
+      resolved = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_AI_GATEWAY_API_KEY
+      break
     default:
-      return process.env.AI_API_KEY || null
+      resolved = process.env.AI_API_KEY
+      break
+  }
+  return resolved?.trim() || null
+}
+
+function resolveProviderBaseUrl(provider: string, customBaseUrl?: string | null): string | null {
+  switch (provider) {
+    case 'dahl':
+      return (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1').trim().replace(/\/$/, '')
+    case 'sovereigneg':
+      return (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1').trim().replace(/\/$/, '')
+    case 'vercel':
+      return (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1').trim().replace(/\/$/, '')
+    case 'custom':
+      return customBaseUrl?.trim().replace(/\/$/, '') || null
+    default:
+      return null
   }
 }
 
@@ -199,15 +225,7 @@ export async function executeWithFallback(options: {
     targets.push({
       provider: fb.provider,
       model: fb.model,
-      baseUrl: (fb as ExecutionTarget).baseUrl ?? (
-        fb.provider === 'dahl'
-          ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1')
-          : fb.provider === 'sovereigneg'
-            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-            : fb.provider === 'vercel'
-              ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1')
-              : null
-      ),
+      baseUrl: (fb as ExecutionTarget).baseUrl ?? resolveProviderBaseUrl(fb.provider),
       apiKey: (fb as ExecutionTarget).apiKey ?? resolveApiKeyForProvider(fb.provider),
       reasoningEffort: fb.reasoningEffort,
       timeoutMs: fb.timeoutMs ?? 20000,
@@ -296,9 +314,7 @@ async function handleSharedCrawlRequest(
     reasoningEffort: crawlConfig.reasoningEffort ?? body.reasoningEffort ?? 'none',
   }
 
-  // Primary: DeepSeek-V4-Flash via general Dahl provider
   const dahlKey = process.env.DAHL_API_KEY || process.env.AI_DAHL_API_KEY || process.env.AI_CRAWL_API_KEY || process.env.AI_API_KEY || null
-  const dahlBaseUrl = process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1'
 
   // Fallback: Groq API key
   const fallbackKey = process.env.GROQ_API_KEY || process.env.AI_API_KEY || null
@@ -332,18 +348,14 @@ async function handleSharedCrawlRequest(
     })
   }
 
-  const primaryApiKey = crawlConfig.provider === 'dahl'
-    ? effectiveDahlKey
-    : crawlConfig.provider === 'sovereigneg' || crawlConfig.provider === 'vercel'
-      ? resolveApiKeyForProvider(crawlConfig.provider)
-      : (effectiveFallbackKey || resolveApiKeyForProvider(crawlConfig.provider))
-  const primaryBaseUrl = crawlConfig.provider === 'dahl'
-    ? dahlBaseUrl
-    : crawlConfig.provider === 'sovereigneg'
-      ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-      : crawlConfig.provider === 'vercel'
-        ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1')
-        : null
+  const resolveSharedKeyForProvider = (provider: string): string | null => {
+    if (provider === 'dahl') return effectiveDahlKey || resolveApiKeyForProvider('dahl')
+    if (provider === 'sovereigneg' || provider === 'vercel') return resolveApiKeyForProvider(provider)
+    return effectiveFallbackKey || resolveApiKeyForProvider(provider)
+  }
+
+  const primaryApiKey = resolveSharedKeyForProvider(crawlConfig.provider)
+  const primaryBaseUrl = resolveProviderBaseUrl(crawlConfig.provider)
   const primaryTimeout = crawlConfig.provider === 'dahl' ? 25000 : 20000
 
   try {
@@ -358,16 +370,8 @@ async function handleSharedCrawlRequest(
       },
       fallbacks: AI_FALLBACK_TEMPLATE.map((fb) => ({
         ...fb,
-        apiKey: fb.provider === 'dahl'
-          ? (effectiveDahlKey || resolveApiKeyForProvider('dahl'))
-          : fb.provider === 'sovereigneg'
-            ? resolveApiKeyForProvider('sovereigneg')
-            : (effectiveFallbackKey || resolveApiKeyForProvider(fb.provider)),
-        baseUrl: fb.provider === 'dahl'
-          ? dahlBaseUrl
-          : fb.provider === 'sovereigneg'
-            ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1')
-            : null,
+        apiKey: resolveSharedKeyForProvider(fb.provider),
+        baseUrl: resolveProviderBaseUrl(fb.provider),
       })),
       request: baseRequest,
       totalDeadlineMs: 45000,
@@ -442,7 +446,7 @@ async function callProvider(
         messages: [{ role: 'user', content: body.userPrompt }],
       }),
     })
-    if (res.status === 401 || res.status === 403) throw new Error('invalid_key')
+    if (res.status === 401) throw new Error('invalid_key')
     if (!res.ok) throw new Error(`provider_error_${res.status}`)
     const data = await res.json()
     const text = data?.content?.[0]?.text
@@ -464,13 +468,7 @@ async function callProvider(
           ? 'https://generativelanguage.googleapis.com/v1beta/openai'
           : key.provider === 'openrouter'
             ? 'https://openrouter.ai/api/v1'
-            : key.provider === 'dahl'
-              ? (process.env.DAHL_BASE_URL || 'https://inference.dahl.global/v1').replace(/\/$/, '')
-              : key.provider === 'sovereigneg'
-                ? (process.env.SOVEREIGNEG_BASE_URL || 'https://backend.sovereigneg.com/v1').replace(/\/$/, '')
-                : key.provider === 'vercel'
-                  ? (process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1').replace(/\/$/, '')
-                  : (key.custom_base_url ?? '').replace(/\/$/, '')
+            : resolveProviderBaseUrl(key.provider, key.custom_base_url) ?? ''
   if (!base) throw new Error('missing_base_url')
   if (key.provider === 'custom') {
     const configuredAllowed = (process.env.AI_ALLOWED_BASE_URLS ?? '').split(',').map(x => x.trim()).filter(Boolean)
@@ -501,7 +499,7 @@ async function callProvider(
       } : {}),
     }),
   })
-  if (res.status === 401 || res.status === 403) throw new Error('invalid_key')
+  if (res.status === 401) throw new Error('invalid_key')
   if (!res.ok) throw new Error(`provider_error_${res.status}`)
   const data = await res.json()
   const choice = data?.choices?.[0]

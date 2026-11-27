@@ -66,13 +66,13 @@ describe('AI model configuration', () => {
       }
     }
 
-    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'openai/gpt-6-luna')
-    assert.equal(config.getRoleModelChain('director')[0].model, 'anthropic/claude-haiku-5.5')
-    assert.equal(config.getRoleModelChain('research')[0].model, 'deepseek/deepseek-v4.1-flash-1017')
-    assert.equal(config.getRoleModelChain('content')[0].model, 'anthropic/claude-haiku-5.5')
-    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'deepseek/deepseek-v4.1-flash-1017')
+    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'minimax/minimax-m3.1-flash')
+    assert.equal(config.getRoleModelChain('director')[0].model, 'thinkingmachines/inkling-2-small')
+    assert.equal(config.getRoleModelChain('research')[0].model, 'paperinstruments/ultramarine-1-flash')
+    assert.equal(config.getRoleModelChain('content')[0].model, 'inclusionai/ling-3.1-flash-1019')
+    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'paperinstruments/ultramarine-1-flash')
     assert.equal(config.AI_MODELS.onboardingCrawl.provider, 'vercel')
-    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'deepseek/deepseek-v4.1-flash-1017')
+    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'inception/mercury-3')
 
     for (const fb of config.PROD_AI_FALLBACK_TEMPLATE as Array<{ provider: string; model: string }>) {
       assert.equal(fb.provider, 'vercel')

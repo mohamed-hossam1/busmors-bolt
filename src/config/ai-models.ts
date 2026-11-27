@@ -112,19 +112,24 @@ const TEST_PRIMARY_MODEL: ModelTarget = {
   model: 'nvidia/nemotron-3.5-lightning-free',
 }
 
-const PROD_GPT6_LUNA: ModelTarget = {
+const PROD_MINIMAX_M31_FLASH: ModelTarget = {
   provider: 'vercel',
-  model: 'openai/gpt-6-luna',
+  model: 'minimax/minimax-m3.1-flash',
 }
 
-const PROD_CLAUDE_HAIKU_55: ModelTarget = {
+const PROD_INKLING_2_SMALL: ModelTarget = {
   provider: 'vercel',
-  model: 'anthropic/claude-haiku-5.5',
+  model: 'thinkingmachines/inkling-2-small',
 }
 
-const PROD_DEEPSEEK_FLASH: ModelTarget = {
+const PROD_LING_31_FLASH: ModelTarget = {
   provider: 'vercel',
-  model: 'deepseek/deepseek-v4.1-flash-1017',
+  model: 'inclusionai/ling-3.1-flash-1019',
+}
+
+const PROD_ULTRAMARINE_1_FLASH: ModelTarget = {
+  provider: 'vercel',
+  model: 'paperinstruments/ultramarine-1-flash',
 }
 
 const PROD_NEMOTRON_FREE_FALLBACK: ModelTarget = {
@@ -141,7 +146,7 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.2,
-      primary: PROD_GPT6_LUNA,
+      primary: PROD_MINIMAX_M31_FLASH,
       fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
@@ -153,7 +158,7 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: PROD_CLAUDE_HAIKU_55,
+      primary: PROD_INKLING_2_SMALL,
       fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
@@ -165,7 +170,7 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: PROD_DEEPSEEK_FLASH,
+      primary: PROD_ULTRAMARINE_1_FLASH,
       fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
@@ -177,7 +182,7 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.7,
-      primary: PROD_CLAUDE_HAIKU_55,
+      primary: PROD_LING_31_FLASH,
       fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
@@ -189,7 +194,7 @@ const ROLE_AI_MODELS = {
     },
     production: {
       temperature: 0.3,
-      primary: PROD_DEEPSEEK_FLASH,
+      primary: PROD_ULTRAMARINE_1_FLASH,
       fallbacks: [PROD_NEMOTRON_FREE_FALLBACK],
     },
   },
@@ -200,7 +205,7 @@ export const AI_MODELS = {
   onboardingCrawl: (AI_MODE === 'production'
     ? {
         provider: 'vercel',
-        model: 'deepseek/deepseek-v4.1-flash-1017',
+        model: 'inception/mercury-3',
         temperature: 0.1,
       }
     : {
