@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from '@/shared/i18n'
 import { useSearchParams } from 'next/navigation'
 import { useLocaleRouter as useRouter } from '@/context/I18nContext'
+import { useAuth } from '@/context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useCopy } from '../../hooks/useCopy'
 import { isGoogleAuthEnabled } from '../../lib/authFlags'
@@ -11,17 +12,33 @@ import AuthLayout, { AuthField, useAuthError } from '../../components/auth/AuthL
 
 import GoogleButton from '../../components/auth/GoogleButton'
 import { safeReturnPath } from '../../lib/authRouting'
-import { useRedirectIfAuthenticated } from '../../hooks/useRedirectIfAuthenticated'
 
 export default function SignIn() {
   const { t } = useCopy()
   const params = useSearchParams()
   const router = useRouter()
+  const { session } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { error, busy, run } = useAuthError()
 
-  const session = useRedirectIfAuthenticated(safeReturnPath(params.get('next')) ?? '/employee')
+  const nextTarget = safeReturnPath(params.get('next'))
+  const resolvedRef = useRef(false)
+  const submittingRef = useRef(false)
+
+  useEffect(() => {
+    if (!session || resolvedRef.current || submittingRef.current || nextTarget) return
+    resolvedRef.current = true
+    void (async () => {
+      try {
+        const res = await fetch('/api/admin/me', { cache: 'no-store' })
+        router.replace(res.ok ? '/admin/promos' : '/employee')
+      } catch {
+        router.replace('/employee')
+      }
+      router.refresh()
+    })()
+  }, [session, nextTarget, router])
 
   if (session) {
     return null
@@ -29,10 +46,25 @@ export default function SignIn() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    submittingRef.current = true
     void run(async () => {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) return error.message || t('signInFailed')
-      router.replace(safeReturnPath(params.get('next')) ?? '/employee'); router.refresh()
+      if (error) {
+        submittingRef.current = false
+        return error.message || t('signInFailed')
+      }
+      resolvedRef.current = true
+      if (nextTarget) {
+        router.replace(nextTarget)
+      } else {
+        try {
+          const res = await fetch('/api/admin/me', { cache: 'no-store' })
+          router.replace(res.ok ? '/admin/promos' : '/employee')
+        } catch {
+          router.replace('/employee')
+        }
+      }
+      router.refresh()
       return null
     })
   }

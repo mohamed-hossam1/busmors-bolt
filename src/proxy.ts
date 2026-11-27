@@ -1,8 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { publicSupabaseConfig } from './lib/supabase-config'
-import { defaultLocale, hasLocale, LOCALE_COOKIE, type Locale } from './lib/i18n'
-import { shouldRedirectOAuthCode } from './lib/authRouting'
+import { defaultLocale, hasLocale, LOCALE_COOKIE, localizePath, type Locale } from './lib/i18n'
+import { safeReturnPath, shouldRedirectOAuthCode } from './lib/authRouting'
+import { isAdminUser } from './server/admin/admin-identity'
 
 const PROTECTED = /^\/(employee|brain|roadmap|scheduling|deliverables|settings|onboarding|ads)(\/|$)/
 const AUTH_ROUTES = /^\/(signin|signup|reset)(\/|$)/
@@ -71,9 +72,16 @@ export async function proxy(request: NextRequest) {
     return redirect
   }
   if (user && AUTH_ROUTES.test(withoutLocale(pathname)) && request.nextUrl.searchParams.get('error') !== 'invite_required') {
+    const nextParam = safeReturnPath(request.nextUrl.searchParams.get('next'))
+    const targetPath = nextParam
+      ? nextParam
+      : isAdminUser({ id: user.id, email: user.email })
+        ? '/admin/promos'
+        : '/employee'
     const target = request.nextUrl.clone()
-    target.pathname = `/${locale}/employee`
-    target.search = ''
+    const resolved = new URL(localizePath(targetPath, locale), 'https://local.invalid')
+    target.pathname = resolved.pathname
+    target.search = resolved.search
     const redirect = NextResponse.redirect(target)
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
     redirect.cookies.set(LOCALE_COOKIE, locale, { path: '/', maxAge: 31536000, sameSite: 'lax' })

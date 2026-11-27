@@ -61,6 +61,10 @@ const STATUS_STYLES: Record<string, string> = {
   queued: 'bg-ink-100 text-ink-600',
   failed: 'bg-red-100 text-red-700',
   error: 'bg-red-100 text-red-700',
+  active: 'bg-emerald-100 text-emerald-700',
+  redeemed: 'bg-primary-100 text-primary-700',
+  reserved: 'bg-amber-100 text-amber-700',
+  revoked: 'bg-red-100 text-red-700',
 }
 
 /** Tailwind classes for a status pill. */

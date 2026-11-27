@@ -11,8 +11,8 @@ export default async function AdminTraceDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireAdminPage()
   const { id } = await params
+  await requireAdminPage('/admin/traces/' + id)
   const detail = await getTraceDetail(id)
   if (!detail) notFound()
   return (

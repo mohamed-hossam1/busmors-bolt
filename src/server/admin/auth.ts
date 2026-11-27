@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getIdentity } from '../auth'
 import { getRequestLocale } from '../locale'
 import { localizePath } from '../../lib/i18n'
+import { isSameOriginRequest } from '../../lib/authRouting'
 import { checkIsAdminUser, type AdminSession } from './admin-identity'
 
 /**
@@ -37,17 +38,24 @@ export async function requireAdminIdentity(): Promise<AdminSession> {
   return session
 }
 
+/** Throws a 403 Response for cross-origin mutations, then resolves the admin session. */
+export async function requireAdminMutation(request: Request): Promise<AdminSession> {
+  if (!isSameOriginRequest(request)) throw new Response('Forbidden', { status: 403 })
+  return requireAdminIdentity()
+}
+
 /** Returns the admin session, or null for pages (caller redirects). */
 export async function getAdminIdentity(): Promise<AdminSession | null> {
   return getAdminSession()
 }
 
 /** Redirect helper for admin pages; call only from server components. */
-export async function requireAdminPage(): Promise<AdminSession> {
+export async function requireAdminPage(nextPath?: string): Promise<AdminSession> {
   const session = await getAdminIdentity()
   if (!session) {
     const locale = await getRequestLocale()
-    redirect(localizePath('/signin', locale))
+    const target = nextPath ? '/signin?next=' + encodeURIComponent(nextPath) : '/signin'
+    redirect(localizePath(target, locale))
   }
   return session
 }

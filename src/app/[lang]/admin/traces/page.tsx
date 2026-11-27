@@ -5,7 +5,7 @@ import TraceExplorer from '@/features/admin/TraceExplorer'
 export const metadata: Metadata = { title: 'Trace Explorer · Busmora Admin' }
 
 export default async function AdminTracesPage() {
-  await requireAdminPage()
+  await requireAdminPage('/admin/traces')
   return (
     <div className="min-h-0 flex-1 overflow-hidden">
       <TraceExplorer />
