@@ -46,9 +46,10 @@ import {
   isDirectorActionKind,
   isReviewDue,
   resolveExecutionState,
-  selectNextBestAction,
   type ExecutionState,
 } from './progress'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface RoadmapExecutionDashboardProps {
   data: RoadmapLoad
@@ -58,7 +59,7 @@ interface RoadmapExecutionDashboardProps {
   regenerateNotice?: string | null
   onBackToDiscovery: () => void
   onRegenerate: () => void
-  onUpdated: (roadmap: RoadmapLoad['roadmap'], activeVersion: RoadmapLoad['activeVersion']) => void
+  onUpdated: (fresh: RoadmapLoad) => void
 }
 
 const STATE_BADGE: Record<ExecutionState, string> = {
@@ -99,8 +100,10 @@ export default function RoadmapExecutionDashboard({
   const [draftObjective, setDraftObjective] = useState<GeneratedPrimaryObjective | null>(null)
   const [savingObjective, setSavingObjective] = useState(false)
   const [error, setError] = useState('')
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({})
   const [busyStep, setBusyStep] = useState<string | null>(null)
   const [completionFor, setCompletionFor] = useState<string | null>(null)
+  const [dismissedCompletion, setDismissedCompletion] = useState<Record<string, boolean>>({})
   const [resultNote, setResultNote] = useState('')
   const [linkFor, setLinkFor] = useState<string | null>(null)
   const [linkDeliverableId, setLinkDeliverableId] = useState('')
@@ -117,7 +120,6 @@ export default function RoadmapExecutionDashboard({
   const plan = activeVersion?.summary ?? null
 
   const progress = useMemo(() => computeProgress(steps), [steps])
-  const nextBest = useMemo(() => selectNextBestAction(steps), [steps])
   const reviewDue = useMemo(() => isReviewDue(roadmap?.next_review_at ?? null), [roadmap?.next_review_at])
 
   if (!roadmap || !plan) {
@@ -139,19 +141,43 @@ export default function RoadmapExecutionDashboard({
       const fresh = await loadActiveRoadmap()
       if (fresh.roadmap) {
         setView(fresh)
-        onUpdated(fresh.roadmap, fresh.activeVersion)
+        onUpdated(fresh)
       }
     } catch {
       // Non-fatal: keep the current view; the next action will retry.
     }
   }
 
+  const clearStepError = (stepId: string) => {
+    setStepErrors((current) => {
+      if (!current[stepId]) return current
+      const next = { ...current }
+      delete next[stepId]
+      return next
+    })
+  }
+
   const runAction = async (step: RoadmapStepRecord, action: Parameters<typeof performRoadmapStepAction>[1], payload: Record<string, unknown> = {}) => {
     if (busyStep) return
+    if (action === 'link_output') {
+      const delId = typeof payload.linkedDeliverableId === 'string' ? payload.linkedDeliverableId.trim() : ''
+      const postId = typeof payload.linkedPostId === 'string' ? payload.linkedPostId.trim() : ''
+      if ((delId && !UUID_RE.test(delId)) || (postId && !UUID_RE.test(postId))) {
+        setStepErrors((current) => ({
+          ...current,
+          [step.id]:
+            locale === 'ar'
+              ? 'معرّف المخرج أو المنشور غير صحيح (يجب إدخال UUID صالح).'
+              : 'Invalid deliverable or post ID format (expected a valid UUID).',
+        }))
+        return
+      }
+    }
     setBusyStep(step.id)
-    setError('')
+    clearStepError(step.id)
     try {
-      const result = await performRoadmapStepAction(step.id, action, crypto.randomUUID(), payload)
+      const effectivePayload = action === 'run' ? { ...payload, locale } : payload
+      const result = await performRoadmapStepAction(step.id, action, crypto.randomUUID(), effectivePayload)
       if (action === 'run') {
         const href = result.employeeHref
           ? `${result.employeeHref}&autorun=1`
@@ -165,9 +191,13 @@ export default function RoadmapExecutionDashboard({
       }
       setCompletionFor(null)
       setLinkFor(null)
+      if (action === 'complete' || action === 'attest') {
+        setResultNote('')
+      }
       await reload()
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : t('stepActionFailed'))
+      const message = actionError instanceof Error ? actionError.message : t('stepActionFailed')
+      setStepErrors((current) => ({ ...current, [step.id]: message }))
     } finally {
       setBusyStep(null)
     }
@@ -189,8 +219,9 @@ export default function RoadmapExecutionDashboard({
     setError('')
     try {
       const updated = await updateRoadmapObjective(roadmap.id, roadmap.version, draftObjective)
-      setView((current) => ({ ...current, roadmap: updated.roadmap, activeVersion: updated.activeVersion }))
-      onUpdated(updated.roadmap, updated.activeVersion)
+      const nextView = { ...view, roadmap: updated.roadmap, activeVersion: updated.activeVersion }
+      setView(nextView)
+      onUpdated(nextView)
       setEditing(false)
       setDraftObjective(null)
     } catch (saveError) {
@@ -208,6 +239,11 @@ export default function RoadmapExecutionDashboard({
     const isDirector = isDirectorActionKind(step.action_kind)
     const isContent = isContentActionKind(step.action_kind)
     const busy = busyStep === step.id
+    const showCompletionBox =
+      state !== 'completed' &&
+      state !== 'skipped' &&
+      (completionFor === step.id || (state === 'waiting_for_owner' && !dismissedCompletion[step.id]))
+    const stepError = stepErrors[step.id]
     return (
       <div className="mt-3 space-y-2">
         {isDirector && state !== 'completed' && state !== 'skipped' && (
@@ -245,7 +281,12 @@ export default function RoadmapExecutionDashboard({
             <button
               type="button"
               onClick={() => {
-                setCompletionFor(completionFor === step.id ? null : step.id)
+                clearStepError(step.id)
+                setDismissedCompletion((current) => ({ ...current, [step.id]: false }))
+                setCompletionFor(showCompletionBox ? null : step.id)
+                if (showCompletionBox) {
+                  setDismissedCompletion((current) => ({ ...current, [step.id]: true }))
+                }
                 setResultNote('')
                 setLinkFor(null)
               }}
@@ -257,6 +298,7 @@ export default function RoadmapExecutionDashboard({
             <button
               type="button"
               onClick={() => {
+                clearStepError(step.id)
                 setLinkFor(linkFor === step.id ? null : step.id)
                 setLinkDeliverableId('')
                 setLinkPostId('')
@@ -282,7 +324,7 @@ export default function RoadmapExecutionDashboard({
           </button>
         )}
 
-        {completionFor === step.id && (
+        {showCompletionBox && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
             <p className="text-[11px] font-medium text-emerald-800">{t('completionRuleNote')}</p>
             <label className="mt-2 block text-xs font-medium text-ink-700">
@@ -304,7 +346,16 @@ export default function RoadmapExecutionDashboard({
               >
                 {busy ? <Spinner size={13} /> : <CheckCircle2 size={13} />} {t('confirmComplete')}
               </button>
-              <button type="button" onClick={() => setCompletionFor(null)} disabled={busy} className="btn-secondary min-h-8 px-3 py-1 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  clearStepError(step.id)
+                  setCompletionFor(null)
+                  setDismissedCompletion((current) => ({ ...current, [step.id]: true }))
+                }}
+                disabled={busy}
+                className="btn-secondary min-h-8 px-3 py-1 text-xs"
+              >
                 <X size={12} /> {t('cancel')}
               </button>
             </div>
@@ -336,11 +387,25 @@ export default function RoadmapExecutionDashboard({
               >
                 {busy ? <Spinner size={13} /> : <Link2 size={12} />} {t('linkOutput')}
               </button>
-              <button type="button" onClick={() => setLinkFor(null)} disabled={busy} className="btn-secondary min-h-8 px-3 py-1 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  clearStepError(step.id)
+                  setLinkFor(null)
+                }}
+                disabled={busy}
+                className="btn-secondary min-h-8 px-3 py-1 text-xs"
+              >
                 <X size={12} /> {t('cancel')}
               </button>
             </div>
           </div>
+        )}
+
+        {stepError && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {stepError}
+          </p>
         )}
 
         {(linkedDeliverables?.length || linkedPosts?.length) ? (
@@ -482,25 +547,6 @@ export default function RoadmapExecutionDashboard({
         </div>
       </section>
 
-      {/* Next best action */}
-      <section className="rounded-2xl border border-primary-200 bg-primary-50/70 p-4">
-        <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-primary-700" />
-          <h2 className="text-sm font-semibold text-primary-900">{t('nextBestActionTitle')}</h2>
-        </div>
-        {nextBest ? (
-          <div className="mt-2 flex flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink-900">{nextBest.step.title}</p>
-              <p className="text-[11px] text-ink-600">{nextBest.reason}</p>
-            </div>
-            <div>{renderStepActions(nextBest.step)}</div>
-          </div>
-        ) : (
-          <p className="mt-1 text-sm text-ink-600">{t('nextBestActionEmpty')}</p>
-        )}
-      </section>
-
       {/* Milestones & actions */}
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">{t('milestonesTitle')}</h2>
@@ -549,7 +595,7 @@ export default function RoadmapExecutionDashboard({
           onClose={() => setAdjustOpen(false)}
           onApplied={(fresh) => {
             setView(fresh)
-            onUpdated(fresh.roadmap, fresh.activeVersion)
+            onUpdated(fresh)
             setAdjustOpen(false)
           }}
           onRejected={() => void reload()}

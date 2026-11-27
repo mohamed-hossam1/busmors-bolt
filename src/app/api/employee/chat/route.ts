@@ -67,6 +67,66 @@ function lastUserText(messages: ModelMessage[]): string {
   return ''
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * If this conversation belongs to a roadmap step currently waiting for the
+ * Marketing Director, transition that step to `waiting_for_owner` (and link any
+ * created Deliverable / Calendar draft) so returning to `/roadmap` opens the
+ * owner confirmation box automatically.
+ */
+async function syncRoadmapStepAfterDirectorRun(
+  supabase: unknown,
+  input: {
+    workspaceId: string
+    conversationId: string
+    deliverableId?: string | null
+    postId?: string | null
+    idempotencyKey: string
+  },
+): Promise<void> {
+  try {
+    const client = supabase as {
+      from: (table: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: unknown) => any
+        }
+      }
+      rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ error: unknown }>
+    }
+    const { data, error } = await client
+      .from('roadmap_steps')
+      .select('id')
+      .eq('workspace_id', input.workspaceId)
+      .eq('conversation_id', input.conversationId)
+      .eq('execution_state', 'waiting_for_director')
+      .limit(5)
+    if (error || !Array.isArray(data) || data.length === 0) return
+
+    const payload: Record<string, unknown> = {}
+    if (input.deliverableId && UUID_RE.test(input.deliverableId)) {
+      payload.linkedDeliverableId = input.deliverableId
+    }
+    if (input.postId && UUID_RE.test(input.postId)) {
+      payload.linkedPostId = input.postId
+    }
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i] as { id?: unknown }
+      if (typeof row?.id !== 'string' || !UUID_RE.test(row.id)) continue
+      const key = i === 0 ? input.idempotencyKey : crypto.randomUUID()
+      await client.rpc('perform_roadmap_step_action', {
+        p_step_id: row.id,
+        p_action: 'waiting_owner',
+        p_idempotency_key: key,
+        p_payload: payload,
+      })
+    }
+  } catch {
+    // Non-fatal: chat delivery must never fail if roadmap step linking fails.
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireApiIdentity(request)
@@ -184,6 +244,21 @@ export async function POST(request: Request) {
         },
       })
 
+      if (
+        result.status === 'completed' &&
+        !result.structured.clarification &&
+        !result.structured.quotaExhausted &&
+        !result.structured.directorFailed
+      ) {
+        await syncRoadmapStepAfterDirectorRun(supabase, {
+          workspaceId,
+          conversationId,
+          deliverableId: result.structured.deliverables[0]?.deliverableId ?? null,
+          postId: result.structured.drafts[0]?.postId ?? null,
+          idempotencyKey: traceId,
+        })
+      }
+
       return Response.json({
         reply,
         conversationId,
@@ -271,6 +346,21 @@ export async function POST(request: Request) {
               traceId,
             },
           })
+
+          if (
+            result.status === 'completed' &&
+            !result.structured.clarification &&
+            !result.structured.quotaExhausted &&
+            !result.structured.directorFailed
+          ) {
+            await syncRoadmapStepAfterDirectorRun(supabase, {
+              workspaceId,
+              conversationId,
+              deliverableId: result.structured.deliverables[0]?.deliverableId ?? null,
+              postId: result.structured.drafts[0]?.postId ?? null,
+              idempotencyKey: traceId,
+            })
+          }
 
           emit('done', {
             reply,

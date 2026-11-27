@@ -122,12 +122,14 @@ export async function POST(request: Request, { params }: RouteContext) {
           conversationId = created.id
         }
 
+        const promptLocale = payload.locale === 'ar' ? 'ar' : 'en'
         const directorPrompt = buildDirectorPrompt({
           actionKind: actionKind as 'research' | 'analysis' | 'content',
           stepTitle: step.title,
           objective: step.objective ?? '',
           expectedOutput: step.expected_output ?? '',
           successCriteria: step.success_criteria ?? '',
+          locale: promptLocale,
         })
         payload.conversationId = conversationId
         payload.directorPrompt = directorPrompt
@@ -140,6 +142,19 @@ export async function POST(request: Request, { params }: RouteContext) {
 
         const query = new URLSearchParams({ conversationId, prompt: directorPrompt })
         employeeHref = `/employee?${query.toString()}`
+      }
+    }
+
+    if (action === 'link_output' || action === 'waiting_owner') {
+      const linkedDeliverableId =
+        typeof payload.linkedDeliverableId === 'string' ? payload.linkedDeliverableId.trim() : ''
+      const linkedPostId =
+        typeof payload.linkedPostId === 'string' ? payload.linkedPostId.trim() : ''
+      if (linkedDeliverableId && !UUID_RE.test(linkedDeliverableId)) {
+        return Response.json({ error: 'Invalid deliverable UUID.' }, { status: 400 })
+      }
+      if (linkedPostId && !UUID_RE.test(linkedPostId)) {
+        return Response.json({ error: 'Invalid post draft UUID.' }, { status: 400 })
       }
     }
 

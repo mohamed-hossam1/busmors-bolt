@@ -852,6 +852,7 @@
     "resultNotePlaceholder": "What did you do or learn? Add a short note or evidence link.",
     "completionRuleNote": "Director output only moves a step to Waiting for owner. A step is completed only when you mark it complete.",
     "stepActionFailed": "The action could not be completed. Please retry.",
+    "invalidLinkUuid": "Please enter a valid UUID for the deliverable or post.",
     "dueReviewTitle": "Review due",
     "dueReviewOverdue": "{days} day(s) overdue",
     "dueReviewToday": "Due today",

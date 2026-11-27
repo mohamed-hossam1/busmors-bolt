@@ -559,14 +559,19 @@ export default function DiscoveryWizard() {
     setLoadError('')
     setDraftConflict('')
     try {
-      const [loaded, brainFacts] = await Promise.all([loadDiscovery(), loadDiscoveryFacts()])
+      const [loaded, brainFacts, activeRoadmap] = await Promise.all([
+        loadDiscovery(),
+        loadDiscoveryFacts(),
+        loadActiveRoadmap().catch(() => null),
+      ])
       factsRef.current = brainFacts
       setFacts(brainFacts)
       if (!loaded.draft) {
         draftRef.current = null
         setDraft(null)
         applyQuestions([])
-        setGoalPicker(true)
+        setGenerated(activeRoadmap?.roadmap ? activeRoadmap : null)
+        setGoalPicker(!activeRoadmap?.roadmap)
         setLoading(false)
         return
       }
@@ -578,7 +583,8 @@ export default function DiscoveryWizard() {
         setDraft(loaded.draft)
         draftRef.current = loaded.draft
         applyQuestions(loaded.questions)
-        setGoalPicker(true)
+        setGenerated(activeRoadmap?.roadmap ? activeRoadmap : null)
+        setGoalPicker(!activeRoadmap?.roadmap)
         setLoading(false)
         return
       }
@@ -599,10 +605,8 @@ export default function DiscoveryWizard() {
       setDraft(nextDraft)
       applyQuestions(nextQuestions)
       setPreliminary(nextDraft.status === 'planned')
-      if (nextDraft.status === 'planned') {
-        void loadActiveRoadmap()
-          .then((loaded) => { if (loaded.roadmap) setGenerated(loaded) })
-          .catch(() => {})
+      if (activeRoadmap?.roadmap) {
+        setGenerated(activeRoadmap)
       }
       setGoalPicker(false)
       applyLocal({})
@@ -1058,8 +1062,8 @@ export default function DiscoveryWizard() {
     setGenerateError('')
   }
 
-  const handleRoadmapUpdated = (roadmap: RoadmapLoad['roadmap'], activeVersion: RoadmapLoad['activeVersion']) => {
-    setGenerated((current) => (current ? { ...current, roadmap, activeVersion } : current))
+  const handleRoadmapUpdated = (fresh: RoadmapLoad) => {
+    setGenerated(fresh)
   }
 
   useEffect(() => {
