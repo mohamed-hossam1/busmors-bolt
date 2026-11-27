@@ -141,9 +141,15 @@ This workspace has used all 6 beta heavy tasks (0 remaining). You MUST still ans
 ## Product Reference (data)
 ${ORCHESTRATOR_PRODUCT_KNOWLEDGE}
 
+## Brain Proposals & UI Cards (Critical)
+- Whenever the owner shares multiple new facts (e.g. operating regions + free trial duration), call \`propose_brain_change\` ONCE per distinct fact so each gets its own approval card.
+- Use \`action: "add"\` (omitting \`nodeId\`) for any fact not already in \`read_business_brain\`. Use \`action: "edit"\` ONLY with an existing \`nodeId\` returned by \`read_business_brain\`.
+- NEVER dump raw JSON field names (\`operating_regions\`, \`trial_length_days\`, \`status: pending\`, \`rationale\`, \`proposalId\`, \`deliverableId\`, or UUIDs) in chat text—the UI renders interactive approval/deliverable/clarification cards automatically. Reply with 1–2 brief, natural sentences only.
+
 ## Clarification and Delegation Rules
-- Whenever the owner asks for any marketing plan, ad campaign, strategy, content, calendar, market research, or performance diagnosis — even if the request is brief or missing details (goal, budget, target audience, duration, channels) — ALWAYS call delegate_to_director immediately.
+- Whenever the owner asks for any marketing plan, ad campaign, strategy, content, posts, calendar, market/competitor research, or performance diagnosis — even if the request is brief or missing details (goal, budget, target audience, duration, channels) — ALWAYS call delegate_to_director immediately.
 - NEVER ask campaign discovery questions or numbered lists of clarifying questions directly in chat text; only the Director can call ask_clarification to display interactive Clarification Cards.
+- NEVER invent slug strings in \`taskReferences\`; only pass real existing IDs/titles from prior turns.
 - On a follow-up or clarification reply inside an active conversation, DO NOT re-call read_business_brain unless the user just supplied new facts or explicitly asked to check/update Brain data; immediately call delegate_to_director with the user's reply and existing conversation context.${quotaNote}`
 }
 
@@ -264,7 +270,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
   const isContinuation = options.messages.length > 1
   const baseWorkspace =
     options.workspace ??
-    (isContinuation && options.supabase
+    (options.supabase
       ? (await import('../director-store')).createWorkspaceContextStore(
           options.supabase as never,
           options.workspaceId,
@@ -282,20 +288,29 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
 
   let directorAttempts = 0
   let lastDirectorStatus: string | null = null
+  let shouldStopAfterStep = false
 
-  const buildContinuationAppendix = async (): Promise<string> => {
-    if (!isContinuation) return ''
-    const prior = options.messages.slice(0, -1).slice(-6)
-    const lines: string[] = [
-      '',
-      '## Continuation Context (active conversation — resume from the user reply)',
-      'Prior conversation turns before the latest message:',
-    ]
-    for (const m of prior) {
-      const raw = typeof m.content === 'string' ? m.content.trim() : ''
-      if (!raw) continue
-      const compact = raw.length > 500 ? `${raw.slice(0, 500).trimEnd()}…` : raw
-      lines.push(`- ${m.role}: ${compact}`)
+  /**
+   * Always preload approved Business Brain & Workspace Context for the Director
+   * (both on Turn 1 and continuations) so questions, briefs, and content never
+   * miss the brand's actual identity/offer/regions. Prior turns are appended on
+   * continuations.
+   */
+  const buildDirectorInputAppendix = async (): Promise<string> => {
+    const lines: string[] = []
+    if (isContinuation) {
+      const prior = options.messages.slice(0, -1).slice(-6)
+      lines.push(
+        '',
+        '## Continuation Context (active conversation — resume from the user reply)',
+        'Prior conversation turns before the latest message:',
+      )
+      for (const m of prior) {
+        const raw = typeof m.content === 'string' ? m.content.trim() : ''
+        if (!raw) continue
+        const compact = raw.length > 500 ? `${raw.slice(0, 500).trimEnd()}…` : raw
+        lines.push(`- ${m.role}: ${compact}`)
+      }
     }
     const [facts, ws] = await Promise.all([
       brain.readApproved().catch(() => [] as BrainFact[]),
@@ -303,17 +318,19 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
     ])
     if (ws) {
       lines.push(
+        '',
         `Preloaded Workspace Context: companyName=${ws.companyName ?? 'unknown'}, settings=${ws.settings ? JSON.stringify(ws.settings) : 'none'}`,
       )
     }
     if (facts.length > 0) {
-      lines.push(`Preloaded Business Brain (${facts.length} approved facts):`)
+      lines.push('', `Preloaded Business Brain (${facts.length} approved facts):`)
       for (const f of facts.slice(0, 30)) {
         lines.push(`- [${f.category}] ${f.title}: ${f.summary}`)
       }
     }
     lines.push(
-      'IMPORTANT: Continue directly from after the user reply. Do NOT re-call read_business_brain or read_workspace_context unless the user just added/edited business info or explicitly asked to inspect Brain/workspace settings again.',
+      '',
+      'IMPORTANT: Business Brain and Workspace Context are already preloaded above. Do NOT re-call read_business_brain or read_workspace_context unless the user just added/edited business info or you need fresh settings.',
     )
     return lines.join('\n')
   }
@@ -342,7 +359,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
           }
         }
         directorAttempts += 1
-        const continuationAppendix = await buildContinuationAppendix()
+        const directorAppendix = await buildDirectorInputAppendix()
 
         // Reserve a heavy-task slot before running the Director (Phase 4). When
         // the workspace is out of quota, short-circuit with a quota-exhausted
@@ -379,7 +396,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
         try {
           directorResult = await runDirector({
             workspaceId: options.workspaceId,
-            input: `${renderDirectorInput(handoff)}${continuationAppendix}`,
+            input: `${renderDirectorInput(handoff)}${directorAppendix}`,
             traceContext: {
               traceId: options.traceContext.traceId,
               parentEventId: orchestratorInstanceId,
@@ -428,6 +445,17 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
         ) {
           structured.directorFailed = true
         }
+        // Stop the Orchestrator after delegation when the Director already produced
+        // a Clarification Card or a completed reply (with no separate Brain proposals
+        // for Orchestrator to summarize), avoiding a redundant rewrite step.
+        if (
+          directorResult.clarification !== null ||
+          (directorResult.status === 'completed' &&
+            Boolean(directorResult.text?.trim()) &&
+            structured.brainProposals.length === 0)
+        ) {
+          shouldStopAfterStep = true
+        }
         return directorResult
       },
     }),
@@ -454,6 +482,7 @@ export async function runOrchestrator(options: RunOrchestratorOptions): Promise<
     instanceId: orchestratorInstanceId,
     label: 'orchestrator',
     hasIncompleteWork: () => structured.directorFailed === true,
+    shouldStop: () => shouldStopAfterStep,
   })
 
   return { ...result, structured }

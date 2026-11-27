@@ -225,4 +225,101 @@ describe('orchestrator → director handoff', () => {
     assert.equal(directorTurnCount, 1, 'second delegate_to_director call must not invoke runDirector again')
     assert.equal(result.structured.directorFailed, true)
   })
+
+  it('preloads Business Brain and Workspace Context for the Director even on Turn 1', async () => {
+    const collector = createTraceCollector(
+      { traceId: TRACE_ID, workspaceId: 'ws-1', request: 'turn1-preload' },
+      { enabled: false },
+    )
+    const tracker = new TaskGuardrailTracker()
+    let directorInputText = ''
+
+    const brainWithFacts: BrainStore = {
+      readApproved: async () => [
+        {
+          id: 'b1',
+          category: 'offering',
+          title: '14-day Free Trial',
+          summary: 'Available in Egypt and KSA.',
+          properties: {},
+          version: 1,
+          source: 'manual',
+          sourceDetail: null,
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      proposeChange: async () => ({ proposalId: 'p', status: 'pending', duplicate: false, conflict: false }),
+    }
+    const workspaceWithName: WorkspaceContextStore = {
+      read: async () => ({ companyName: 'Busmora', settings: { timezone: 'Africa/Cairo' } }),
+    }
+
+    const runTurn: AgentTurnRunner = async (opts) => {
+      const tools = (opts.tools ?? {}) as LooseTools
+      if (opts.role === 'orchestrator') {
+        const res = await tools.delegate_to_director.execute(HANDOFF)
+        const s = {
+          index: 0,
+          text: '',
+          toolCalls: [{ toolName: 'delegate_to_director' }],
+          toolResults: [res],
+          usage: { inputTokens: 1, outputTokens: 1 },
+          finishReason: 'stop',
+        }
+        opts.onStepFinish?.(s)
+        return {
+          text: '',
+          provider: 'mock',
+          model: 'mock',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          steps: [s],
+          finishReason: 'stop',
+          latencyMs: 1,
+          totalLatencyMs: 1,
+          fallback: { used: false, attempts: [] },
+        }
+      }
+      const messages = (opts.messages ?? []) as Array<{ role: string; content: unknown }>
+      const userMsg = messages.find((m) => m.role === 'user')
+      directorInputText = typeof userMsg?.content === 'string' ? userMsg.content : ''
+      const s = {
+        index: 0,
+        text: 'ملخص الخطة',
+        toolCalls: null,
+        toolResults: null,
+        usage: { inputTokens: 1, outputTokens: 1 },
+        finishReason: 'stop',
+      }
+      opts.onStepFinish?.(s)
+      return {
+        text: 'ملخص الخطة',
+        provider: 'mock',
+        model: 'mock',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        steps: [s],
+        finishReason: 'stop',
+        latencyMs: 1,
+        totalLatencyMs: 1,
+        fallback: { used: false, attempts: [] },
+      }
+    }
+
+    await runOrchestrator({
+      workspaceId: 'ws-1',
+      userId: 'user-1',
+      messages: [{ role: 'user', content: 'اعمل خطة' } as never],
+      traceContext: { traceId: TRACE_ID },
+      collector,
+      tracker,
+      runTurn,
+      brain: brainWithFacts,
+      deliverables: noopStore,
+      calendar: noopCalendar,
+      workspace: workspaceWithName,
+      instanceId: ORCH_INSTANCE,
+    })
+
+    assert.ok(directorInputText.includes('Busmora'), 'Turn 1 Director input includes Workspace companyName')
+    assert.ok(directorInputText.includes('14-day Free Trial'), 'Turn 1 Director input includes preloaded Business Brain facts')
+  })
 })

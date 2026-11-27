@@ -188,7 +188,12 @@ const readCalendarInput = z.object({
 const askClarificationInput = CLARIFICATION_CARD_SCHEMA
 
 const createDeliverableInput = z.object({
-  deliverableId: z.string().min(1).max(64).optional(),
+  deliverableId: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe('OMIT completely when creating a new deliverable. ONLY pass an existing deliverable UUID returned by read_deliverables or an earlier save in this session when revising.'),
   expectedVersion: z.number().int().min(1).optional(),
   title: z.string().min(1).max(200),
   type: deliverableTypeSchema,
@@ -199,12 +204,21 @@ const createDeliverableInput = z.object({
 })
 
 const createPostDraftInput = z.object({
-  postId: z.string().min(1).max(64).optional(),
+  postId: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe('OMIT completely when creating a new draft. ONLY pass an existing post UUID returned by read_calendar or an earlier save in this session when revising.'),
   expectedVersion: z.number().int().min(1).optional(),
   platform: z.enum(['facebook', 'instagram']),
   caption: z.string().min(1).max(6000),
   hashtags: z.string().max(1000).optional(),
-  proposedFor: z.string().max(64).optional(),
+  proposedFor: z
+    .string()
+    .max(64)
+    .optional()
+    .describe('Optional future ISO-8601 timestamp with timezone (e.g. 2026-12-01T18:00:00+02:00). OMIT if no specific timestamp is chosen; never pass descriptive text.'),
   visualBrief: z.string().max(4000).optional(),
   idempotencyKey: z.string().min(1).max(64).optional(),
 })
@@ -251,8 +265,38 @@ const delegateAgentInput = z.object({
   priorResult: z.string().max(20000).optional(),
 })
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Only forward an explicit ID to the versioning RPC when it is a real UUID,
+ * came from a read/save in this session, or carries an explicit expectedVersion
+ * (optimistic concurrency test). Otherwise a model-invented slug like
+ * "3_FB_posts" is treated as a fresh create (null) instead of crashing SQL.
+ */
+function resolveExistingId(
+  rawId: string | undefined,
+  expectedVersion: number | undefined,
+  knownIds: Set<string>,
+): string | null {
+  const id = rawId?.trim()
+  if (!id) return null
+  if (UUID_RE.test(id) || knownIds.has(id) || expectedVersion !== undefined) return id
+  return null
+}
+
+/** Accept only parseable timestamps for p_proposed_for (timestamptz); DB RPC handles future/past filtering. */
+export function sanitizeProposedFor(raw: string | undefined): string | null {
+  const trimmed = raw?.trim()
+  if (!trimmed) return null
+  const ms = Date.parse(trimmed)
+  if (!Number.isFinite(ms)) return null
+  return trimmed
+}
+
 export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefinition<any, any>[] {
   let directWebCalls = 0
+  const knownDeliverableIds = new Set<string>()
+  const knownPostIds = new Set<string>()
   const consumeDirectWebBudget = (): { status: 'limit_reached'; message: string } | null => {
     if (deps.maxDirectWebCalls !== undefined && directWebCalls >= deps.maxDirectWebCalls) {
       return {
@@ -311,6 +355,9 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
       inputSchema: readDeliverablesInput,
       execute: async (args: z.infer<typeof readDeliverablesInput>) => {
         const deliverables = await deps.deliverables.readRecent(args.limit)
+        for (const d of deliverables) {
+          if (d.id) knownDeliverableIds.add(d.id)
+        }
         return { deliverables }
       },
     },
@@ -322,13 +369,16 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
       inputSchema: readCalendarInput,
       execute: async (args: z.infer<typeof readCalendarInput>) => {
         const drafts = await deps.calendar.readDrafts(args.limit)
+        for (const d of drafts) {
+          if (d.id) knownPostIds.add(d.id)
+        }
         return { drafts }
       },
     },
     {
       name: 'ask_clarification',
       description:
-        'Ask the owner 1–3 essential questions (never more) when meaningful progress requires an answer. ALWAYS use this card instead of writing questions as plain chat text. Keep each question short and specific, with 2–4 concise single/multiple-choice options (plus the automatic custom free-text and "not sure" options). Do not dump a long list of open questions. Returns an awaiting_input result; the task resumes from this checkpoint after the owner answers.',
+        'Ask the owner 1–3 essential Business-Brain-grounded questions when meaningful progress requires an answer. ALWAYS use this card instead of writing questions in chat text. Keep each question short and specific, with 2–4 concise options. Calling this ends the turn immediately so only the interactive card is shown.',
       external: false,
       inputSchema: askClarificationInput,
       execute: async (args: z.infer<typeof askClarificationInput>) => {
@@ -336,28 +386,31 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
         return {
           status: 'awaiting_input',
           card: args,
-          message: 'Clarification requested. The task will resume after the owner answers.',
+          message: 'Clarification requested. Stop now and let the owner answer the interactive card.',
         }
       },
     },
     {
       name: 'create_or_version_deliverable',
       description:
-        'Persist a substantial strategy, report, research, plan or analysis to Deliverables. You MUST call this for any substantial plan/report before finishing — do not deliver substantial work only as chat text. Creates a new document, or appends a new immutable version when revising an existing deliverable (pass deliverableId + expectedVersion). Idempotent. Returns the confirmed saved deliverableId/version; reference the saved document in your reply so a clickable Deliverable card is shown.',
+        'Persist a substantial strategy, report, research, plan or analysis to Deliverables. OMIT deliverableId when creating a new document; only pass a real existing UUID when creating a new version. In your chat reply, give only a concise Executive Summary (4–6 bullets) and reference the saved title.',
       external: false,
       inputSchema: createDeliverableInput,
       execute: async (args: z.infer<typeof createDeliverableInput>) => {
+        const resolvedId = resolveExistingId(args.deliverableId, args.expectedVersion, knownDeliverableIds)
+        const idempotencyKey = args.idempotencyKey && UUID_RE.test(args.idempotencyKey) ? args.idempotencyKey : (args.idempotencyKey ?? null)
         const input: CreateOrVersionDeliverableInput = {
-          deliverableId: args.deliverableId ?? null,
-          expectedVersion: args.expectedVersion ?? null,
+          deliverableId: resolvedId,
+          expectedVersion: resolvedId ? (args.expectedVersion ?? null) : null,
           title: args.title,
           type: args.type,
           content: args.content,
           sourceRefs: args.sourceRefs ?? [],
           limitations: args.limitations ?? [],
-          idempotencyKey: args.idempotencyKey ?? null,
+          idempotencyKey,
         }
         const result = await deps.deliverables.createOrVersion(input)
+        if (result.deliverableId) knownDeliverableIds.add(result.deliverableId)
         deps.runState.deliverables.push({ ...result, title: args.title })
         return { status: 'saved', ...result }
       },
@@ -365,21 +418,23 @@ export function createDirectorToolDefinitions(deps: DirectorToolDeps): ToolDefin
     {
       name: 'create_or_update_post_draft',
       description:
-        'Save a publishable post as a Calendar DRAFT with a suggested time (Africa/Cairo). Never schedules or publishes. Revising an existing draft (postId + expectedVersion) appends an immutable post version and invalidates any stale approval.',
+        'Save a publishable Facebook or Instagram post as a Calendar DRAFT (appears as an interactive preview/approval card in Chat and Scheduling). Never schedules or publishes. OMIT postId for a new draft; pass an existing UUID only when revising.',
       external: false,
       inputSchema: createPostDraftInput,
       execute: async (args: z.infer<typeof createPostDraftInput>) => {
+        const resolvedId = resolveExistingId(args.postId, args.expectedVersion, knownPostIds)
         const input: CreateOrUpdatePostDraftInput = {
-          postId: args.postId ?? null,
-          expectedVersion: args.expectedVersion ?? null,
+          postId: resolvedId,
+          expectedVersion: resolvedId ? (args.expectedVersion ?? null) : null,
           platform: args.platform,
           caption: args.caption,
           hashtags: args.hashtags ?? '',
-          proposedFor: args.proposedFor ?? null,
+          proposedFor: sanitizeProposedFor(args.proposedFor),
           visualBrief: args.visualBrief ?? '',
           idempotencyKey: args.idempotencyKey ?? null,
         }
         const result = await deps.calendar.createOrUpdateDraft(input)
+        if (result.postId) knownPostIds.add(result.postId)
         deps.runState.drafts.push({
           ...result,
           platform: args.platform,

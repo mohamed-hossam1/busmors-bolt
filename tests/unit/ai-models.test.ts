@@ -66,13 +66,13 @@ describe('AI model configuration', () => {
       }
     }
 
-    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'openai/gpt-5-nano')
-    assert.equal(config.getRoleModelChain('director')[0].model, 'openai/gpt-5-nano')
-    assert.equal(config.getRoleModelChain('research')[0].model, 'google/gemini-2.5-flash-lite')
-    assert.equal(config.getRoleModelChain('content')[0].model, 'google/gemini-2.5-flash-lite')
-    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'google/gemini-2.5-flash-lite')
+    assert.equal(config.getRoleModelChain('orchestrator')[0].model, 'openai/gpt-6-luna')
+    assert.equal(config.getRoleModelChain('director')[0].model, 'anthropic/claude-haiku-5.5')
+    assert.equal(config.getRoleModelChain('research')[0].model, 'deepseek/deepseek-v4.1-flash-1017')
+    assert.equal(config.getRoleModelChain('content')[0].model, 'anthropic/claude-haiku-5.5')
+    assert.equal(config.getRoleModelChain('marketing-analyst')[0].model, 'deepseek/deepseek-v4.1-flash-1017')
     assert.equal(config.AI_MODELS.onboardingCrawl.provider, 'vercel')
-    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'google/gemini-2.5-flash-lite')
+    assert.equal(config.AI_MODELS.onboardingCrawl.model, 'deepseek/deepseek-v4.1-flash-1017')
 
     for (const fb of config.PROD_AI_FALLBACK_TEMPLATE as Array<{ provider: string; model: string }>) {
       assert.equal(fb.provider, 'vercel')

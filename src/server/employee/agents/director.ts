@@ -9,6 +9,7 @@ import { createToolRegistry, getToolsForRole } from '../tool-registry'
 import {
   createDirectorRunState,
   createDirectorToolDefinitions,
+  sanitizeProposedFor,
   type ClarificationCard,
   type CompactContentResult,
   type CompactResearchResult,
@@ -85,12 +86,20 @@ function formatCatalog(catalog: SkillSummary[]): string {
 export function buildDirectorSystemPrompt(catalog: SkillSummary[]): string {
   return `${DIRECTOR_SYSTEM_PROMPT}
 
-## Registered Skills (compact catalog — read one with read_skill only when needed)
+## Registered Skills (compact catalog — read one with read_skill when needed)
 ${formatCatalog(catalog)}
 
-## Execution Budget & Continuation (runtime)
-- If Continuation Context and Preloaded Business Brain/Workspace Context are already provided in your task input, do NOT re-call read_business_brain or read_workspace_context; resume directly from the user's reply.
-- Keep external research tight: delegate deep research once via delegate_agent(role: "research") (at most 1 revision only if a critical gap blocks the deliverable), do NOT stack multiple sequential research runs or run redundant direct tavily_search/firecrawl_scrape loops afterward. As soon as findings return, synthesize and persist via create_or_version_deliverable right away.`
+## Mandatory Delegation, Brief-Writing & Delivery Rules (runtime)
+1. **Business Brain first**: Check the Preloaded Business Brain in your task input (or call read_business_brain if absent) before asking questions or delegating. NEVER ask about facts already in the Brain (product, offer, trial, regions, stage, audience).
+2. **Clarification cards only**: When essential campaign details are missing, call \`ask_clarification\` (1–3 Business-Brain-grounded questions) and stop immediately. NEVER repeat the questions or options in chat prose.
+3. **Always delegate specialist work (read \`specialist-orchestration\` skill first when planning or delegating)**:
+   - **Research**: For ANY competitor analysis, market research, pricing/benchmark lookup, or external discovery, ALWAYS call \`delegate_agent(role: "research")\` with a complete brief. Do NOT call tavily_search / exa_search / firecrawl_scrape directly.
+   - **Content**: For ANY social media posts (Facebook/Instagram), ad copy, content calendar posts, scripts, or campaign creatives, ALWAYS call \`delegate_agent(role: "content")\` with a complete brief (goal, approved Business Brain facts, audience, tone, platform, outputLanguage). Do NOT write finished social posts directly as chat text.
+4. **Persistence & Formatting**:
+   - Social posts returned for Facebook/Instagram MUST be persisted as Calendar drafts via \`create_or_update_post_draft\` (omit \`postId\` for new drafts; use ISO-8601 future timestamps for \`proposedFor\` or omit it).
+   - Substantial plans, strategies, and research reports MUST be persisted via \`create_or_version_deliverable\` (omit \`deliverableId\` when creating a new document; NEVER pass invented slug strings).
+   - After saving a Deliverable, write ONLY a concise Executive Summary (4–6 decision-focused bullets + a short next step) in your chat reply. Never paste the full report into chat or mention internal IDs/JSON keys.
+5. **Preloaded context**: If Preloaded Business Brain / Workspace Context are already in your task input, do NOT re-call read_business_brain or read_workspace_context.`
 }
 
 export interface DirectorOutput {
@@ -400,7 +409,7 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
       workspace: stores.workspace,
       runState,
       delegate,
-      maxDirectWebCalls: 4,
+      maxDirectWebCalls: 0,
       loadSkill: async (skillId) => {
         const skill = await loadSkill('director', skillId, tracker)
         collector?.recordSkill({
@@ -440,12 +449,49 @@ export async function runDirector(options: RunDirectorOptions): Promise<Director
     instanceId,
     maxSteps: 12,
     label: 'director',
+    shouldStop: () => runState.clarification !== null,
   })
 
-  // Never throw away verified research findings if the Director hit a limit before
-  // writing prose or saving a Deliverable.
-  let finalOutput = result.output
-  if (!finalOutput.trim() && researchResults.length > 0 && runState.deliverables.length === 0) {
+  // Automatically persist publishable Facebook/Instagram post drafts produced by
+  // the Content Agent into Calendar drafts when the Director delegated content
+  // but did not manually call create_or_update_post_draft.
+  if (contentResults.length > 0 && runState.drafts.length === 0) {
+    const latestContent = contentResults[contentResults.length - 1]
+    for (const draft of latestContent.drafts) {
+      if (draft.itemType !== 'post_draft') continue
+      const platform = draft.platform === 'instagram' ? 'instagram' : draft.platform === 'facebook' ? 'facebook' : null
+      if (!platform || !draft.body.trim()) continue
+      const caption = draft.hook && !draft.body.startsWith(draft.hook)
+        ? `${draft.hook}\n\n${draft.body}`
+        : draft.body
+      const fullCaption = draft.cta && !caption.includes(draft.cta)
+        ? `${caption}\n\n${draft.cta}`
+        : caption
+      try {
+        const saved = await stores.calendar.createOrUpdateDraft({
+          platform,
+          caption: fullCaption,
+          hashtags: draft.hashtags ?? '',
+          proposedFor: sanitizeProposedFor(draft.proposedTime),
+          visualBrief: draft.visualBrief ?? '',
+        })
+        runState.drafts.push({
+          ...saved,
+          platform,
+          caption: fullCaption,
+          hashtags: draft.hashtags ?? '',
+          visualBrief: draft.visualBrief ?? '',
+          status: 'draft',
+        })
+      } catch {
+        // Non-fatal: continue persisting remaining drafts.
+      }
+    }
+  }
+
+  // Never dump duplicated text/questions above a Clarification Card.
+  let finalOutput = runState.clarification ? '' : result.output
+  if (!finalOutput.trim() && !runState.clarification && researchResults.length > 0 && runState.deliverables.length === 0) {
     const latest = researchResults[researchResults.length - 1]
     if (latest.findings.length > 0) {
       const topFindings = latest.findings

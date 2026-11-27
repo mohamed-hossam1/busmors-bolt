@@ -39,8 +39,15 @@ const propertiesSchema = z.record(z.string(), z.unknown())
 const readBusinessBrainInput = z.object({})
 
 const proposeBrainChangeInput = z.object({
-  action: z.enum(['add', 'edit', 'delete']),
-  nodeId: z.string().min(1).max(64).optional(),
+  action: z
+    .enum(['add', 'edit', 'delete'])
+    .describe('Use "add" for any new fact not yet in Brain. Use "edit" or "delete" ONLY when an existing nodeId from read_business_brain is supplied.'),
+  nodeId: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe('REQUIRED for "edit" and "delete" (must be the exact node id from read_business_brain). OMIT completely when action is "add".'),
   title: z.string().min(1).max(150).describe('Concise, specific title of the business fact (in the owner language).'),
   summary: z
     .string()
@@ -73,7 +80,11 @@ export const DIRECTOR_HANDOFF_SCHEMA = z.object({
   outputLanguage: z.string().min(1).max(32),
   context: z.string().max(12000).optional(),
   constraints: z.string().max(4000).optional(),
-  taskReferences: z.array(z.string().max(200)).max(50).optional(),
+  taskReferences: z
+    .array(z.string().max(200))
+    .max(50)
+    .optional()
+    .describe('ONLY real IDs or titles of existing prior deliverables/tasks from earlier turns. NEVER invent slug IDs.'),
   unapprovedFacts: z
     .array(
       z.object({
@@ -153,10 +164,15 @@ export function createOrchestratorToolDefinitions(
     {
       name: 'propose_brain_change',
       description:
-        'Propose a durable Business Brain addition, edit, or deletion for owner approval. Creates a pending approval card only; it never applies or approves the change. Write the actual concrete facts (exact regions, numbers, prices, trial days) inside `summary` and `properties`—never a meta-description like "Add details about...". Reserve `company_profile` for editing the primary company node (`action="edit"` with its `nodeId`); use `company_fact` for operational facts/locations and `offering` for offers/trials/pricing. Include old/new values for edits, the source, and a rationale. Check for duplicates/conflicts first.',
+        'Propose a durable Business Brain addition, edit, or deletion for owner approval (creates one pending approval card per call). Call once per distinct fact (e.g., operating regions separately from free trial). Use action="add" (omit nodeId) for any new fact not yet in Brain; use action="edit"/"delete" ONLY with an existing nodeId from read_business_brain. Never list raw JSON keys or proposal IDs in chat text—the UI renders the card automatically.',
       external: false,
       inputSchema: proposeBrainChangeInput,
       execute: async (args: z.infer<typeof proposeBrainChangeInput>) => {
+        if ((args.action === 'edit' || args.action === 'delete') && !args.nodeId?.trim()) {
+          throw new Error(
+            'NODE_REQUIRED: nodeId from read_business_brain is required for edit/delete. If this fact is not yet in Brain, retry immediately with action="add" and omit nodeId.',
+          )
+        }
         const effectiveProperties =
           args.properties && Object.keys(args.properties).length > 0
             ? args.properties
@@ -165,7 +181,7 @@ export function createOrchestratorToolDefinitions(
               : null
         const input: ProposeBrainChangeInput = {
           action: args.action,
-          nodeId: args.nodeId ?? null,
+          nodeId: args.action === 'add' ? null : (args.nodeId ?? null),
           title: args.title,
           summary: args.summary,
           category: args.category,

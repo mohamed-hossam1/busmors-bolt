@@ -324,6 +324,23 @@ describe('create_or_version_deliverable', () => {
     assert.equal(a.deliverableId, b.deliverableId)
     assert.equal(b.created, false)
   })
+
+  it('treats model-invented slug strings as fresh creates instead of failing UUID lookup', async () => {
+    const fake = makeFakeDeliverableStore()
+    const { deps } = makeDeps({ deliverables: fake.store })
+    const tools = toolsFor(deps)
+
+    const created = (await tools.create_or_version_deliverable.execute({
+      deliverableId: '3_FB_posts_نشر_مقترحات',
+      title: '3 Facebook Posts',
+      type: 'content_posts',
+      content: 'Post body.',
+    })) as { deliverableId: string; version: number; created: boolean }
+
+    assert.equal(created.created, true)
+    assert.equal(created.version, 1)
+    assert.equal(fake.rows[0].id, 'del-1')
+  })
 })
 
 describe('create_or_update_post_draft', () => {
@@ -377,6 +394,23 @@ describe('create_or_update_post_draft', () => {
       { postId: created.postId, revision: 1 },
       { postId: created.postId, revision: 2 },
     ])
+  })
+
+  it('drops non-ISO descriptive proposedFor strings and invented slug postIds', async () => {
+    const fake = makeFakeCalendarStore()
+    const { deps } = makeDeps({ calendar: fake.store })
+    const tools = toolsFor(deps)
+
+    const created = (await tools.create_or_update_post_draft.execute({
+      postId: 'fb_post_slug_1',
+      platform: 'facebook',
+      caption: 'بوست تجريبي',
+      proposedFor: 'الأربعاء 6-9 مساءً',
+    })) as { postId: string; created: boolean; proposedFor: string | null }
+
+    assert.equal(created.created, true)
+    assert.equal(created.proposedFor, null)
+    assert.equal(fake.rows[0].proposed_for, null)
   })
 })
 

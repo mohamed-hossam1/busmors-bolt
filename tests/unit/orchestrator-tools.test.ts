@@ -136,6 +136,36 @@ describe('propose_brain_change', () => {
       free_trial_days: 14,
     })
   })
+
+  it('rejects edit/delete without nodeId and strips stray nodeId on add', async () => {
+    const { store, calls } = makeFakeBrain()
+    const tools = toolsFor(store)
+
+    await assert.rejects(
+      () =>
+        tools.propose_brain_change.execute({
+          action: 'edit',
+          title: 'Operating regions',
+          summary: 'Egypt and KSA.',
+          category: 'company_fact',
+          source: 'conversation',
+          rationale: 'Owner stated operating regions.',
+        }),
+      /NODE_REQUIRED/,
+    )
+
+    await tools.propose_brain_change.execute({
+      action: 'add',
+      nodeId: 'stray-id',
+      title: 'Operating regions',
+      summary: 'Egypt and KSA.',
+      category: 'company_fact',
+      source: 'conversation',
+      rationale: 'Owner stated operating regions.',
+    })
+    assert.equal(calls.propose.length, 1)
+    assert.equal(calls.propose[0].nodeId, null)
+  })
 })
 
 describe('delegate_to_director', () => {

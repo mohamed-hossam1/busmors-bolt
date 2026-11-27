@@ -172,6 +172,8 @@ export interface RunAgentOptions {
   label?: string
   /** Optional hook indicating a finished tool-only turn still failed/is incomplete. */
   hasIncompleteWork?: () => boolean
+  /** Optional predicate checked after each step to stop cleanly (status: completed, stopReason: finished). */
+  shouldStop?: () => boolean
 }
 
 export interface RunAgentResult {
@@ -273,7 +275,11 @@ export async function runAgent(options: RunAgentOptions): Promise<RunAgentResult
     maxSteps,
     temperature: options.temperature,
     abortSignal: options.abortSignal,
-    shouldStop: () => !tracker.canMakeLlmCall() || tracker.isCancelled() || tracker.isTimeExceeded(),
+    shouldStop: () =>
+      !tracker.canMakeLlmCall() ||
+      tracker.isCancelled() ||
+      tracker.isTimeExceeded() ||
+      Boolean(options.shouldStop?.()),
     onStepFinish: (step) => {
       tracker.recordLlmCall()
       collector?.recordModel({

@@ -34,6 +34,14 @@ export function ensureNonEmptyReply(
   isArabic: boolean,
   runInfo?: { status?: string; stopReason?: string },
 ): string {
+  // For a Clarification Card turn, keep the chat text minimal so the user goes
+  // straight to the interactive card instead of reading duplicated questions.
+  if (state.clarification) {
+    return isArabic
+      ? 'محتاج أوضّح كام نقطة سريعة علشان أجهز لك الخطة الصح:'
+      : 'I need to clarify a few quick points to tailor this for you:'
+  }
+
   const trimmed = typeof output === 'string' ? output.trim() : ''
   if (trimmed) return trimmed
 
@@ -49,12 +57,6 @@ export function ensureNonEmptyReply(
     return isArabic
       ? 'استخدمت كل الـ 6 مهام المتقدمة المطلوبة في النسخة التجريبية. الشات العادي والأسئلة عن بيانات مشروعك (Business Brain) شغّالين زي ما هم من غير حدود.'
       : 'You have used all 6 beta advanced tasks. General chat and Business Brain Q&A remain unlimited.'
-  }
-
-  if (state.clarification) {
-    return isArabic
-      ? 'محتاج أوضّح نقطة صغيرة قبل ما أكمل. جاوبني على اللي تحت وأنا هكمّل على طول.'
-      : 'I need to clarify one quick thing before I continue. Answer below and I’ll carry on.'
   }
 
   if (state.brainProposals.length > 0) {

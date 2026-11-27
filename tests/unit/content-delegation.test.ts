@@ -459,4 +459,107 @@ describe('director → content delegation', () => {
     assert.equal(result.status, 'completed')
     assert.equal(result.drafts.length, 1)
   })
+
+  it('auto-persists Content Agent social post drafts into Calendar when Director omitted create_or_update_post_draft', async () => {
+    const tracker = new TaskGuardrailTracker()
+    const calendar = makeFakeCalendar()
+
+    const runTurn: AgentTurnRunner = async (opts) => {
+      const tools = (opts.tools ?? {}) as LooseTools
+      if (opts.role === 'director') {
+        await tools.delegate_agent.execute({ role: 'content', goal: 'Write 2 Facebook posts' })
+        const s = step('جهّزت مسودتين في جدول النشر.', [{ toolName: 'delegate_agent' }])
+        opts.onStepFinish?.(s)
+        return turn('جهّزت مسودتين في جدول النشر.', [s])
+      }
+      const payload = JSON.stringify({
+        status: 'completed',
+        drafts: [
+          {
+            id: 'fb-1',
+            itemType: 'post_draft',
+            platform: 'facebook',
+            title: 'Post 1',
+            hook: 'ابدأ تسويق مشروعك صح',
+            body: 'جرّب Busmora 14 يوم مجاناً في مصر والسعودية.',
+            cta: 'سجل الآن',
+            hashtags: '#Busmora #تسويق',
+            visualBrief: 'صورة لواجهة التطبيق',
+            proposedTime: 'الأربعاء 6 مساءً',
+            readiness: 'draft_ready',
+          },
+          {
+            id: 'fb-2',
+            itemType: 'post_draft',
+            platform: 'facebook',
+            title: 'Post 2',
+            body: 'خطة تسويق كاملة لشركتك في دقائق.',
+            readiness: 'draft_ready',
+          },
+        ],
+        stopReason: 'assigned_output_complete',
+      })
+      const s = step(payload, null)
+      opts.onStepFinish?.(s)
+      return turn(payload, [s])
+    }
+
+    const result = await runDirector({
+      workspaceId: 'ws-1',
+      input: 'اعمل بوستين فيسبوك',
+      traceContext: { traceId: TRACE_ID },
+      tracker,
+      runTurn,
+      brain: makeFakeBrain(),
+      deliverables: fakeDeliverables,
+      calendar: calendar.store,
+      workspace: fakeWorkspace,
+      instanceId: DIRECTOR_INSTANCE,
+    })
+
+    assert.equal(result.drafts.length, 2, 'both social post_drafts are auto-persisted')
+    assert.equal(calendar.rows.length, 2)
+    assert.equal(calendar.rows[0].status, 'draft')
+    assert.equal(calendar.rows[0].proposed_for, null, 'non-ISO proposedTime is sanitized to null')
+    assert.ok(calendar.rows[0].caption.includes('ابدأ تسويق مشروعك صح'))
+    assert.ok(calendar.rows[0].caption.includes('سجل الآن'))
+  })
+
+  it('clears duplicated Director text when ask_clarification is called', async () => {
+    const tracker = new TaskGuardrailTracker()
+    const runTurn: AgentTurnRunner = async (opts) => {
+      const tools = (opts.tools ?? {}) as LooseTools
+      await tools.ask_clarification.execute({
+        questions: [
+          {
+            id: 'budget',
+            question: 'الميزانية الشهرية؟',
+            type: 'single',
+            options: ['5-15 ألف جنيه', '15-40 ألف جنيه'],
+            allowCustom: true,
+            notSure: true,
+          },
+        ],
+      })
+      const s = step('1) الميزانية الشهرية؟...', [{ toolName: 'ask_clarification' }])
+      opts.onStepFinish?.(s)
+      return turn('1) الميزانية الشهرية؟...', [s])
+    }
+
+    const result = await runDirector({
+      workspaceId: 'ws-1',
+      input: 'عايز حملة إعلانية',
+      traceContext: { traceId: TRACE_ID },
+      tracker,
+      runTurn,
+      brain: makeFakeBrain(),
+      deliverables: fakeDeliverables,
+      calendar: makeFakeCalendar().store,
+      workspace: fakeWorkspace,
+      instanceId: DIRECTOR_INSTANCE,
+    })
+
+    assert.ok(result.clarification !== null)
+    assert.equal(result.text, '', 'clarification prose is suppressed so only the card is rendered')
+  })
 })
