@@ -35,24 +35,43 @@ export default function FeaturesInstantAds() {
 
       <div className="mx-auto mt-12 grid max-w-[1193px] grid-cols-1 gap-7 pt-12 lg:grid-cols-2">
         {/* Card 1: Listening Director */}
-        <MarketingCard className="overflow-hidden py-8 pl-0 pr-0 lg:col-span-2 lg:min-h-[344px] lg:flex-row lg:items-center lg:justify-between lg:pl-12">
-          <div className="w-full shrink-0 px-4 lg:w-[514px] lg:shrink lg:px-0 lg:pl-4">
-            <div className="inline-flex h-[39px] w-[96px] flex-col items-center justify-center rounded-lg bg-white text-cosmic-canvas">
-              <span className="text-[6.5px] leading-[1.1]">{t("FeaturesInstantAds.designedFor")}</span>
-              <span className="text-[9.5px] font-bold leading-[1.15]">{t("FeaturesInstantAds.yourBusiness")}</span>
+        <MarketingCard className="overflow-hidden p-6 transition-shadow hover:shadow-md sm:p-8 lg:col-span-2 lg:flex-row lg:items-center lg:gap-10 lg:p-10 xl:gap-12 xl:p-12">
+          <div className="flex min-w-0 flex-col items-start text-start lg:w-[44%] lg:shrink-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/90 px-3.5 py-1.5 text-xs shadow-sm">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+              <span className="font-medium text-slate-structure">
+                {t("FeaturesInstantAds.designedFor")}
+              </span>
+              <span className="font-semibold text-cosmic-canvas">
+                {t("FeaturesInstantAds.yourBusiness")}
+              </span>
             </div>
-            <MarketingCardTitle className="mt-4">
+
+            <MarketingCardTitle className="mt-5">
               {t("FeaturesInstantAds.aDirectorWhoStartsByListening")}
             </MarketingCardTitle>
-            <MarketingCardDescription className="mt-4">
+
+            <MarketingCardDescription className="mt-3 max-w-[460px] leading-[1.65]">
               {t("FeaturesInstantAds.startFromYourWebsiteOrEnterYourBusinessDetails")}
-              <br />
-              {t("FeaturesInstantAds.illustrativeProductExperienceInDevelopment")}
             </MarketingCardDescription>
+
+            <p className="mt-5 inline-flex items-center gap-2 border-t border-slate-structure/15 pt-3.5 text-xs font-medium text-slate-structure/80">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-structure/45" aria-hidden="true" />
+              <span>{t("FeaturesInstantAds.illustrativeProductExperienceInDevelopment")}</span>
+            </p>
           </div>
 
-          <div className="mt-8 w-full px-4 lg:mt-0 lg:w-[52%] lg:shrink-0 lg:pe-0">
-            <img src={MARKETING_ASSETS.marketingDirector} width={1440} height={960} alt={t("FeaturesInstantAds.marketingDirectorAlt")} loading="lazy" className="rounded-xl border border-white shadow-lg lg:-translate-x-5" />
+          <div className="mt-8 w-full min-w-0 lg:mt-0 lg:flex-1">
+            <div className="overflow-hidden rounded-2xl border border-white/90 bg-white/50 p-1.5 shadow-[0_18px_45px_rgba(23,25,38,0.08)] sm:p-2">
+              <img
+                src={MARKETING_ASSETS.marketingDirector}
+                width={1114}
+                height={812}
+                alt={t("FeaturesInstantAds.marketingDirectorAlt")}
+                loading="lazy"
+                className="block h-auto w-full rounded-xl border border-white/80"
+              />
+            </div>
           </div>
         </MarketingCard>
 

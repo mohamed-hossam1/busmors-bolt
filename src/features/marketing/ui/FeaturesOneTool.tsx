@@ -145,7 +145,7 @@ export default function FeaturesOneTool() {
                   alt=""
                   width={261}
                   height={386}
-                  className="product-phone w-[180px] max-w-full min-[500px]:-mt-8"
+                  className="w-[180px] max-w-full min-[500px]:-mt-8"
                 />
               </div>
             </div>

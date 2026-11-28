@@ -5,6 +5,10 @@ import {
   loadMessages,
   type ConversationSupabase,
 } from '@/server/employee/conversation-store'
+import {
+  hydrateMessageProposalStatuses,
+  type ProposalStatusSupabase,
+} from '@/server/employee/proposal-status'
 
 /**
  * A single Employee conversation (Phase 3.5).
@@ -26,7 +30,12 @@ export async function GET(request: Request, { params }: RouteContext) {
     if (!exists) {
       return Response.json({ error: 'This conversation could not be found.' }, { status: 404 })
     }
-    const messages = await loadMessages(db, id)
+    const rawMessages = await loadMessages(db, id)
+    const messages = await hydrateMessageProposalStatuses(
+      supabase as unknown as ProposalStatusSupabase,
+      user.id,
+      rawMessages,
+    )
     return Response.json({ messages })
   } catch (error) {
     return apiError(error)

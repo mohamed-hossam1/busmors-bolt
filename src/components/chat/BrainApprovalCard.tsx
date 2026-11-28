@@ -1,11 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, X, AlertCircle, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { brainError } from '../../lib/brainApi'
 import { useCopy } from '../../hooks/useCopy'
 import type { BrainProposalCardData } from './employeeCards'
+
+function resolveDecision(status: unknown): 'approved' | 'rejected' | null {
+  return status === 'approved' || status === 'rejected' ? status : null
+}
 
 function ValueList({ values }: { values: Record<string, unknown> | null }) {
   const entries = Object.entries(values ?? {})
@@ -39,9 +43,28 @@ export default function BrainApprovalCard({
   const [busy, setBusy] = useState(false)
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null)
   const [error, setError] = useState('')
+  const effectiveDecision = decision ?? resolveDecision(proposal.status)
+
+  useEffect(() => {
+    if (effectiveDecision) return
+    let cancelled = false
+    void (async () => {
+      const { data } = await supabase
+        .from('brain_proposals')
+        .select('status')
+        .eq('id', proposal.proposalId)
+        .maybeSingle()
+      if (cancelled) return
+      const resolved = resolveDecision(data?.status)
+      if (resolved) setDecision(resolved)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [proposal.proposalId, effectiveDecision])
 
   const decide = async (value: 'approved' | 'rejected') => {
-    if (busy || decision) return
+    if (busy || effectiveDecision) return
     setBusy(true)
     setError('')
     try {
@@ -55,7 +78,20 @@ export default function BrainApprovalCard({
       setDecision(value)
       onResolved?.(proposal.proposalId, value)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('couldNotSaveDecision'))
+      // If the proposal was already decided elsewhere (e.g. /brain or another tab),
+      // sync the persisted decision so the card locks instead of letting the user retry.
+      const { data } = await supabase
+        .from('brain_proposals')
+        .select('status')
+        .eq('id', proposal.proposalId)
+        .maybeSingle()
+      const resolved = resolveDecision(data?.status)
+      if (resolved) {
+        setDecision(resolved)
+        onResolved?.(proposal.proposalId, resolved)
+      } else {
+        setError(err instanceof Error ? err.message : t('couldNotSaveDecision'))
+      }
     } finally {
       setBusy(false)
     }
@@ -109,14 +145,14 @@ export default function BrainApprovalCard({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {decision ? (
+        {effectiveDecision ? (
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-              decision === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-200 text-ink-600'
+              effectiveDecision === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-200 text-ink-600'
             }`}
           >
-            {decision === 'approved' ? <Check size={13} /> : <X size={13} />}
-            {decision === 'approved' ? t('approvedLabel') : t('decisionRejected')}
+            {effectiveDecision === 'approved' ? <Check size={13} /> : <X size={13} />}
+            {effectiveDecision === 'approved' ? t('approvedLabel') : t('decisionRejected')}
           </span>
         ) : (
           <>

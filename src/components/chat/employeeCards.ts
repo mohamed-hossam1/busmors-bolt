@@ -2,6 +2,8 @@ import type { ClarificationCard } from './clarification-types'
 
 /** Client-safe mirror of the server run-state card payloads (Phase 3.5). */
 
+export type ProposalDecisionStatus = 'pending' | 'approved' | 'rejected'
+
 export interface BrainProposalCardData {
   proposalId: string
   action: 'add' | 'edit' | 'delete'
@@ -16,6 +18,7 @@ export interface BrainProposalCardData {
   baseVersion: number
   duplicate: boolean
   conflict: boolean
+  status?: ProposalDecisionStatus
 }
 
 export interface DeliverableRefData {
@@ -62,6 +65,22 @@ export interface ConversationSummary {
   title: string
   created_at: string
   updated_at: string
+}
+
+/**
+ * Returns true once the user has sent any message after the assistant message
+ * carrying a Clarification Card, so the card stays locked across reloads and
+ * conversation switches.
+ */
+export function isClarificationAnswered(
+  messages: ReadonlyArray<{ role: string }>,
+  assistantIndex: number,
+): boolean {
+  if (assistantIndex < 0 || assistantIndex >= messages.length - 1) return false
+  for (let i = assistantIndex + 1; i < messages.length; i++) {
+    if (messages[i]?.role === 'user') return true
+  }
+  return false
 }
 
 export type { ClarificationCard }

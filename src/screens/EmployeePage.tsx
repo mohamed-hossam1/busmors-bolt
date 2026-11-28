@@ -13,13 +13,14 @@ import ClarificationCardView from '../components/chat/ClarificationCard'
 import ReferenceCards from '../components/chat/ReferenceCards'
 import ChatHistorySidebar from '../components/chat/ChatHistorySidebar'
 import type { CanvasEvent } from '../components/chat/AgentCanvas'
-import type {
-  BrainProposalCardData,
-  ChatMessage,
-  ClarificationCard,
-  ConversationSummary,
-  DeliverableRefData,
-  DraftRefData,
+import {
+  isClarificationAnswered,
+  type BrainProposalCardData,
+  type ChatMessage,
+  type ClarificationCard,
+  type ConversationSummary,
+  type DeliverableRefData,
+  type DraftRefData,
 } from '../components/chat/employeeCards'
 import type { HeavyTaskQuotaSummary } from '../lib/types'
 
@@ -73,6 +74,7 @@ export default function EmployeePage() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const autoRanRef = useRef(false)
+  const sendingRef = useRef(false)
 
   const loadConversations = useCallback(async () => {
     setHistoryLoading(true)
@@ -180,7 +182,8 @@ export default function EmployeePage() {
 
   const send = async (override?: string, context?: { conversationId: string; baseMessages: ChatMessage[] }) => {
     const text = (override ?? input).trim()
-    if (!text || sending) return
+    if (!text || sendingRef.current || sending) return
+    sendingRef.current = true
     const baseMessages = context?.baseMessages ?? messages
     const conversationId = context?.conversationId ?? activeId
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text }
@@ -308,6 +311,7 @@ export default function EmployeePage() {
         { id: crypto.randomUUID(), role: 'assistant', content: message, error: true },
       ])
     } finally {
+      sendingRef.current = false
       setLiveStatus(null)
       setSending(false)
     }
@@ -503,6 +507,7 @@ export default function EmployeePage() {
                               <ClarificationCardView
                                 card={message.metadata.clarification}
                                 disabled={sending}
+                                submitted={isClarificationAnswered(messages, index)}
                                 onSubmit={(answer) => void send(answer)}
                               />
                             )}

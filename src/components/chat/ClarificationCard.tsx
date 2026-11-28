@@ -9,10 +9,12 @@ export default function ClarificationCardView({
   card,
   onSubmit,
   disabled,
+  submitted: submittedProp,
 }: {
   card: ClarificationCard
   onSubmit: (answerText: string) => void
   disabled?: boolean
+  submitted?: boolean
 }) {
   const { t } = useCopy()
   const questions = card.questions
@@ -23,7 +25,10 @@ export default function ClarificationCardView({
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
   const [notSure, setNotSure] = useState<Record<string, boolean>>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [submittedLocal, setSubmittedLocal] = useState(false)
+
+  const isSubmitted = Boolean(submittedProp) || submittedLocal
+  const isLocked = isSubmitted || Boolean(disabled)
 
   const current = questions[step]
   const isLast = step === total - 1
@@ -34,6 +39,7 @@ export default function ClarificationCardView({
   const currentAnswered = current ? answered(current.id) : false
 
   const toggle = (qid: string, option: string, type: 'single' | 'multiple') => {
+    if (isLocked) return
     setNotSure((prev) => ({ ...prev, [qid]: false }))
     setSelected((prev) => {
       const list = prev[qid] ?? []
@@ -46,13 +52,13 @@ export default function ClarificationCardView({
   }
 
   const goNext = () => {
-    if (!currentAnswered || isLast) return
+    if (isLocked || !currentAnswered || isLast) return
     setDirection('forward')
     setStep((s) => Math.min(total - 1, s + 1))
   }
 
   const goBack = () => {
-    if (step === 0) return
+    if (isLocked || step === 0) return
     setDirection('back')
     setStep((s) => Math.max(0, s - 1))
   }
@@ -73,9 +79,9 @@ export default function ClarificationCardView({
   }
 
   const submit = () => {
-    if (submitted) return
+    if (isLocked) return
     const lines = buildLines()
-    setSubmitted(true)
+    setSubmittedLocal(true)
     onSubmit(lines)
   }
 
@@ -116,16 +122,16 @@ export default function ClarificationCardView({
             {current.options.map((option) => {
               const active = selected[current.id]?.includes(option) ?? false
               return (
-                <button
+                  <button
                   key={option}
                   type="button"
-                  disabled={submitted || disabled}
+                  disabled={isLocked}
                   onClick={() => toggle(current.id, option, current.type)}
                   className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                     active
                       ? 'border-primary-500 bg-primary-500 text-white'
                       : 'border-ink-200 bg-white text-ink-700 hover:border-primary-300'
-                  } ${submitted ? 'opacity-60' : ''}`}
+                  } ${isSubmitted ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   {option}
                 </button>
@@ -134,13 +140,16 @@ export default function ClarificationCardView({
             {current.notSure && (
               <button
                 type="button"
-                disabled={submitted || disabled}
-                onClick={() => setNotSure((prev) => ({ ...prev, [current.id]: !prev[current.id] }))}
+                disabled={isLocked}
+                onClick={() => {
+                  if (isLocked) return
+                  setNotSure((prev) => ({ ...prev, [current.id]: !prev[current.id] }))
+                }}
                 className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                   notSure[current.id]
                     ? 'border-ink-400 bg-ink-500 text-white'
                     : 'border-dashed border-ink-300 bg-white text-ink-500 hover:border-ink-400'
-                } ${submitted ? 'opacity-60' : ''}`}
+                } ${isSubmitted ? 'cursor-not-allowed opacity-60' : ''}`}
               >
                 {t('notSure')}
               </button>
@@ -149,23 +158,24 @@ export default function ClarificationCardView({
           {current.allowCustom && (
             <input
               value={custom[current.id] ?? ''}
-              disabled={submitted || disabled}
+              disabled={isLocked}
               onChange={(e) => {
+                if (isLocked) return
                 setNotSure((prev) => ({ ...prev, [current.id]: false }))
                 setCustom((prev) => ({ ...prev, [current.id]: e.target.value }))
               }}
               placeholder={t('customAnswerPlaceholder')}
-              className="input-field mt-2 w-full text-xs"
+              className={`input-field mt-2 w-full text-xs ${isSubmitted ? 'cursor-not-allowed opacity-60' : ''}`}
             />
           )}
         </div>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        {step > 0 && !submitted ? (
+        {step > 0 && !isSubmitted ? (
           <button
             type="button"
-            disabled={disabled}
+            disabled={isLocked}
             onClick={goBack}
             className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs"
           >
@@ -175,14 +185,14 @@ export default function ClarificationCardView({
           <span />
         )}
 
-        {submitted ? (
+        {isSubmitted ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
             <Check size={13} /> {t('answerSent')}
           </span>
         ) : isLast ? (
           <button
             type="button"
-            disabled={submitted || disabled}
+            disabled={isLocked}
             onClick={submit}
             className="btn-primary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50"
           >
@@ -191,7 +201,7 @@ export default function ClarificationCardView({
         ) : (
           <button
             type="button"
-            disabled={!currentAnswered || disabled}
+            disabled={!currentAnswered || isLocked}
             onClick={goNext}
             className="btn-primary inline-flex items-center gap-1 px-3 py-1.5 text-xs disabled:opacity-50"
           >
