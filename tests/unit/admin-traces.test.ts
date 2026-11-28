@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  buildTraceSearchString,
   normalizeTraceFilters,
   normalizeTraceRow,
+  parseTraceSearchParams,
   sanitizeSearch,
 } from '../../src/features/admin/traceQuery'
 import { buildTraceTree, traceNodeKind, traceNodeLabel } from '../../src/features/admin/traceTree'
@@ -257,5 +259,60 @@ describe('admin access guard (session-derived identity)', () => {
       {} as unknown as NodeJS.ProcessEnv,
     )
     assert.equal(session, null)
+  })
+})
+
+describe('parseTraceSearchParams and buildTraceSearchString', () => {
+  it('reads workspaceId, email, filters, and page from URLSearchParams', () => {
+    const sp = new URLSearchParams(
+      'workspaceId=ws-123&email=user@example.com&q=hello&status=completed&from=2026-11-01&to=2026-11-28&page=3',
+    )
+    const parsed = parseTraceSearchParams(sp)
+    assert.deepEqual(parsed.filters, {
+      q: 'hello',
+      status: 'completed',
+      workspaceId: 'ws-123',
+      from: '2026-11-01',
+      to: '2026-11-28',
+    })
+    assert.equal(parsed.page, 3)
+    assert.equal(parsed.accountEmail, 'user@example.com')
+  })
+
+  it('handles array searchParams and clamps invalid page to 1', () => {
+    const parsed = parseTraceSearchParams({
+      workspaceId: ['  ws-arr  ', 'ignored'],
+      page: '-5',
+    })
+    assert.equal(parsed.filters.workspaceId, 'ws-arr')
+    assert.equal(parsed.page, 1)
+    assert.equal(parsed.accountEmail, '')
+  })
+
+  it('drops orphan email when workspaceId is empty', () => {
+    const parsed = parseTraceSearchParams(new URLSearchParams('email=user@example.com'))
+    assert.equal(parsed.filters.workspaceId, '')
+    assert.equal(parsed.accountEmail, '')
+  })
+
+  it('serializes only active filters and round-trips cleanly', () => {
+    const qs = buildTraceSearchString(
+      { q: ' foo ', status: '', workspaceId: 'ws-1', from: '', to: '' },
+      1,
+      'owner@example.com',
+    )
+    assert.equal(qs, 'q=foo&workspaceId=ws-1&email=owner%40example.com')
+    const roundTrip = parseTraceSearchParams(new URLSearchParams(qs))
+    assert.equal(roundTrip.filters.workspaceId, 'ws-1')
+    assert.equal(roundTrip.filters.q, 'foo')
+    assert.equal(roundTrip.accountEmail, 'owner@example.com')
+    assert.equal(roundTrip.page, 1)
+  })
+
+  it('returns an empty string when all filters are empty and page is 1', () => {
+    assert.equal(
+      buildTraceSearchString({ q: '', status: '', workspaceId: '', from: '', to: '' }, 1, 'ignored@example.com'),
+      '',
+    )
   })
 })

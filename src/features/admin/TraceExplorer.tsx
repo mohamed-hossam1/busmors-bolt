@@ -1,31 +1,44 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { AlertCircle, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { AlertCircle, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import type { AdminTraceListItem, AdminTraceListResult } from './types'
 import { formatDateTime, formatDuration, formatTokens, snippet, statusClasses, traceDurationMs } from './format'
-
-interface FilterState {
-  q: string
-  status: string
-  workspaceId: string
-  from: string
-  to: string
-}
-
-const EMPTY_FILTERS: FilterState = { q: '', status: '', workspaceId: '', from: '', to: '' }
+import {
+  buildTraceSearchString,
+  EMPTY_TRACE_FILTERS,
+  parseTraceSearchParams,
+  type TraceFilterFormState,
+} from './traceQuery'
 
 const STATUS_OPTIONS = ['', 'completed', 'partial', 'failed', 'running', 'queued']
 
 export default function TraceExplorer() {
   const router = useRouter()
   const params = useParams<{ lang: string }>()
+  const searchParams = useSearchParams()
   const lang = params?.lang ?? 'en'
 
-  const [draft, setDraft] = useState<FilterState>(EMPTY_FILTERS)
-  const [applied, setApplied] = useState<FilterState>(EMPTY_FILTERS)
-  const [page, setPage] = useState(1)
+  const filterKey = searchParams.toString()
+  const { filters: applied, page, accountEmail } = useMemo(
+    () => parseTraceSearchParams(searchParams),
+    [searchParams],
+  )
+
+  const [draftState, setDraftState] = useState<{ key: string; values: TraceFilterFormState }>(() => ({
+    key: filterKey,
+    values: applied,
+  }))
+  const draft = draftState.key === filterKey ? draftState.values : applied
+
+  const updateDraft = (updater: (current: TraceFilterFormState) => TraceFilterFormState) => {
+    setDraftState((current) => {
+      const base = current.key === filterKey ? current.values : applied
+      return { key: filterKey, values: updater(base) }
+    })
+  }
+
   const [result, setResult] = useState<AdminTraceListResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,16 +77,30 @@ export default function TraceExplorer() {
     void load()
   }, [load])
 
+  const navigateWithFilters = (nextFilters: TraceFilterFormState, nextPage: number, nextEmail: string) => {
+    const qs = buildTraceSearchString(nextFilters, nextPage, nextEmail)
+    router.push(qs ? `/${lang}/admin/traces?${qs}` : `/${lang}/admin/traces`)
+  }
+
   const applyFilters = () => {
-    setPage(1)
-    setApplied(draft)
+    const nextEmail = draft.workspaceId.trim() === applied.workspaceId ? accountEmail : ''
+    navigateWithFilters(draft, 1, nextEmail)
   }
 
   const resetFilters = () => {
-    setDraft(EMPTY_FILTERS)
-    setApplied(EMPTY_FILTERS)
-    setPage(1)
+    setDraftState({ key: '', values: EMPTY_TRACE_FILTERS })
+    router.push(`/${lang}/admin/traces`)
   }
+
+  const clearWorkspaceFilter = () => {
+    navigateWithFilters({ ...applied, workspaceId: '' }, 1, '')
+  }
+
+  const setPage = (nextPage: number) => {
+    navigateWithFilters(applied, nextPage, accountEmail)
+  }
+
+  const detailQs = buildTraceSearchString(applied, page, accountEmail)
 
   const total = result?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -102,7 +129,7 @@ export default function TraceExplorer() {
             <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
               value={draft.q}
-              onChange={(e) => setDraft((f) => ({ ...f, q: e.target.value }))}
+              onChange={(e) => updateDraft((f) => ({ ...f, q: e.target.value }))}
               placeholder="Query or final reply"
               className="input-field w-full ps-8"
             />
@@ -112,7 +139,7 @@ export default function TraceExplorer() {
           Status
           <select
             value={draft.status}
-            onChange={(e) => setDraft((f) => ({ ...f, status: e.target.value }))}
+            onChange={(e) => updateDraft((f) => ({ ...f, status: e.target.value }))}
             className="input-field"
           >
             {STATUS_OPTIONS.map((option) => (
@@ -126,7 +153,7 @@ export default function TraceExplorer() {
           Workspace ID
           <input
             value={draft.workspaceId}
-            onChange={(e) => setDraft((f) => ({ ...f, workspaceId: e.target.value }))}
+            onChange={(e) => updateDraft((f) => ({ ...f, workspaceId: e.target.value }))}
             placeholder="workspace…"
             className="input-field"
           />
@@ -136,7 +163,7 @@ export default function TraceExplorer() {
           <input
             type="date"
             value={draft.from}
-            onChange={(e) => setDraft((f) => ({ ...f, from: e.target.value }))}
+            onChange={(e) => updateDraft((f) => ({ ...f, from: e.target.value }))}
             className="input-field"
           />
         </label>
@@ -145,7 +172,7 @@ export default function TraceExplorer() {
           <input
             type="date"
             value={draft.to}
-            onChange={(e) => setDraft((f) => ({ ...f, to: e.target.value }))}
+            onChange={(e) => updateDraft((f) => ({ ...f, to: e.target.value }))}
             className="input-field"
           />
         </label>
@@ -162,6 +189,25 @@ export default function TraceExplorer() {
           </button>
         </div>
       </form>
+
+      {applied.workspaceId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span>Filtered by workspace:</span>
+            {accountEmail && <strong className="font-semibold">{accountEmail}</strong>}
+            <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-[11px] text-primary-900">
+              {applied.workspaceId}
+            </code>
+          </span>
+          <button
+            type="button"
+            onClick={clearWorkspaceFilter}
+            className="inline-flex items-center gap-1 rounded-lg border border-primary-200 bg-white px-2 py-0.5 font-medium text-primary-700 hover:bg-primary-100"
+          >
+            <X size={12} aria-hidden="true" /> Clear
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -199,7 +245,18 @@ export default function TraceExplorer() {
             )}
             {!loading &&
               rows.map((trace) => (
-                <TraceRow key={trace.id} trace={trace} lang={lang} onOpen={() => router.push(`/${lang}/admin/traces/${trace.id}`)} />
+                <TraceRow
+                  key={trace.id}
+                  trace={trace}
+                  lang={lang}
+                  onOpen={() =>
+                    router.push(
+                      detailQs
+                        ? `/${lang}/admin/traces/${trace.id}?${detailQs}`
+                        : `/${lang}/admin/traces/${trace.id}`,
+                    )
+                  }
+                />
               ))}
           </tbody>
         </table>
@@ -212,7 +269,7 @@ export default function TraceExplorer() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page <= 1 || loading}
             className="flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 disabled:opacity-40"
           >
@@ -220,7 +277,7 @@ export default function TraceExplorer() {
           </button>
           <button
             type="button"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             disabled={page >= totalPages || loading}
             className="flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 disabled:opacity-40"
           >
