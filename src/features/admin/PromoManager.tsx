@@ -747,7 +747,9 @@ function PromoRow({
                 {t('adminPromosGrantTasks')}
               </button>
               <Link
-                href={`/admin/traces?workspaceId=${encodeURIComponent(row.redeemedByWorkspaceId)}`}
+                href={`/admin/traces?workspaceId=${encodeURIComponent(row.redeemedByWorkspaceId)}${
+                  row.redeemedEmail ? `&email=${encodeURIComponent(row.redeemedEmail)}` : ''
+                }`}
                 className="inline-flex items-center gap-1 text-xs font-medium text-ink-600 hover:text-ink-900"
               >
                 <ExternalLink size={13} aria-hidden="true" />

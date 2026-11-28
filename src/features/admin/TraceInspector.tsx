@@ -43,7 +43,7 @@ const KIND_LABEL: Record<TraceNodeKind, string> = {
   other: 'Event',
 }
 
-export default function TraceInspector({ detail }: { detail: AdminTraceDetail }) {
+export default function TraceInspector({ detail, backQuery }: { detail: AdminTraceDetail; backQuery?: string }) {
   const params = useParams<{ lang: string }>()
   const lang = params?.lang ?? 'en'
   const tree = useMemo(() => buildTraceTree(detail.events), [detail.events])
@@ -73,7 +73,7 @@ export default function TraceInspector({ detail }: { detail: AdminTraceDetail })
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-ink-200 bg-white px-4 py-2 text-sm">
         <Link
-          href={`/${lang}/admin/traces`}
+          href={backQuery ? `/${lang}/admin/traces?${backQuery}` : `/${lang}/admin/traces`}
           className="flex items-center gap-1 text-ink-500 hover:text-ink-900"
         >
           <ArrowLeft size={14} /> Traces
